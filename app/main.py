@@ -1,13 +1,14 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from app.core.config import settings
-from app.core.logging import setup_logging
 from app.api.routes import search
+from app.core.config import settings
 from app.core.dependencies import get_opensearch_service
+from app.core.logging import setup_logging
 
 
 @asynccontextmanager

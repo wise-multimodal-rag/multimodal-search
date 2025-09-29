@@ -1,7 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Form, File, UploadFile, Depends
-from fastapi import Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger

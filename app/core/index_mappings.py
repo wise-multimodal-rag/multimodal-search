@@ -1,6 +1,6 @@
 """OpenSearch index mappings configuration"""
 
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def get_media_meta_mapping() -> Dict[str, Any]:

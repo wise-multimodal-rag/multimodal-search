@@ -1,5 +1,6 @@
-from typing import Dict, Any, Optional
 import base64
+from typing import Any, Dict, Optional
+
 from fastapi import UploadFile
 from loguru import logger
 

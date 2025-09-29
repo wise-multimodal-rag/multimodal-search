@@ -1,9 +1,9 @@
 """Search-related services"""
 
-from .search_service import SearchService
 from .opensearch_service import OpenSearchService
-from .rrf_reranker import RRFReranker
 from .result_enricher import ResultEnricher
+from .rrf_reranker import RRFReranker
+from .search_service import SearchService
 
 __all__ = [
     "SearchService",

@@ -1,4 +1,5 @@
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import httpx
 from loguru import logger
 
@@ -171,7 +172,7 @@ class LLMClient:
         if response:
             try:
                 import json
-                
+
                 # Try to extract JSON from response if it contains additional text
                 response_cleaned = response.strip()
                 

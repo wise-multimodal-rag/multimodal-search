@@ -1,16 +1,13 @@
 """Services package with organized submodules"""
 
 # Search services
-from .search import SearchService, OpenSearchService, RRFReranker, ResultEnricher
-
+# Analysis services
+from .analysis import MultimodalFeatureExtractor, QueryAnalyzer
 # Embedding services  
 from .embeddings import EmbeddingService
-
-# Analysis services
-from .analysis import QueryAnalyzer, MultimodalFeatureExtractor
-
 # Processing services
 from .processing import InputProcessor
+from .search import OpenSearchService, ResultEnricher, RRFReranker, SearchService
 
 __all__ = [
     # Search

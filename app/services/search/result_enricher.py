@@ -1,7 +1,8 @@
-from typing import Dict, List, Any
+from typing import Any, Dict, List
+
 from loguru import logger
 
-from app.models.opensearch import SearchResult, Element, ChunkMeta, MediaMeta
+from app.models.opensearch import ChunkMeta, Element, MediaMeta, SearchResult
 from app.services.search.opensearch_service import OpenSearchService
 
 

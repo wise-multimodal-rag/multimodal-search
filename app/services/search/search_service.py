@@ -4,11 +4,12 @@ from fastapi import UploadFile
 from loguru import logger
 
 from app.models.opensearch import SearchResponse
+from app.services.analysis.multimodal_feature_extractor import \
+    MultimodalFeatureExtractor
+from app.services.analysis.query_analyzer import QueryAnalyzer
 from app.services.embeddings.embedding_service import EmbeddingService
 from app.services.processing.input_processor import InputProcessor
-from app.services.analysis.multimodal_feature_extractor import MultimodalFeatureExtractor
 from app.services.search.opensearch_service import OpenSearchService
-from app.services.analysis.query_analyzer import QueryAnalyzer
 from app.services.search.result_enricher import ResultEnricher
 
 

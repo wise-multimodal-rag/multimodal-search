@@ -1,9 +1,11 @@
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
 from app.clients.feature_extraction_client import FeatureExtractionClient
 from app.clients.llm_client import LLMClient
-from app.models.features import MultimodalFeatures, TextFeatures, ImageFeatures, VideoFeatures, AudioFeatures
+from app.models.features import (AudioFeatures, ImageFeatures, MultimodalFeatures,
+                                 TextFeatures, VideoFeatures)
 
 
 class MultimodalFeatureExtractor:
