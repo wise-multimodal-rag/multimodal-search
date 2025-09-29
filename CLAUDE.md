@@ -36,16 +36,12 @@ python run.py
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Testing
+### Code Quality
 ```bash
 # Install dev dependencies
 uv pip install -e .[dev]
 
-# Run tests
-python -m pytest tests/ -v
-
 # Code formatting and linting
-python -m black app/
 python -m isort app/
 python -m pyright app/
 ```
