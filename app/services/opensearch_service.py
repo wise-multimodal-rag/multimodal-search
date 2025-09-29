@@ -4,6 +4,9 @@ from loguru import logger
 from opensearchpy import AsyncOpenSearch
 
 from app.core.config import settings
+from app.core.index_mappings import get_media_meta_mapping, get_chunk_meta_mapping, get_elements_mapping
+from app.services.embedding_selector import EmbeddingSelector
+from app.services.rrf_reranker import RRFReranker
 
 
 class OpenSearchService:
@@ -12,6 +15,10 @@ class OpenSearchService:
         self.media_meta_index = "multimodal_rag_media"
         self.chunk_meta_index = "multimodal_rag_chunk"
         self.elements_index = "multimodal_rag_element"
+
+        # Initialize helper components
+        self.rrf_reranker = RRFReranker()
+        self.embedding_selector = EmbeddingSelector()
 
     async def initialize(self):
         """Initialize OpenSearch client"""
@@ -55,9 +62,9 @@ class OpenSearchService:
     async def _ensure_indices_exist(self):
         """Ensure all required indices exist"""
         indices = [
-            (self.media_meta_index, self._get_media_meta_mapping()),
-            (self.chunk_meta_index, self._get_chunk_meta_mapping()),
-            (self.elements_index, self._get_elements_mapping())
+            (self.media_meta_index, get_media_meta_mapping()),
+            (self.chunk_meta_index, get_chunk_meta_mapping()),
+            (self.elements_index, get_elements_mapping())
         ]
 
         for index_name, mapping in indices:
@@ -76,134 +83,6 @@ class OpenSearchService:
         """Create index with mapping"""
         await self.client.indices.create(index=index_name, body=mapping)
 
-    def _get_media_meta_mapping(self) -> Dict[str, Any]:
-        """Get media_meta index mapping"""
-        return {
-            "settings": {
-                "index": {"number_of_shards": 1, "number_of_replicas": 1}
-            },
-            "mappings": {
-                "dynamic": "false",
-                "properties": {
-                    "media_id": {"type": "keyword"},
-                    "media_type": {"type": "keyword"},
-                    "mime_type": {"type": "keyword"},
-                    "title": {"type": "text", "analyzer": "standard"},
-                    "source_uri": {"type": "keyword"},
-                    "file_size_bytes": {"type": "long"},
-                    "duration_seconds": {"type": "float"},
-                    "width_pixels": {"type": "integer"},
-                    "height_pixels": {"type": "integer"},
-                    "language_primary": {"type": "keyword"},
-                    "chunk_count": {"type": "integer"},
-                    "element_count": {"type": "integer"},
-                    "metadata_flat": {"type": "object", "enabled": False},
-                    "owner": {"type": "keyword"},
-                    "visibility": {"type": "keyword"},
-                    "tags": {"type": "keyword"},
-                    "created_at": {"type": "date"},
-                    "updated_at": {"type": "date"}
-                }
-            }
-        }
-
-    def _get_chunk_meta_mapping(self) -> Dict[str, Any]:
-        """Get chunk_meta index mapping"""
-        return {
-            "settings": {
-                "index": {"number_of_shards": 2, "number_of_replicas": 1}
-            },
-            "mappings": {
-                "dynamic": "false",
-                "properties": {
-                    "chunk_id": {"type": "keyword"},
-                    "media_id": {"type": "keyword"},
-                    "chunk_seq": {"type": "integer"},
-                    "chunk_type": {"type": "keyword"},
-                    "modality_set": {"type": "keyword"},
-                    "element_count": {"type": "integer"},
-                    "label": {"type": "text"},
-                    "tags": {"type": "keyword"},
-                    "created_at": {"type": "date"},
-                    "updated_at": {"type": "date"}
-                }
-            }
-        }
-
-    def _get_elements_mapping(self) -> Dict[str, Any]:
-        """Get elements index mapping"""
-        return {
-            "settings": {
-                "index": {
-                    "knn": True,
-                    "number_of_shards": 3,
-                    "number_of_replicas": 1
-                },
-                "analysis": {
-                    "analyzer": {
-                        "ko_en": {
-                            "type": "custom",
-                            "tokenizer": "nori_tokenizer",
-                            "filter": ["lowercase", "nori_part_of_speech", "nori_number"]
-                        }
-                    }
-                }
-            },
-            "mappings": {
-                "dynamic": "false",
-                "properties": {
-                    "element_id": {"type": "keyword"},
-                    "chunk_id": {"type": "keyword"},
-                    "media_id": {"type": "keyword"},
-                    "description": {"type": "text", "analyzer": "ko_en"},
-                    "modality": {"type": "keyword"},
-                    "element_type": {"type": "keyword"},
-                    "content_type": {"type": "keyword"},
-                    "content": {
-                        "type": "text",
-                        "analyzer": "ko_en",
-                        "fields": {
-                            "exact": {"type": "keyword", "ignore_above": 2048}
-                        }
-                    },
-                    "embeddings": {
-                        "properties": {
-                            "text": {
-                                "type": "knn_vector",
-                                "dimension": 384,
-                                "method": {"name": "hnsw", "space_type": "cosinesimil"}
-                            },
-                            "image": {
-                                "type": "knn_vector",
-                                "dimension": 512,
-                                "method": {"name": "hnsw", "space_type": "cosinesimil"}
-                            },
-                            "video": {
-                                "type": "knn_vector",
-                                "dimension": 512,
-                                "method": {"name": "hnsw", "space_type": "cosinesimil"}
-                            },
-                            "audio": {
-                                "type": "knn_vector",
-                                "dimension": 512,
-                                "method": {"name": "hnsw", "space_type": "cosinesimil"}
-                            }
-                        }
-                    },
-                    "quality_scores": {
-                        "properties": {
-                            "combined_static": {"type": "rank_feature"}
-                        }
-                    },
-                    "element_seq": {"type": "integer"},
-                    "language": {"type": "keyword"},
-                    "tags": {"type": "keyword"},
-                    "created_at": {"type": "date"},
-                    "updated_at": {"type": "date"}
-                }
-            }
-        }
-
     async def search_elements(
             self,
             query: str,
@@ -214,43 +93,71 @@ class OpenSearchService:
             filters: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Search elements by running separate queries per element_type and aggregating results"""
-        
         all_results = []
         total_took = 0
-        
+
         try:
             # Run separate query for each element_type
             for element_type in element_types:
-                # Select appropriate embedding for this element_type
-                selected_embedding = self._select_embedding_for_element_type(element_type, embeddings)
-                
-                # Build query for single element_type
-                search_query = self._build_search_query(query, [element_type], selected_embedding, filters)
-                
-                response = await self.client.search(
-                    index=self.elements_index,
-                    body={
-                        "query": search_query,
-                        "size": size,
-                        "from": 0,  # Always start from 0 for individual queries
-                        "_source": True
-                    }
-                )
-                
-                # Add element_type info to each hit
+                response = await self._execute_single_query(query, element_type, embeddings, filters, size)
+
+                # Log query results
+                self._log_query_results(element_type, response)
+
+                # Add element_type info and collect results
                 for hit in response["hits"]["hits"]:
                     hit["_element_type_query"] = element_type
-                    
+
                 all_results.extend(response["hits"]["hits"])
                 total_took += response["took"]
-            
-            # Aggregate and rerank results
-            aggregated_response = self._aggregate_and_rerank_results(all_results, size, from_, total_took)
+
+            # Rerank and return results
+            aggregated_response = self.rrf_reranker.rerank_results(all_results, size, from_, total_took)
+            self.rrf_reranker.log_reranking_summary(aggregated_response)
+
             return aggregated_response
-            
+
         except Exception as e:
             logger.error(f"Element search failed: {e}")
             raise
+
+    async def _execute_single_query(
+            self,
+            query: str,
+            element_type: str,
+            embeddings: Optional[Dict[str, List[float]]],
+            filters: Optional[Dict[str, Any]],
+            size: int
+    ) -> Dict[str, Any]:
+        """Execute search query for single element type"""
+        selected_embedding = self.embedding_selector.select_for_element_type(element_type, embeddings)
+        search_query = self._build_search_query(query, [element_type], selected_embedding, filters)
+
+        return await self.client.search(
+            index=self.elements_index,
+            body={
+                "query": search_query,
+                "size": size,
+                "from": 0,
+                "_source": True
+            }
+        )
+
+    def _log_query_results(self, element_type: str, response: Dict[str, Any]) -> None:
+        """Log compact query results"""
+        hits_count = len(response["hits"]["hits"])
+        max_score = response["hits"]["max_score"] if response["hits"]["hits"] else 0.0
+
+        # Get top 3 results summary
+        top_results = []
+        if hits_count > 0:
+            for hit in response["hits"]["hits"][:3]:
+                element_id = hit["_source"].get("element_id", "unknown")
+                score = hit["_score"]
+                top_results.append(f"{element_id}({score:.3f})")
+
+        results_summary = ", ".join(top_results) if top_results else "no results"
+        logger.info(f"[{element_type}] query → {hits_count} hits (max: {max_score:.4f}) → top3: [{results_summary}]")
 
     def _build_search_query(
             self,
@@ -340,139 +247,6 @@ class OpenSearchService:
                     })
 
         return search_query
-
-    def _select_embedding_for_element_type(
-            self, 
-            element_type: str, 
-            embeddings: Optional[Dict[str, List[float]]]
-    ) -> Optional[Dict[str, List[float]]]:
-        """Select appropriate embedding based on element_type"""
-        if not embeddings:
-            return None
-            
-        # Define element_type to modality mapping
-        text_element_types = ["paragraph", "title", "summary", "stt", "caption", "scene", "ocr", "table", "translation"]
-        image_element_types = ["origin", "cropped", "detected_object", "chart", "diagram", "keyframe", "thumbnail"]
-        video_element_types = ["clip", "segment"]
-        audio_element_types = ["speech", "music", "sound_effect", "ambient"]
-        
-        # Select embedding based on element_type
-        if element_type in text_element_types:
-            # Prefer text embedding, fallback to others
-            for key in ["text", "image", "video", "audio"]:
-                if key in embeddings:
-                    return {key: embeddings[key]}
-        elif element_type in image_element_types:
-            # Prefer image embedding, fallback to others  
-            for key in ["image", "text", "video", "audio"]:
-                if key in embeddings:
-                    return {key: embeddings[key]}
-        elif element_type in video_element_types:
-            # Prefer video embedding, fallback to others
-            for key in ["video", "image", "text", "audio"]:
-                if key in embeddings:
-                    return {key: embeddings[key]}
-        elif element_type in audio_element_types:
-            # Prefer audio embedding, fallback to others
-            for key in ["audio", "text", "image", "video"]:
-                if key in embeddings:
-                    return {key: embeddings[key]}
-        
-        # If no match, return first available embedding
-        for key, value in embeddings.items():
-            return {key: value}
-            
-        return None
-
-    def _aggregate_and_rerank_results(
-            self, 
-            all_results: List[Dict], 
-            size: int, 
-            from_: int, 
-            total_took: int
-    ) -> Dict[str, Any]:
-        """Aggregate results from multiple queries and rerank using RRF (Reciprocal Rank Fusion)"""
-        
-        # Step 1: Group results by query (element_type_query)
-        query_results = {}
-        for hit in all_results:
-            query_type = hit.get("_element_type_query", "unknown")
-            if query_type not in query_results:
-                query_results[query_type] = []
-            query_results[query_type].append(hit)
-        
-        # Step 2: Sort each query's results by score and assign ranks
-        query_ranks = {}
-        for query_type, hits in query_results.items():
-            # Sort by score descending
-            sorted_hits = sorted(hits, key=lambda x: x["_score"], reverse=True)
-            
-            # Assign ranks (1-based)
-            ranks = {}
-            for rank, hit in enumerate(sorted_hits, 1):
-                element_id = hit["_source"]["element_id"]
-                ranks[element_id] = {
-                    "rank": rank,
-                    "score": hit["_score"],
-                    "hit": hit
-                }
-            query_ranks[query_type] = ranks
-        
-        # Step 3: Calculate RRF scores
-        rrf_scores = {}
-        k = 60  # RRF constant (commonly used value)
-        
-        for query_type, ranks in query_ranks.items():
-            for element_id, rank_info in ranks.items():
-                if element_id not in rrf_scores:
-                    rrf_scores[element_id] = {
-                        "rrf_score": 0.0,
-                        "query_details": {},
-                        "hit": rank_info["hit"]  # Keep one representative hit
-                    }
-                
-                # RRF formula: 1 / (k + rank)
-                rrf_contribution = 1.0 / (k + rank_info["rank"])
-                rrf_scores[element_id]["rrf_score"] += rrf_contribution
-                
-                # Store query details for debugging
-                rrf_scores[element_id]["query_details"][query_type] = {
-                    "rank": rank_info["rank"],
-                    "original_score": rank_info["score"],
-                    "rrf_contribution": rrf_contribution
-                }
-                
-                # Keep the hit with highest original score
-                if rank_info["score"] > rrf_scores[element_id]["hit"]["_score"]:
-                    rrf_scores[element_id]["hit"] = rank_info["hit"]
-        
-        # Step 4: Create final ranked results
-        final_results = []
-        for element_id, rrf_data in rrf_scores.items():
-            hit = rrf_data["hit"].copy()
-            hit["_score"] = rrf_data["rrf_score"]
-            hit["_rrf_details"] = {
-                "queries_matched": len(rrf_data["query_details"]),
-                "query_breakdown": rrf_data["query_details"]
-            }
-            final_results.append(hit)
-        
-        # Step 5: Sort by RRF score
-        final_results.sort(key=lambda x: x["_score"], reverse=True)
-        
-        # Step 6: Apply pagination
-        paginated_results = final_results[from_:from_ + size]
-        
-        # Build response in OpenSearch format
-        return {
-            "took": total_took,
-            "timed_out": False,
-            "hits": {
-                "total": {"value": len(final_results), "relation": "eq"},
-                "max_score": final_results[0]["_score"] if final_results else 0.0,
-                "hits": paginated_results
-            }
-        }
 
     async def get_chunk_meta(self, chunk_id: str) -> Optional[Dict[str, Any]]:
         """Get chunk metadata by chunk_id"""

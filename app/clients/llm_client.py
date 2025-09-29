@@ -16,7 +16,8 @@ class LLMClient:
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        force_json: bool = False
     ) -> Optional[str]:
         """Get completion from LLM"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -30,8 +31,8 @@ class LLMClient:
                 if max_tokens:
                     payload["max_tokens"] = max_tokens
                 
-                # Gemini-specific settings to avoid reasoning tokens
-                if "gemini" in self.model.lower():
+                # Gemini-specific settings - only force JSON when explicitly requested
+                if "gemini" in self.model.lower() and force_json:
                     payload["response_format"] = {"type": "json_object"}
                     payload["extra_body"] = {
                         "generationConfig": {
@@ -165,7 +166,7 @@ class LLMClient:
             {"role": "user", "content": f"검색 쿼리: {query}"}
         ]
         
-        response = await self.complete(messages, temperature=0.3, max_tokens=3000)
+        response = await self.complete(messages, temperature=0.3, max_tokens=3000, force_json=True)
         
         if response:
             try:
@@ -295,6 +296,6 @@ class LLMClient:
             {"role": "user", "content": user_message}
         ]
         
-        return await self.complete(messages, temperature=0.5, max_tokens=500)
+        return await self.complete(messages, temperature=0.5, max_tokens=200, force_json=False)
 
 

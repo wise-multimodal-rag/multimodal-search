@@ -76,25 +76,25 @@ class MultimodalFeatureExtractor:
 
             # 키워드 추출 (모든 타입에 유용)
             keywords_result = await self.feature_extraction_client.extract_keywords(text_query)
-            if keywords_result:
-                keywords = keywords_result
+            if keywords_result and "keywords" in keywords_result:
+                keywords = keywords_result["keywords"]  # Extract the keywords list
 
             # 엔티티 추출 (구조화된 콘텐츠용)
             if any(t in element_types for t in ["paragraph", "title", "summary", "ocr", "stt", "caption"]):
                 entities_result = await self.feature_extraction_client.extract_entities(text_query)
-                if entities_result:
-                    entities = entities_result
+                if entities_result and "entities" in entities_result:
+                    entities = entities_result["entities"]  # Extract the entities list
 
             # 긴 쿼리의 경우 요약 생성
             if len(text_query) > 100:
                 summary_result = await self.feature_extraction_client.extract_text_summary(text_query)
-                if summary_result:
-                    summary = summary_result
+                if summary_result and "summary" in summary_result:
+                    summary = summary_result["summary"]  # Extract the summary string
 
             # 텍스트 분류
             classification_result = await self.feature_extraction_client.classify_text(text_query)
             if classification_result:
-                classification = classification_result
+                classification = classification_result  # Keep the full classification result
 
             # 최소 하나의 feature가 추출된 경우만 TextFeatures 반환
             if any([keywords, entities, summary, classification]):
