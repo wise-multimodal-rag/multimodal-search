@@ -24,6 +24,7 @@ dependencies = [
 dev = [
     "isort>=5.12.0",
     "pyright>=1.1.0",
+    "ruff>=0.1.0",
 ]
 
 [build-system]
@@ -36,8 +37,61 @@ packages = ["app"]
 [tool.isort]
 line_length = 88
 
+
+[tool.ruff]
+line-length = 125
+exclude = [
+    '.git',
+    '__pycache__',
+    '.ruff_cache',
+    'docs',
+    '.venv',
+    'venv',
+    'tests',
+    'build',
+    'dist',
+    './app/__init__.py',
+]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "D", # pydocstyle <https://docs.astral.sh/ruff/rules/#pydocstyle-d>
+    "FAST"  # FastAPI <https://docs.astral.sh/ruff/rules/#fastapi-fast>
+]
+ignore = ['W', "D100", "D104", "D107", "D414", "D415", "D417", "FAST002"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+
 [tool.pyright]
 pythonVersion = "3.11"
-strict = ["app"]
-exclude = ["**/__pycache__"]
+defineConstant = { DEBUG = true }
+reportMissingImports = false
+reportMissingTypeStubs = false
+reportArgumentType = false
 typeCheckingMode = "basic"
+include = ["app"]
+exclude = [
+    '.git',
+    '__pycache__',
+    '.ruff_cache',
+    '.pytest_cache',
+    'docs',
+    'venv',
+    '.venv',
+    'tests',
+    'build',
+    'dist',
+    'pypi',
+    'app_logs',
+    '.cache',
+    'static',
+    'templates',
+    '.gitlab',
+]
+
