@@ -391,29 +391,85 @@ class OpenSearchService:
             from_: int, 
             total_took: int
     ) -> Dict[str, Any]:
-        """Aggregate results from multiple queries and rerank"""
+        """Aggregate results from multiple queries and rerank using RRF (Reciprocal Rank Fusion)"""
         
-        # Remove duplicates based on element_id
-        unique_results = {}
+        # Step 1: Group results by query (element_type_query)
+        query_results = {}
         for hit in all_results:
-            element_id = hit["_source"]["element_id"]
-            if element_id not in unique_results or hit["_score"] > unique_results[element_id]["_score"]:
-                unique_results[element_id] = hit
+            query_type = hit.get("_element_type_query", "unknown")
+            if query_type not in query_results:
+                query_results[query_type] = []
+            query_results[query_type].append(hit)
         
-        # Convert back to list and sort by score
-        results_list = list(unique_results.values())
-        results_list.sort(key=lambda x: x["_score"], reverse=True)
+        # Step 2: Sort each query's results by score and assign ranks
+        query_ranks = {}
+        for query_type, hits in query_results.items():
+            # Sort by score descending
+            sorted_hits = sorted(hits, key=lambda x: x["_score"], reverse=True)
+            
+            # Assign ranks (1-based)
+            ranks = {}
+            for rank, hit in enumerate(sorted_hits, 1):
+                element_id = hit["_source"]["element_id"]
+                ranks[element_id] = {
+                    "rank": rank,
+                    "score": hit["_score"],
+                    "hit": hit
+                }
+            query_ranks[query_type] = ranks
         
-        # Apply pagination
-        paginated_results = results_list[from_:from_ + size]
+        # Step 3: Calculate RRF scores
+        rrf_scores = {}
+        k = 60  # RRF constant (commonly used value)
+        
+        for query_type, ranks in query_ranks.items():
+            for element_id, rank_info in ranks.items():
+                if element_id not in rrf_scores:
+                    rrf_scores[element_id] = {
+                        "rrf_score": 0.0,
+                        "query_details": {},
+                        "hit": rank_info["hit"]  # Keep one representative hit
+                    }
+                
+                # RRF formula: 1 / (k + rank)
+                rrf_contribution = 1.0 / (k + rank_info["rank"])
+                rrf_scores[element_id]["rrf_score"] += rrf_contribution
+                
+                # Store query details for debugging
+                rrf_scores[element_id]["query_details"][query_type] = {
+                    "rank": rank_info["rank"],
+                    "original_score": rank_info["score"],
+                    "rrf_contribution": rrf_contribution
+                }
+                
+                # Keep the hit with highest original score
+                if rank_info["score"] > rrf_scores[element_id]["hit"]["_score"]:
+                    rrf_scores[element_id]["hit"] = rank_info["hit"]
+        
+        # Step 4: Create final ranked results
+        final_results = []
+        for element_id, rrf_data in rrf_scores.items():
+            hit = rrf_data["hit"].copy()
+            hit["_score"] = rrf_data["rrf_score"]
+            hit["_rrf_details"] = {
+                "queries_matched": len(rrf_data["query_details"]),
+                "query_breakdown": rrf_data["query_details"]
+            }
+            final_results.append(hit)
+        
+        # Step 5: Sort by RRF score
+        final_results.sort(key=lambda x: x["_score"], reverse=True)
+        
+        # Step 6: Apply pagination
+        paginated_results = final_results[from_:from_ + size]
         
         # Build response in OpenSearch format
         return {
             "took": total_took,
             "timed_out": False,
             "hits": {
-                "total": {"value": len(results_list), "relation": "eq"},
-                "max_score": results_list[0]["_score"] if results_list else 0.0,
+                "total": {"value": len(final_results), "relation": "eq"},
+                "max_score": final_results[0]["_score"] if final_results else 0.0,
                 "hits": paginated_results
             }
         }
