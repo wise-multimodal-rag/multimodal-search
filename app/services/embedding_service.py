@@ -26,7 +26,7 @@ class EmbeddingService:
                 text_query = modalities_data["text"]["query"]
                 text_embedding = await self.embedding_client.get_text_embedding(text_query)
                 if text_embedding:
-                    embeddings["text_query"] = text_embedding
+                    embeddings["text"] = text_embedding
 
             # 2. 이미지 임베딩
             if "image" in modalities_data and "base64_data" in modalities_data["image"]:
@@ -34,7 +34,7 @@ class EmbeddingService:
                 image_bytes = base64.b64decode(modalities_data["image"]["base64_data"])
                 image_embedding = await self.embedding_client.get_image_embedding(image_bytes)
                 if image_embedding:
-                    embeddings["image_raw"] = image_embedding
+                    embeddings["image"] = image_embedding
 
             # 3. 비디오 임베딩 (첫 프레임 또는 키프레임 사용)
             if "video" in modalities_data and "base64_data" in modalities_data["video"]:
@@ -42,7 +42,7 @@ class EmbeddingService:
                 video_bytes = base64.b64decode(modalities_data["video"]["base64_data"])
                 video_embedding = await self.embedding_client.get_video_embedding(video_bytes)
                 if video_embedding:
-                    embeddings["video_raw"] = video_embedding
+                    embeddings["video"] = video_embedding
 
             # 4. 오디오 임베딩
             if "audio" in modalities_data and "base64_data" in modalities_data["audio"]:
@@ -50,7 +50,7 @@ class EmbeddingService:
                 audio_bytes = base64.b64decode(modalities_data["audio"]["base64_data"])
                 audio_embedding = await self.embedding_client.get_audio_embedding(audio_bytes)
                 if audio_embedding:
-                    embeddings["audio_raw"] = audio_embedding
+                    embeddings["audio"] = audio_embedding
 
             # 5. 추출된 특징들에서 임베딩 생성
             if features:

@@ -9,9 +9,9 @@ from app.core.config import settings
 class OpenSearchService:
     def __init__(self):
         self.client: Optional[AsyncOpenSearch] = None
-        self.media_meta_index = "media_meta"
-        self.chunk_meta_index = "chunk_meta"
-        self.elements_index = "elements"
+        self.media_meta_index = "multimodal_rag_media"
+        self.chunk_meta_index = "multimodal_rag_chunk"
+        self.elements_index = "multimodal_rag_element"
 
     async def initialize(self):
         """Initialize OpenSearch client"""
@@ -213,22 +213,41 @@ class OpenSearchService:
             from_: int = 0,
             filters: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Search elements with hybrid query"""
-
-        # Build query
-        search_query = self._build_search_query(query, element_types, embeddings, filters)
-
+        """Search elements by running separate queries per element_type and aggregating results"""
+        
+        all_results = []
+        total_took = 0
+        
         try:
-            response = await self.client.search(
-                index=self.elements_index,
-                body={
-                    "query": search_query,
-                    "size": size,
-                    "from": from_,
-                    "_source": True
-                }
-            )
-            return response
+            # Run separate query for each element_type
+            for element_type in element_types:
+                # Select appropriate embedding for this element_type
+                selected_embedding = self._select_embedding_for_element_type(element_type, embeddings)
+                
+                # Build query for single element_type
+                search_query = self._build_search_query(query, [element_type], selected_embedding, filters)
+                
+                response = await self.client.search(
+                    index=self.elements_index,
+                    body={
+                        "query": search_query,
+                        "size": size,
+                        "from": 0,  # Always start from 0 for individual queries
+                        "_source": True
+                    }
+                )
+                
+                # Add element_type info to each hit
+                for hit in response["hits"]["hits"]:
+                    hit["_element_type_query"] = element_type
+                    
+                all_results.extend(response["hits"]["hits"])
+                total_took += response["took"]
+            
+            # Aggregate and rerank results
+            aggregated_response = self._aggregate_and_rerank_results(all_results, size, from_, total_took)
+            return aggregated_response
+            
         except Exception as e:
             logger.error(f"Element search failed: {e}")
             raise
@@ -321,6 +340,83 @@ class OpenSearchService:
                     })
 
         return search_query
+
+    def _select_embedding_for_element_type(
+            self, 
+            element_type: str, 
+            embeddings: Optional[Dict[str, List[float]]]
+    ) -> Optional[Dict[str, List[float]]]:
+        """Select appropriate embedding based on element_type"""
+        if not embeddings:
+            return None
+            
+        # Define element_type to modality mapping
+        text_element_types = ["paragraph", "title", "summary", "stt", "caption", "scene", "ocr", "table", "translation"]
+        image_element_types = ["origin", "cropped", "detected_object", "chart", "diagram", "keyframe", "thumbnail"]
+        video_element_types = ["clip", "segment"]
+        audio_element_types = ["speech", "music", "sound_effect", "ambient"]
+        
+        # Select embedding based on element_type
+        if element_type in text_element_types:
+            # Prefer text embedding, fallback to others
+            for key in ["text", "image", "video", "audio"]:
+                if key in embeddings:
+                    return {key: embeddings[key]}
+        elif element_type in image_element_types:
+            # Prefer image embedding, fallback to others  
+            for key in ["image", "text", "video", "audio"]:
+                if key in embeddings:
+                    return {key: embeddings[key]}
+        elif element_type in video_element_types:
+            # Prefer video embedding, fallback to others
+            for key in ["video", "image", "text", "audio"]:
+                if key in embeddings:
+                    return {key: embeddings[key]}
+        elif element_type in audio_element_types:
+            # Prefer audio embedding, fallback to others
+            for key in ["audio", "text", "image", "video"]:
+                if key in embeddings:
+                    return {key: embeddings[key]}
+        
+        # If no match, return first available embedding
+        for key, value in embeddings.items():
+            return {key: value}
+            
+        return None
+
+    def _aggregate_and_rerank_results(
+            self, 
+            all_results: List[Dict], 
+            size: int, 
+            from_: int, 
+            total_took: int
+    ) -> Dict[str, Any]:
+        """Aggregate results from multiple queries and rerank"""
+        
+        # Remove duplicates based on element_id
+        unique_results = {}
+        for hit in all_results:
+            element_id = hit["_source"]["element_id"]
+            if element_id not in unique_results or hit["_score"] > unique_results[element_id]["_score"]:
+                unique_results[element_id] = hit
+        
+        # Convert back to list and sort by score
+        results_list = list(unique_results.values())
+        results_list.sort(key=lambda x: x["_score"], reverse=True)
+        
+        # Apply pagination
+        paginated_results = results_list[from_:from_ + size]
+        
+        # Build response in OpenSearch format
+        return {
+            "took": total_took,
+            "timed_out": False,
+            "hits": {
+                "total": {"value": len(results_list), "relation": "eq"},
+                "max_score": results_list[0]["_score"] if results_list else 0.0,
+                "hits": paginated_results
+            }
+        }
 
     async def get_chunk_meta(self, chunk_id: str) -> Optional[Dict[str, Any]]:
         """Get chunk metadata by chunk_id"""
