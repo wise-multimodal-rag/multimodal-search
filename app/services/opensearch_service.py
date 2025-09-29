@@ -22,7 +22,8 @@ class OpenSearchService:
                     'port': settings.opensearch_port
                 }],
                 http_auth=(
-                settings.opensearch_username, settings.opensearch_password) if settings.opensearch_username else None,
+                    settings.opensearch_username,
+                    settings.opensearch_password) if settings.opensearch_username else None,
                 use_ssl=settings.opensearch_use_ssl,
                 verify_certs=settings.opensearch_verify_certs,
                 ssl_assert_hostname=False,
@@ -142,8 +143,8 @@ class OpenSearchService:
                     "analyzer": {
                         "ko_en": {
                             "type": "custom",
-                            "tokenizer": "standard",
-                            "filter": ["lowercase"]
+                            "tokenizer": "nori_tokenizer",
+                            "filter": ["lowercase", "nori_part_of_speech", "nori_number"]
                         }
                     }
                 }
@@ -191,10 +192,6 @@ class OpenSearchService:
                     },
                     "quality_scores": {
                         "properties": {
-                            "extraction_confidence": {"type": "rank_feature"},
-                            "content_quality": {"type": "rank_feature"},
-                            "structural_importance": {"type": "rank_feature"},
-                            "completeness": {"type": "rank_feature"},
                             "combined_static": {"type": "rank_feature"}
                         }
                     },
@@ -312,9 +309,16 @@ class OpenSearchService:
         # Add additional filters
         if filters:
             for key, value in filters.items():
-                bool_query["bool"]["filter"].append({
-                    "term": {key: value}
-                })
+                if isinstance(value, list):
+                    # Use terms query for list values
+                    bool_query["bool"]["filter"].append({
+                        "terms": {key: value}
+                    })
+                else:
+                    # Use term query for single values
+                    bool_query["bool"]["filter"].append({
+                        "term": {key: value}
+                    })
 
         return search_query
 
@@ -341,5 +345,3 @@ class OpenSearchService:
         except Exception as e:
             logger.warning(f"Media meta not found for {media_id}: {e}")
             return None
-
-

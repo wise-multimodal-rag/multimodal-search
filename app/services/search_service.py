@@ -96,11 +96,10 @@ class SearchService:
             # Step 3: 멀티모달 특징 추출
             extracted_features = await self.feature_extractor.extract_features(modalities_data, selected_element_types)
 
-            # Step 4: 임베딩 생성
-            if text_query and extracted_features.has_any_features():
-                embeddings = await self.embedding_service.generate_enhanced_embeddings(text_query, extracted_features)
-            else:
-                embeddings = await self.embedding_service.generate_multimodal_embeddings(modalities_data)
+            # Step 4: 임베딩 생성 (모든 모달리티와 특징들)
+            embeddings = await self.embedding_service.generate_multimodal_embeddings(
+                modalities_data, extracted_features
+            )
 
             # Step 5: 검색 쿼리 생성
             search_query = text_query or "multimodal search"
