@@ -13,7 +13,6 @@ from app.core.dependencies import get_opensearch_service
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    setup_logging()
     logger.info("Starting multimodal search application")
     
     # Initialize OpenSearch connection
