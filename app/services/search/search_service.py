@@ -72,37 +72,42 @@ class SearchService:
             logger.info(f"Multimodal search request with inputs: {', '.join(input_types)}")
 
             # Step 1: 멀티모달 입력 처리
+            logger.info("[Step 1: 멀티모달 입력 처리] Processing multimodal inputs")
             modalities_data = await self.input_processor.process_multimodal_inputs(
                 text_query, image_file, video_file, audio_file
             )
 
             # Step 2: 쿼리 의도 분석
+            logger.info("[Step 2: 쿼리 의도 분석] Analyzing query intent")
             query_analysis = None
             if text_query:
                 query_analysis = await self.query_analyzer.analyze_query_intent(
                     text_query, self.available_element_types)
                 if not query_analysis:
                     logger.warning(
-                        f"Query analysis failed for text query: '{text_query}'. Falling back to default behavior.")
+                        f"[Step 2: 쿼리 의도 분석] Query analysis failed for text query: '{text_query}'. Falling back to default behavior.")
                     query_analysis = self.query_analyzer.create_default_query_analysis(
                         self.available_element_types, "Query analysis failed"
                     )
             else:
-                logger.warning("No text query provided. Using all element types as fallback.")
+                logger.warning("[Step 2: 쿼리 의도 분석] No text query provided. Using all element types as fallback.")
                 query_analysis = self.query_analyzer.create_default_query_analysis(self.available_element_types)
 
             selected_element_types = query_analysis["selected_element_types"]
-            logger.info(f"Selected element types: {selected_element_types}")
+            logger.info(f"[Step 2: 쿼리 의도 분석] Selected element types: {selected_element_types}")
 
             # Step 3: 멀티모달 특징 추출
+            logger.info("[Step 3: 멀티모달 특징 추출] Extracting multimodal features")
             extracted_features = await self.feature_extractor.extract_features(modalities_data, selected_element_types)
 
             # Step 4: 임베딩 생성 (모든 모달리티와 특징들)
+            logger.info("[Step 4: 임베딩 생성] Generating embeddings")
             embeddings = await self.embedding_service.generate_multimodal_embeddings(
                 modalities_data, extracted_features
             )
 
             # Step 5: OpenSearch 검색 실행
+            logger.info("[Step 5: OpenSearch 검색 실행] Executing OpenSearch")
             search_query = text_query or "multimodal search"
             search_results = await self.opensearch_service.search_elements(
                 query=search_query,
@@ -114,15 +119,17 @@ class SearchService:
             )
 
             # Step 6: 결과 enrichment
+            logger.info("[Step 6: 결과 enrichment] Enriching search results")
             enriched_results = await self.result_enricher.enrich_search_results(
                 search_results, include_chunk_meta, include_media_meta
             )
 
             # Step 7: 응답 생성
+            logger.info("[Step 7: 응답 생성] Generating response")
             end_time = self._get_current_time_ms()
             stats = self.result_enricher.calculate_search_statistics(search_results)
 
-            logger.info(f"Multimodal search completed: {stats['total_hits']} hits in {end_time - start_time}ms")
+            logger.info(f"[Step 7: 응답 생성] Multimodal search completed: {stats['total_hits']} hits in {end_time - start_time}ms")
 
             return SearchResponse(
                 query=f"Multimodal search ({', '.join(input_types)}): {search_query}",

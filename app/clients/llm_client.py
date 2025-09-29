@@ -74,7 +74,7 @@ class LLMClient:
                         message = choice["message"]
                         if "content" in message and message["content"]:
                             content = message["content"]
-                            logger.info(f"LLM response received, length: {len(content)} chars")
+                            logger.debug(f"LLM response received, length: {len(content)} chars")
                             return content
                         elif "content" in message and message["content"] == "":
                             logger.warning(f"LLM returned empty content, finish_reason: {finish_reason}")
@@ -89,12 +89,12 @@ class LLMClient:
                 elif "content" in result:
                     # Some APIs return content directly
                     content = result["content"]
-                    logger.info(f"LLM response received (direct), length: {len(content)} chars")
+                    logger.debug(f"LLM response received (direct), length: {len(content)} chars")
                     return content
                 elif "text" in result:
                     # Some APIs use 'text' field
                     content = result["text"]
-                    logger.info(f"LLM response received (text field), length: {len(content)} chars")
+                    logger.debug(f"LLM response received (text field), length: {len(content)} chars")
                     return content
                 else:
                     logger.error(f"Unexpected LLM response structure: {result}")
