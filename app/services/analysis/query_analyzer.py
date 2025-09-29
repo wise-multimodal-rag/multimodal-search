@@ -3,7 +3,6 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 
 from app.clients.llm_client import LLMClient
-from app.models.features import MultimodalFeatures
 
 
 class QueryAnalyzer:
@@ -66,18 +65,6 @@ class QueryAnalyzer:
             "confidence": 0.6
         }
 
-    async def build_enhanced_query(
-        self,
-        original_query: str,
-        element_types: List[str],
-        features: MultimodalFeatures
-    ) -> Optional[str]:
-        """LLM을 사용하여 향상된 검색 쿼리 빌드"""
-        try:
-            return await self.llm_client.build_search_query(original_query, element_types, features)
-        except Exception as e:
-            logger.error(f"Enhanced query building failed: {e}")
-            return None
 
     def create_default_query_analysis(
         self, 

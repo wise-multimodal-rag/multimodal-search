@@ -222,53 +222,14 @@ class EmbeddingService:
             if text_embedding:
                 embeddings["text"] = text_embedding
 
-            # 추출된 특징을 사용한 향상된 임베딩 생성
-            if features.has_any_features():
-                enhanced_query = self._build_enhanced_query_text(query, features)
-                if enhanced_query and enhanced_query != query:
-                    enhanced_embedding = await self.embedding_client.get_text_embedding(enhanced_query)
-                    if enhanced_embedding:
-                        # 향상된 임베딩이 있으면 사용, 없으면 기본 임베딩 유지
-                        embeddings["text"] = enhanced_embedding
 
-            logger.debug(f"Generated enhanced embeddings for modalities: {list(embeddings.keys())}")
+            logger.debug(f"Generated embeddings for modalities: {list(embeddings.keys())}")
             return embeddings
 
         except Exception as e:
-            logger.error(f"Enhanced embedding generation failed: {e}")
+            logger.error(f"Embedding generation failed: {e}")
             return {}
 
-    def _build_enhanced_query_text(self, query: str, features: MultimodalFeatures) -> str:
-        """특징을 활용하여 향상된 쿼리 텍스트 생성"""
-        enhanced_parts = [query]
-
-        # 텍스트 특징에서 키워드 추출
-        if features.text and features.text.keywords:
-            keywords_list = features.text.keywords.get("keywords", []) if isinstance(features.text.keywords,
-                                                                                     dict) else []
-            keywords_text = " ".join([kw.get("word", "") for kw in keywords_list[:5] if isinstance(kw, dict)])
-            if keywords_text:
-                enhanced_parts.append(keywords_text)
-
-        # 이미지 캡션 추가
-        if features.image and features.image.caption:
-            enhanced_parts.append(features.image.caption[:100])  # 캡션이 너무 길지 않도록 제한
-
-        # 비디오 설명 추가
-        if features.video and features.video.description:
-            enhanced_parts.append(features.video.description[:100])
-
-        # 오디오 전사 추가
-        if features.audio and features.audio.transcription:
-            enhanced_parts.append(features.audio.transcription[:100])
-
-        enhanced_query = " ".join(enhanced_parts)
-
-        # 너무 길어지지 않도록 제한
-        if len(enhanced_query) > 500:
-            enhanced_query = enhanced_query[:500]
-
-        return enhanced_query
 
     def select_for_element_type(
         self, 

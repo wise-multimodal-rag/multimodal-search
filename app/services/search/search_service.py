@@ -102,16 +102,8 @@ class SearchService:
                 modalities_data, extracted_features
             )
 
-            # Step 5: 검색 쿼리 생성
+            # Step 5: OpenSearch 검색 실행
             search_query = text_query or "multimodal search"
-            if text_query and extracted_features.has_any_features():
-                enhanced_query = await self.query_analyzer.build_enhanced_query(
-                    text_query, selected_element_types, extracted_features
-                )
-                if enhanced_query:
-                    search_query = enhanced_query
-
-            # Step 6: OpenSearch 검색 실행
             search_results = await self.opensearch_service.search_elements(
                 query=search_query,
                 element_types=selected_element_types,
@@ -121,12 +113,12 @@ class SearchService:
                 filters=None
             )
 
-            # Step 7: 결과 enrichment
+            # Step 6: 결과 enrichment
             enriched_results = await self.result_enricher.enrich_search_results(
                 search_results, include_chunk_meta, include_media_meta
             )
 
-            # Step 8: 응답 생성
+            # Step 7: 응답 생성
             end_time = self._get_current_time_ms()
             stats = self.result_enricher.calculate_search_statistics(search_results)
 
