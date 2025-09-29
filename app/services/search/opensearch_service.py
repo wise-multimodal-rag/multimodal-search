@@ -5,8 +5,8 @@ from opensearchpy import AsyncOpenSearch
 
 from app.core.config import settings
 from app.core.index_mappings import get_media_meta_mapping, get_chunk_meta_mapping, get_elements_mapping
-from app.services.embedding_selector import EmbeddingSelector
-from app.services.rrf_reranker import RRFReranker
+from app.services.embeddings.embedding_service import EmbeddingService
+from app.services.search.rrf_reranker import RRFReranker
 
 
 class OpenSearchService:
@@ -18,7 +18,7 @@ class OpenSearchService:
 
         # Initialize helper components
         self.rrf_reranker = RRFReranker()
-        self.embedding_selector = EmbeddingSelector()
+        self.embedding_service = EmbeddingService()
 
     async def initialize(self):
         """Initialize OpenSearch client"""
@@ -130,7 +130,7 @@ class OpenSearchService:
             size: int
     ) -> Dict[str, Any]:
         """Execute search query for single element type"""
-        selected_embedding = self.embedding_selector.select_for_element_type(element_type, embeddings)
+        selected_embedding = self.embedding_service.select_for_element_type(element_type, embeddings)
         search_query = self._build_search_query(query, [element_type], selected_embedding, filters)
 
         return await self.client.search(

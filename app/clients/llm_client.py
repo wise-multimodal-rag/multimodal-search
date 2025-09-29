@@ -225,13 +225,7 @@ class LLMClient:
     ) -> Optional[str]:
         """Build enhanced search query using LLM"""
         
-        system_message = """검색 쿼리를 최적화하세요.
-- 원본 의도 유지
-- 키워드/개체명 활용  
-- 동의어 추가
-- 간결하게 작성
-
-최적화된 검색 쿼리만 답변하세요."""
+        system_message = "검색 쿼리를 개선하여 더 나은 검색 결과를 얻도록 최적화된 검색어를 생성하세요."
 
         features_text = ""
         
@@ -284,18 +278,13 @@ class LLMClient:
         if "audio_type" in extracted_features:
             features_text += f"오디오 타입: {extracted_features['audio_type']}\n"
 
-        user_message = f"""원본 쿼리: {original_query}
-대상 콘텐츠 유형: {', '.join(element_types)}
-
-{features_text}
-
-위 정보를 바탕으로 최적화된 검색 쿼리를 생성해주세요."""
+        user_message = f"쿼리: '{original_query}' {features_text.strip()}"
 
         messages = [
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message}
         ]
         
-        return await self.complete(messages, temperature=0.5, max_tokens=200, force_json=False)
+        return await self.complete(messages, temperature=0.5, max_tokens=1000, force_json=False)
 
 

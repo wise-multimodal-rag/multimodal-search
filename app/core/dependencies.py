@@ -3,13 +3,15 @@ from functools import lru_cache
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.feature_extraction_client import FeatureExtractionClient
 from app.clients.llm_client import LLMClient
-from app.services.embedding_service import EmbeddingService
-from app.services.input_processor import InputProcessor
-from app.services.multimodal_feature_extractor import MultimodalFeatureExtractor
-from app.services.opensearch_service import OpenSearchService
-from app.services.query_analyzer import QueryAnalyzer
-from app.services.result_enricher import ResultEnricher
-from app.services.search_service import SearchService
+from app.services import (
+    EmbeddingService,
+    InputProcessor,
+    MultimodalFeatureExtractor,
+    OpenSearchService,
+    QueryAnalyzer,
+    ResultEnricher,
+    SearchService
+)
 
 
 @lru_cache()

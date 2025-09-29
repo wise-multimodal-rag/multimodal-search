@@ -8,7 +8,7 @@ from loguru import logger
 
 from app.core.dependencies import get_search_service
 from app.models.opensearch import SearchResponse
-from app.services.search_service import SearchService
+from app.services import SearchService
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")

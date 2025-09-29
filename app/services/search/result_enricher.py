@@ -2,7 +2,7 @@ from typing import Dict, List, Any
 from loguru import logger
 
 from app.models.opensearch import SearchResult, Element, ChunkMeta, MediaMeta
-from app.services.opensearch_service import OpenSearchService
+from app.services.search.opensearch_service import OpenSearchService
 
 
 class ResultEnricher:
