@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from loguru import logger
 
@@ -157,7 +157,7 @@ class EmbeddingService:
             logger.error(f"Feature embedding generation failed: {e}")
             return {}
 
-    def _extract_keywords_text(self, keywords_data: List[Dict[str, Any]]) -> str:
+    def _extract_keywords_text(self, keywords_data: Union[List[Dict[str, Any]], Dict[str, Any]]) -> str:
         """키워드 데이터에서 텍스트 추출"""
         try:
             if isinstance(keywords_data, dict) and "keywords" in keywords_data:

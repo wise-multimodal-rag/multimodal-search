@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
@@ -53,8 +53,8 @@ class ResultEnricher:
             logger.error(f"Result enrichment failed: {e}")
             return []
 
-    async def _get_chunk_metadata(self, chunk_id: str) -> ChunkMeta:
-        """chunk 메타데이터 조회"""
+    async def _get_chunk_metadata(self, chunk_id: str) -> Optional[ChunkMeta]:
+        """Chunk 메타데이터 조회"""
         try:
             chunk_data = await self.opensearch_service.get_chunk_meta(chunk_id)
             if chunk_data:
@@ -64,8 +64,8 @@ class ResultEnricher:
             logger.error(f"Failed to get chunk metadata for {chunk_id}: {e}")
             return None
 
-    async def _get_media_metadata(self, media_id: str) -> MediaMeta:
-        """media 메타데이터 조회"""
+    async def _get_media_metadata(self, media_id: str) -> Optional[MediaMeta]:
+        """Media 메타데이터 조회"""
         try:
             media_data = await self.opensearch_service.get_media_meta(media_id)
             if media_data:

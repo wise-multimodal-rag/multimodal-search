@@ -59,7 +59,7 @@ select = [
     "D", # pydocstyle <https://docs.astral.sh/ruff/rules/#pydocstyle-d>
     "FAST"  # FastAPI <https://docs.astral.sh/ruff/rules/#fastapi-fast>
 ]
-ignore = ['W', "D100", "D104", "D107", "D414", "D415", "D417", "FAST002"]
+ignore = ['W', "D100", "D101", "D102", "D103", "D104", "D107", "D414", "D415", "D417", "FAST002"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

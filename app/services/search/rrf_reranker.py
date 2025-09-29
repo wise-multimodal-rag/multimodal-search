@@ -20,7 +20,6 @@ class RRFReranker:
             total_took: int = 0
     ) -> Dict[str, Any]:
         """Aggregate results from multiple queries and rerank using RRF"""
-
         if not all_results:
             return self._empty_response(total_took)
 

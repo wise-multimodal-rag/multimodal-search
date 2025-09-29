@@ -112,7 +112,6 @@ class LLMClient:
             available_element_types: List[str]
     ) -> Optional[Dict[str, Any]]:
         """Analyze query intent to determine relevant element types"""
-
         element_types_desc = {
             # Text 모달리티
             "paragraph": "일반 문단 - 문서의 본문 내용",

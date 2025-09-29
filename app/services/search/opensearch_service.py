@@ -76,12 +76,16 @@ class OpenSearchService:
     async def _index_exists(self, index_name: str) -> bool:
         """Check if index exists"""
         try:
+            if not self.client:
+                return False
             return await self.client.indices.exists(index=index_name)
         except Exception:
             return False
 
     async def _create_index(self, index_name: str, mapping: Dict[str, Any]):
         """Create index with mapping"""
+        if not self.client:
+            raise RuntimeError("OpenSearch client not initialized")
         await self.client.indices.create(index=index_name, body=mapping)
 
     async def search_elements(
@@ -134,6 +138,8 @@ class OpenSearchService:
         selected_embedding = self.embedding_service.select_for_element_type(element_type, embeddings)
         search_query = self._build_search_query(query, [element_type], selected_embedding, filters)
 
+        if not self.client:
+            raise RuntimeError("OpenSearch client not initialized")
         return await self.client.search(
             index=self.elements_index,
             body={
@@ -168,7 +174,6 @@ class OpenSearchService:
             filters: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Build hybrid search query combining text and vector search"""
-
         # Base bool query
         bool_query = {
             "bool": {
@@ -252,6 +257,8 @@ class OpenSearchService:
     async def get_chunk_meta(self, chunk_id: str) -> Optional[Dict[str, Any]]:
         """Get chunk metadata by chunk_id"""
         try:
+            if not self.client:
+                return None
             response = await self.client.get(
                 index=self.chunk_meta_index,
                 id=chunk_id
@@ -264,6 +271,8 @@ class OpenSearchService:
     async def get_media_meta(self, media_id: str) -> Optional[Dict[str, Any]]:
         """Get media metadata by media_id"""
         try:
+            if not self.client:
+                return None
             response = await self.client.get(
                 index=self.media_meta_index,
                 id=media_id
