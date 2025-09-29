@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Multimodal search and RAG system using OpenSearch"
 requires-python = ">=3.11"
 authors = [
-    {name = "Research Team", email = "research@example.com"}
+    { name = "박서연", email = "sally9476@wisenut.co.kr" }
 ]
 dependencies = [
     "fastapi>=0.104.0",
@@ -26,8 +26,7 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "black>=23.9.0",
     "isort>=5.12.0",
-    "flake8>=6.1.0",
-    "mypy>=1.6.0",
+    "pyright>=1.1.0",
 ]
 
 [build-system]
@@ -45,8 +44,8 @@ target-version = ['py311']
 profile = "black"
 line_length = 88
 
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
+[tool.pyright]
+pythonVersion = "3.11"
+strict = ["app"]
+exclude = ["**/__pycache__"]
+typeCheckingMode = "basic"

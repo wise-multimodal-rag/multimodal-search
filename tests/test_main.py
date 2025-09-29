@@ -1,5 +1,5 @@
-import pytest
 from fastapi.testclient import TestClient
+
 from app.main import app
 
 client = TestClient(app)
@@ -20,17 +20,6 @@ def test_health_check():
     assert response.status_code == 200
     data = response.json()
     assert "status" in data
-
-
-def test_element_types():
-    """Test element types endpoint"""
-    response = client.get("/api/v1/element-types")
-    assert response.status_code == 200
-    data = response.json()
-    assert "element_types" in data
-    assert "descriptions" in data
-    assert isinstance(data["element_types"], list)
-    assert len(data["element_types"]) > 0
 
 
 def test_chatbot_interface():

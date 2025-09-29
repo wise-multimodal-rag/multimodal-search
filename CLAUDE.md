@@ -47,8 +47,7 @@ python -m pytest tests/ -v
 # Code formatting and linting
 python -m black app/
 python -m isort app/
-python -m flake8 app/
-python -m mypy app/
+python -m pyright app/
 ```
 
 ### Docker
