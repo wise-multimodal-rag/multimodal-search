@@ -12,14 +12,32 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+            background-color: #fafafa;
+            color: #1a1a1a;
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 20px;
+            display: grid;
+            grid-template-columns: 480px 1fr;
+            gap: 32px;
+        }
+
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
 
         .header {
@@ -28,29 +46,240 @@
         }
 
         .header h1 {
-            color: #333;
+            color: #1a1a1a;
             margin-bottom: 10px;
+            font-weight: 600;
+            font-size: 32px;
         }
 
         .header p {
-            color: #666;
-            font-size: 14px;
+            color: #6b7280;
+            font-size: 16px;
+            font-weight: 400;
         }
 
-        .chat-container {
+        .search-input-container {
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            height: 600px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
+            padding: 20px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .search-input-header {
+            margin-bottom: 16px;
+        }
+
+        .search-input-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+
+        .search-input-description {
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .search-results-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
+            min-height: 400px;
             display: flex;
             flex-direction: column;
         }
 
-        .chat-messages {
+        .search-results-header {
+            padding: 24px 24px 20px;
+            border-bottom: 1px solid #e5e7eb;
+            background: #fafbfc;
+        }
+
+        .search-results-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+
+        .search-results-info {
+            font-size: 14px;
+            color: #6b7280;
+            padding-bottom: 4px;
+        }
+
+        .search-results-content {
             flex: 1;
-            padding: 20px;
+            padding: 24px;
             overflow-y: auto;
-            border-bottom: 1px solid #eee;
+        }
+
+        .search-result-card {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 16px;
+            transition: all 0.2s;
+        }
+
+        .search-result-card:hover {
+            background: #f3f4f6;
+            border-color: #d1d5db;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .search-result-card:last-child {
+            margin-bottom: 0;
+        }
+
+        .search-result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .search-result-type {
+            font-size: 12px;
+            font-weight: 500;
+            color: #6b7280;
+            background: #e5e7eb;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .search-result-score {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .score-tag {
+            font-size: 11px;
+            font-weight: 500;
+            padding: 3px 6px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
+        .score-tag.rrf {
+            color: #059669;
+            background: #d1fae5;
+            border: 1px solid #a7f3d0;
+        }
+
+        .score-tag.opensearch {
+            color: #1d4ed8;
+            background: #dbeafe;
+            border: 1px solid #93c5fd;
+        }
+
+        .search-result-content {
+            color: #374151;
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+
+        .search-result-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .search-result-meta-item {
+            font-size: 11px;
+            color: #6b7280;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: #6b7280;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .search-history {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
+            padding: 20px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .search-history-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 12px;
+        }
+
+        .search-history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .search-history-item {
+            padding: 10px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 13px;
+            color: #374151;
+            border: 1px solid transparent;
+            word-break: break-word;
+            line-height: 1.4;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .search-history-query {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .search-history-modality {
+            font-size: 10px;
+            color: #6b7280;
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 4px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .search-history-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .search-history-time {
+            font-size: 9px;
+            color: #9ca3af;
+            white-space: nowrap;
+        }
+
+        .search-history-item:hover {
+            background: #f3f4f6;
+            border-color: #d1d5db;
         }
 
         .message {
@@ -113,42 +342,189 @@
         }
 
         .chat-input {
-            padding: 20px;
             display: flex;
-            gap: 10px;
+            flex-direction: column;
+            gap: 16px;
+            width: 100%;
         }
 
-        .chat-input input {
+        .input-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 20px;
+            border: 1px solid #d1d5db;
+            border-radius: 12px;
+            background: white;
+            transition: all 0.2s;
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 56px;
+        }
+
+        .input-section:focus-within {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .chat-input input[type="text"] {
             flex: 1;
-            padding: 12px 16px;
-            border: 1px solid #ddd;
-            border-radius: 25px;
-            font-size: 14px;
+            min-width: 0;
+            padding: 0;
+            border: none;
             outline: none;
+            font-size: 16px;
+            background: transparent;
+            color: #1f2937;
+            line-height: 1.5;
         }
 
-        .chat-input input:focus {
-            border-color: #007bff;
+        .chat-input input[type="text"]::placeholder {
+            color: #6b7280;
+            font-size: 16px;
         }
 
-        .chat-input button {
-            padding: 12px 24px;
-            background-color: #007bff;
+        .file-inputs {
+            display: flex;
+            gap: 5px;
+        }
+
+        .file-btn {
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: #f3f4f6;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .file-btn:hover {
+            background: #e5e7eb;
+        }
+
+        .file-btn.selected {
+            background: #2563eb;
+            color: white;
+        }
+
+        .chat-input #sendButton {
+            padding: 16px 32px;
+            background-color: #2563eb;
             color: white;
             border: none;
-            border-radius: 25px;
+            border-radius: 12px;
             cursor: pointer;
-            font-size: 14px;
-            transition: background-color 0.2s;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.2s;
+            align-self: flex-end;
+            width: auto;
+            min-height: 56px;
         }
 
-        .chat-input button:hover {
-            background-color: #0056b3;
+        .chat-input #sendButton:hover {
+            background-color: #1d4ed8;
         }
 
-        .chat-input button:disabled {
+        .chat-input #sendButton:disabled {
             background-color: #ccc;
             cursor: not-allowed;
+        }
+
+        .selected-files {
+            margin-top: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .file-preview {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #495057;
+        }
+
+        .file-preview .remove-file {
+            cursor: pointer;
+            color: #dc3545;
+            font-weight: bold;
+            margin-left: 4px;
+        }
+
+        .file-preview .remove-file:hover {
+            color: #c82333;
+        }
+
+        .user-message-media {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .user-message-text {
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .user-message-files {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .user-file-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .user-file-preview {
+            width: 40px;
+            height: 40px;
+            border-radius: 6px;
+            object-fit: cover;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .user-file-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .user-file-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .user-file-type {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 2px;
         }
 
         .loading {
@@ -182,82 +558,284 @@
 
         .settings {
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 20px;
-            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
+            padding: 24px;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .settings h3 {
             margin-bottom: 15px;
-            color: #333;
+            color: #1f2937;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .new-search-btn-inline {
+            padding: 8px 16px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .new-search-btn-inline:hover {
+            background: #1d4ed8;
+        }
+
+        .new-search-btn-inline:active {
+            transform: translateY(0);
+        }
+
+        .settings-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 15px;
+        }
+
+        .quick-search-section {
+            padding-right: 15px;
+            border-right: 1px solid #e9ecef;
+        }
+
+        .search-options-section {
+            padding-left: 15px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .settings-row {
             display: flex;
-            gap: 20px;
+            gap: 15px;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }
 
         .settings-row label {
-            min-width: 120px;
+            min-width: 100px;
             color: #666;
+            font-size: 13px;
         }
 
         .settings-row input, .settings-row select {
-            padding: 8px 12px;
+            padding: 6px 10px;
             border: 1px solid #ddd;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 13px;
+        }
+
+        .option-group {
+            margin-bottom: 15px;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .checkbox-row input[type="checkbox"] {
+            margin: 0;
+        }
+
+        .checkbox-row label {
+            font-size: 13px;
+            color: #495057;
+            min-width: auto;
+        }
+
+        .quick-search-examples {
+            margin-top: 10px;
+        }
+
+        .example-category {
+            margin-bottom: 12px;
+        }
+
+        .example-category strong {
+            color: #495057;
+            font-size: 13px;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .example-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .example-btn {
+            padding: 8px 14px;
+            background: #f9fafb;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #374151;
+            transition: all 0.2s;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .example-btn:hover {
+            background: #f3f4f6;
+            border-color: #9ca3af;
+            color: #1f2937;
+        }
+
+        .example-btn:active {
+            transform: translateY(0);
         }
     </style>
 </head>
 <body>
+    <div class="header" style="text-align: center; margin-bottom: 30px; padding-top: 40px;">
+        <h1>Multimodal Search</h1>
+        <p>OpenSearch 기반 멀티모달 검색 시스템</p>
+    </div>
+
     <div class="container">
-        <div class="header">
-            <h1>🔍 Multimodal Search</h1>
-            <p>OpenSearch 기반 멀티모달 검색 및 RAG 시스템</p>
-        </div>
 
-        <div class="settings">
-            <h3>검색 설정</h3>
-            <div class="settings-row">
-                <label>최대 결과 수:</label>
-                <input type="number" id="maxResults" value="10" min="1" max="50">
+        <!-- 왼쪽 패널 -->
+        <div class="left-panel">
+            <!-- 검색 입력 -->
+            <div class="search-input-container">
+                <div class="search-input-header">
+                    <div class="search-input-title">검색 입력</div>
+                    <div class="search-input-description">텍스트와 미디어 파일을 조합하여 검색하세요</div>
+                </div>
+                
+                <div class="chat-input">
+                    <div class="input-section">
+                        <input type="text" id="messageInput" placeholder="검색어를 입력하세요">
+                        <div class="file-inputs">
+                            <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                            <input type="file" id="videoInput" accept="video/*" style="display: none;">
+                            <input type="file" id="audioInput" accept="audio/*" style="display: none;">
+                            
+                            <button type="button" class="file-btn" onclick="document.getElementById('imageInput').click()">📷</button>
+                            <button type="button" class="file-btn" onclick="document.getElementById('videoInput').click()">🎥</button>
+                            <button type="button" class="file-btn" onclick="document.getElementById('audioInput').click()">🎵</button>
+                        </div>
+                    </div>
+                    <button id="sendButton" onclick="sendMessage()">검색</button>
+                </div>
+                
+                <div id="selectedFiles" class="selected-files"></div>
             </div>
-            <div class="settings-row">
-                <label>청크 메타 포함:</label>
-                <input type="checkbox" id="includeChunkMeta" checked>
-            </div>
-            <div class="settings-row">
-                <label>미디어 메타 포함:</label>
-                <input type="checkbox" id="includeMediaMeta" checked>
-            </div>
-        </div>
 
-        <div class="chat-container">
-            <div class="chat-messages" id="chatMessages">
-                <div class="message assistant">
-                    <div class="message-content">
-                        안녕하세요! 멀티모달 검색 시스템에 오신 것을 환영합니다. 
-                        텍스트, 이미지, 오디오, 비디오 등 다양한 콘텐츠를 검색할 수 있습니다.
-                        궁금한 것을 질문해보세요!
+            <!-- 검색 옵션 -->
+            <div class="settings">
+                <h3 style="margin: 0 0 15px 0;">검색 옵션</h3>
+                
+                <div class="option-group">
+                    <div class="settings-row">
+                        <label>결과 수:</label>
+                        <input type="number" id="maxResults" value="10" min="1" max="50" style="width: 70px;">
+                    </div>
+                    
+                    <div class="settings-row">
+                        <label>결과 오프셋:</label>
+                        <input type="number" id="offset" value="0" min="0" style="width: 70px;">
+                    </div>
+                </div>
+                
+                <div class="option-group">
+                    <strong style="font-size: 13px; color: #495057; margin-bottom: 8px; display: block;">메타데이터 포함:</strong>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="includeChunkMeta" checked>
+                        <label for="includeChunkMeta">청크 메타데이터</label>
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="includeMediaMeta" checked>
+                        <label for="includeMediaMeta">미디어 메타데이터</label>
                     </div>
                 </div>
             </div>
-            
-            <div class="chat-input">
-                <input type="text" id="messageInput" placeholder="검색어를 입력하세요..." maxlength="500">
-                <button id="sendButton" onclick="sendMessage()">전송</button>
+
+            <!-- 빠른 검색 -->
+            <div class="settings">
+                <h3 style="margin: 0 0 15px 0;">빠른 검색</h3>
+                
+                <div class="quick-search-examples">
+                    <div class="example-buttons">
+                        <button class="example-btn" onclick="setSearchExample('AI 기술 동향과 미래 전망')">AI 기술 동향과 미래 전망</button>
+                        <button class="example-btn" onclick="setSearchExample('머신러닝 알고리즘과 응용 사례')">머신러닝 알고리즘과 응용 사례</button>
+                        <button class="example-btn" onclick="setSearchExample('데이터 분석 방법과 도구')">데이터 분석 방법과 도구</button>
+                        <button class="example-btn" onclick="setSearchExample('파이썬 프로그래밍 기초와 응용')">파이썬 프로그래밍 기초와 응용</button>
+                        <button class="example-btn" onclick="setSearchExample('웹 개발 프레임워크와 기술')">웹 개발 프레임워크와 기술</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 검색 히스토리 -->
+            <div class="search-history">
+                <div class="search-history-title">최근 검색</div>
+                <div class="search-history-list" id="searchHistory">
+                    <div style="padding: 20px; text-align: center; color: #9ca3af; font-size: 13px;">
+                        검색 히스토리가 여기에 표시됩니다
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 메인 콘텐츠 -->
+        <div class="main-content">
+            <!-- 검색 결과 -->
+            <div class="search-results-container">
+                <div class="search-results-header" id="searchResultsHeader" style="display: none;">
+                    <div class="search-results-title">검색 결과</div>
+                    <div class="search-results-info" id="searchResultsInfo"></div>
+                </div>
+                
+                <div class="search-results-content" id="searchResultsContent">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <div>검색어를 입력하거나 미디어 파일을 업로드하여 검색을 시작하세요</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        const chatMessages = document.getElementById('chatMessages');
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
+        const selectedFilesDiv = document.getElementById('selectedFiles');
+        const searchResultsContent = document.getElementById('searchResultsContent');
+        const searchResultsHeader = document.getElementById('searchResultsHeader');
+        const searchResultsInfo = document.getElementById('searchResultsInfo');
+        const searchHistory = document.getElementById('searchHistory');
+        
+        // File inputs
+        const imageInput = document.getElementById('imageInput');
+        const videoInput = document.getElementById('videoInput');
+        const audioInput = document.getElementById('audioInput');
+        
+        // Store selected files
+        let selectedFiles = {
+            image: null,
+            video: null,
+            audio: null
+        };
 
         messageInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -266,35 +844,240 @@
             }
         });
 
+        // File input handlers
+        imageInput.addEventListener('change', function(e) {
+            handleFileSelection('image', e.target.files[0], '📷');
+        });
+
+        videoInput.addEventListener('change', function(e) {
+            handleFileSelection('video', e.target.files[0], '🎥');
+        });
+
+        audioInput.addEventListener('change', function(e) {
+            handleFileSelection('audio', e.target.files[0], '🎵');
+        });
+
+        function handleFileSelection(type, file, emoji) {
+            if (file) {
+                selectedFiles[type] = file;
+                updateFilePreview();
+                updateFileButtonState();
+            }
+        }
+
+        function updateFilePreview() {
+            selectedFilesDiv.innerHTML = '';
+            
+            Object.entries(selectedFiles).forEach(([type, file]) => {
+                if (file) {
+                    const preview = document.createElement('div');
+                    preview.className = 'file-preview';
+                    
+                    const emoji = type === 'image' ? '📷' : type === 'video' ? '🎥' : '🎵';
+                    const size = (file.size / 1024 / 1024).toFixed(1);
+                    
+                    preview.innerHTML = `
+                        ${emoji} ${file.name} (${size}MB)
+                        <span class="remove-file" onclick="removeFile('${type}')">×</span>
+                    `;
+                    
+                    selectedFilesDiv.appendChild(preview);
+                }
+            });
+        }
+
+        function updateFileButtonState() {
+            Object.entries(selectedFiles).forEach(([type, file]) => {
+                const button = document.querySelector(`[onclick*="${type}Input"]`);
+                if (file) {
+                    button.classList.add('selected');
+                } else {
+                    button.classList.remove('selected');
+                }
+            });
+        }
+
+        function removeFile(type) {
+            selectedFiles[type] = null;
+            const input = document.getElementById(type + 'Input');
+            input.value = '';
+            updateFilePreview();
+            updateFileButtonState();
+        }
+
         async function sendMessage() {
             const message = messageInput.value.trim();
-            if (!message) return;
+            const hasFiles = Object.values(selectedFiles).some(file => file !== null);
+            
+            if (!message && !hasFiles) return;
 
-            // Add user message
-            addMessage('user', message);
+            // Check if this looks like a conversational query
+            if (message && checkConversationalQuery(message)) {
+                addMessage('user', message);
+                messageInput.value = '';
+                
+                const guideMessage = `
+                    <div class="message-content">
+                        <strong>알림:</strong> 이 시스템은 대화형이 아닌 <strong>독립적인 검색</strong>을 수행합니다.<br><br>
+                        
+                        이전 검색과 연관된 질문을 하신 것 같습니다. 더 정확한 결과를 위해 <strong>구체적인 검색어</strong>를 입력해주세요.<br><br>
+                        
+                        <strong>예시:</strong><br>
+                        • "AI 기술 동향"<br>
+                        • "머신러닝 알고리즘"<br>
+                        • "데이터 분석 방법"<br>
+                        • 또는 관련 파일을 업로드해주세요
+                    </div>
+                `;
+                
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message assistant';
+                messageDiv.innerHTML = guideMessage;
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                return;
+            }
+
+            // Create user message with file info
+            let userMessageContent = '';
+            
+            const createFilePreview = (type, file) => {
+                const typeLabels = {
+                    'image': { label: '이미지', icon: '🖼️' },
+                    'video': { label: '비디오', icon: '🎬' },
+                    'audio': { label: '오디오', icon: '🎵' }
+                };
+                
+                const { label, icon } = typeLabels[type];
+                const fileUrl = URL.createObjectURL(file);
+                
+                let preview = '';
+                if (type === 'image') {
+                    preview = `<img src="${fileUrl}" class="user-file-preview" alt="${file.name}">`;
+                } else {
+                    preview = `<div class="user-file-preview">${icon}</div>`;
+                }
+                
+                return `
+                    <div class="user-file-item">
+                        ${preview}
+                        <div class="user-file-info">
+                            <div class="user-file-name">${file.name}</div>
+                            <div class="user-file-type">${label} • ${(file.size / 1024 / 1024).toFixed(1)}MB</div>
+                        </div>
+                    </div>
+                `;
+            };
+            
+            if (message && hasFiles) {
+                // 텍스트 쿼리와 파일이 모두 있는 경우
+                const fileItems = Object.entries(selectedFiles)
+                    .filter(([type, file]) => file !== null)
+                    .map(([type, file]) => createFilePreview(type, file))
+                    .join('');
+                    
+                userMessageContent = `
+                    <div class="user-message-media">
+                        <div class="user-message-text">${message}</div>
+                        <div class="user-message-files">
+                            ${fileItems}
+                        </div>
+                    </div>
+                `;
+            } else if (message) {
+                // 텍스트 쿼리만 있는 경우
+                userMessageContent = message;
+            } else if (hasFiles) {
+                // 파일만 있는 경우
+                const fileItems = Object.entries(selectedFiles)
+                    .filter(([type, file]) => file !== null)
+                    .map(([type, file]) => createFilePreview(type, file))
+                    .join('');
+                    
+                userMessageContent = `
+                    <div class="user-message-files">
+                        ${fileItems}
+                    </div>
+                `;
+            }
+
+            // 검색 히스토리에 추가
+            let historyText = '';
+            let originalText = '';
+            
+            if (message && hasFiles) {
+                const fileCount = Object.values(selectedFiles).filter(file => file !== null).length;
+                historyText = `${message} (+${fileCount}개 파일)`;
+                originalText = message; // 원본 텍스트만 저장
+            } else if (message) {
+                historyText = message;
+                originalText = message;
+            } else if (hasFiles) {
+                const fileNames = Object.entries(selectedFiles)
+                    .filter(([type, file]) => file !== null)
+                    .map(([type, file]) => {
+                        // 파일명이 너무 길면 줄임 (더 긴 이름 허용)
+                        const fileName = file.name;
+                        if (fileName.length > 50) {
+                            const ext = fileName.split('.').pop();
+                            const name = fileName.substring(0, 45);
+                            return `${name}...${ext}`;
+                        }
+                        return fileName;
+                    });
+                historyText = fileNames.join(', ');
+                originalText = ''; // 파일만 검색한 경우 빈 문자열
+            }
+            
+            if (historyText) {
+                const isFileOnly = !message && hasFiles; // 파일만 검색했는지 확인
+                addToSearchHistory(historyText, originalText, isFileOnly);
+            }
+            
             messageInput.value = '';
             sendButton.disabled = true;
 
-            // Show loading
-            const loadingDiv = addMessage('assistant', '', true);
+            // Show loading in results area
+            searchResultsContent.innerHTML = `
+                <div class="empty-state">
+                    <div class="loading">
+                        검색 중
+                        <div class="loading-dots">
+                            <div class="loading-dot"></div>
+                            <div class="loading-dot"></div>
+                            <div class="loading-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
 
             try {
-                // Prepare search request
-                const searchRequest = {
-                    query: message,
-                    max_results: parseInt(document.getElementById('maxResults').value),
-                    include_chunk_meta: document.getElementById('includeChunkMeta').checked,
-                    include_media_meta: document.getElementById('includeMediaMeta').checked,
-                    offset: 0
-                };
+                // Prepare form data
+                const formData = new FormData();
+                if (message) {
+                    formData.append('text_query', message);
+                }
+                
+                // Add files if selected
+                if (selectedFiles.image) {
+                    formData.append('image', selectedFiles.image);
+                }
+                if (selectedFiles.video) {
+                    formData.append('video', selectedFiles.video);
+                }
+                if (selectedFiles.audio) {
+                    formData.append('audio', selectedFiles.audio);
+                }
+                
+                formData.append('max_results', document.getElementById('maxResults').value);
+                formData.append('include_chunk_meta', document.getElementById('includeChunkMeta').checked);
+                formData.append('include_media_meta', document.getElementById('includeMediaMeta').checked);
+                formData.append('offset', document.getElementById('offset').value);
 
                 // Send search request
-                const response = await fetch('/api/v1/search', {
+                const response = await fetch('/api/v1/search/multimodal', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(searchRequest)
+                    body: formData
                 });
 
                 if (!response.ok) {
@@ -303,22 +1086,51 @@
 
                 const searchResult = await response.json();
                 
-                // Remove loading message
-                loadingDiv.remove();
-
+                // Debug: Log the response to see original_score
+                console.log('Search result:', searchResult);
+                if (searchResult.results && searchResult.results.length > 0) {
+                    console.log('First result:', searchResult.results[0]);
+                    console.log('Original score:', searchResult.results[0].original_score);
+                }
+                
+                // Update search time in history
+                updateSearchTimeInHistory(searchResult.took_ms);
+                
                 // Display search results
                 displaySearchResults(searchResult);
 
+                // Clear files after successful search
+                selectedFiles = { image: null, video: null, audio: null };
+                imageInput.value = '';
+                videoInput.value = '';
+                audioInput.value = '';
+                updateFilePreview();
+                updateFileButtonState();
+
             } catch (error) {
                 console.error('Search failed:', error);
-                loadingDiv.innerHTML = `
-                    <div class="message-content">
-                        죄송합니다. 검색 중 오류가 발생했습니다: ${error.message}
+                searchResultsContent.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <div>검색 중 오류가 발생했습니다: ${error.message}</div>
                     </div>
                 `;
             } finally {
                 sendButton.disabled = false;
             }
+        }
+
+        // Check for conversational queries and provide guidance
+        function checkConversationalQuery(query) {
+            const conversationalPatterns = [
+                /^(그|그거|그것|저것|이것|이거)/,
+                /더 알려.*줘|더 자세히|추가.*정보/,
+                /어떤.*뜻|무슨.*말|어떻게.*해/,
+                /^(네|예|아니|아니요|맞|틀렸)/,
+                /이전|앞서|위에서|방금/
+            ];
+            
+            return conversationalPatterns.some(pattern => pattern.test(query.toLowerCase()));
         }
 
         function addMessage(sender, content, isLoading = false) {
@@ -351,41 +1163,189 @@
             const resultCount = searchResult.total_hits;
             const took = searchResult.took_ms;
             
-            let responseHtml = `
-                <div class="message-content">
-                    <strong>검색 결과:</strong> ${resultCount}개 발견 (${took}ms 소요)<br>
-                    <strong>사용된 요소 타입:</strong> ${searchResult.element_types_used.join(', ')}<br><br>
-            `;
+            // 검색 결과 헤더 업데이트
+            searchResultsInfo.innerHTML = `${resultCount}개 결과 • ${took}ms • ${searchResult.element_types_used.join(', ')}`;
+            searchResultsHeader.style.display = 'block';
+            
+            // 검색 결과 내용 생성
+            let resultsHtml = '';
 
             if (searchResult.results && searchResult.results.length > 0) {
                 searchResult.results.forEach((result, index) => {
                     const element = result.element;
-                    const score = result.score.toFixed(3);
+                    const rrfScore = result.score.toFixed(6);
+                    const originalScore = result.original_score ? result.original_score.toFixed(6) : null;
                     
-                    responseHtml += `
-                        <div class="search-result">
+                    let metaInfo = '';
+                    
+                    // 청크 메타데이터 표시
+                    if (result.chunk_meta) {
+                        const chunk = result.chunk_meta;
+                        metaInfo += `<div class="search-result-meta-item">
+                            <strong>청크:</strong> ${chunk.chunk_type} (순서: ${chunk.chunk_seq}, 요소: ${chunk.element_count}개)
+                        </div>`;
+                    }
+                    
+                    // 미디어 메타데이터 표시
+                    if (result.media_meta) {
+                        const media = result.media_meta;
+                        let mediaDetails = `${media.media_type}`;
+                        if (media.title) mediaDetails += ` - ${media.title}`;
+                        if (media.file_size_bytes) {
+                            const sizeMB = (media.file_size_bytes / 1024 / 1024).toFixed(1);
+                            mediaDetails += ` (${sizeMB}MB)`;
+                        }
+                        if (media.duration_seconds) {
+                            const duration = Math.round(media.duration_seconds);
+                            mediaDetails += ` (${duration}초)`;
+                        }
+                        
+                        metaInfo += `<div class="search-result-meta-item">
+                            <strong>미디어:</strong> ${mediaDetails}
+                        </div>`;
+                    }
+                    
+                    let scoreDisplay = `<span class="score-tag rrf">RRF: ${rrfScore}</span>`;
+                    if (originalScore) {
+                        scoreDisplay += `<span class="score-tag opensearch">OpenSearch: ${originalScore}</span>`;
+                    }
+                    
+                    resultsHtml += `
+                        <div class="search-result-card">
                             <div class="search-result-header">
-                                ${index + 1}. ${element.element_type} (${element.modality})
-                                <span class="search-result-score">Score: ${score}</span>
+                                <div class="search-result-type">${element.element_type} (${element.modality})</div>
+                                <div class="search-result-score">${scoreDisplay}</div>
                             </div>
                             <div class="search-result-content">
-                                ${element.content.substring(0, 200)}${element.content.length > 200 ? '...' : ''}
+                                ${element.content.substring(0, 300)}${element.content.length > 300 ? '...' : ''}
                             </div>
+                            ${metaInfo ? `<div class="search-result-meta">${metaInfo}</div>` : ''}
                         </div>
                     `;
                 });
             } else {
-                responseHtml += '<div class="search-result">검색 결과가 없습니다.</div>';
+                resultsHtml = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📝</div>
+                        <div>검색 결과가 없습니다.</div>
+                    </div>
+                `;
             }
+            
+            searchResultsContent.innerHTML = resultsHtml;
+        }
 
-            responseHtml += '</div>';
+        function setSearchExample(example) {
+            messageInput.value = example;
+            messageInput.focus();
             
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message assistant';
-            messageDiv.innerHTML = responseHtml;
+            // Optional: Auto-scroll to input
+            messageInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function addToSearchHistory(query, originalText = '', isFileOnly = false) {
+            // 모달리티 타입 결정
+            const modality = getSearchModality();
             
-            chatMessages.appendChild(messageDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            // 기존 히스토리에서 같은 검색어 제거
+            const existingItems = searchHistory.querySelectorAll('.search-history-item');
+            existingItems.forEach(item => {
+                const queryText = item.querySelector('.search-history-query')?.textContent || item.textContent;
+                if (queryText === query) {
+                    item.remove();
+                }
+            });
+            
+            // 새 검색어를 맨 위에 추가
+            const historyItem = document.createElement('div');
+            historyItem.className = 'search-history-item';
+            
+            historyItem.innerHTML = `
+                <div class="search-history-query">${query}</div>
+                <div class="search-history-meta">
+                    <div class="search-history-modality">${modality}</div>
+                    <div class="search-history-time" id="search-time-placeholder">-</div>
+                </div>
+            `;
+            
+            // 클릭 동작 설정
+            if (isFileOnly) {
+                // 파일만 검색한 경우 클릭 불가능하게 스타일 변경
+                historyItem.style.cursor = 'default';
+                historyItem.style.opacity = '0.7';
+                historyItem.onclick = null;
+            } else if (originalText) {
+                // 텍스트 + 파일 조합인 경우 원본 텍스트만 입력
+                historyItem.onclick = () => setSearchExample(originalText);
+            } else {
+                // 텍스트만 검색한 경우 그대로 입력
+                historyItem.onclick = () => setSearchExample(query);
+            }
+            
+            // 첫 번째 자식으로 삽입
+            searchHistory.insertBefore(historyItem, searchHistory.firstChild);
+            
+            // 히스토리 개수 제한 (최대 10개)
+            const allItems = searchHistory.querySelectorAll('.search-history-item');
+            if (allItems.length > 10) {
+                allItems[allItems.length - 1].remove();
+            }
+        }
+
+        function getSearchModality() {
+            const message = messageInput.value.trim();
+            const hasFiles = Object.values(selectedFiles).some(file => file !== null);
+            
+            if (!message && !hasFiles) {
+                return '';
+            }
+            
+            const fileTypes = [];
+            if (selectedFiles.image) fileTypes.push('이미지');
+            if (selectedFiles.video) fileTypes.push('비디오');
+            if (selectedFiles.audio) fileTypes.push('오디오');
+            
+            if (message && hasFiles) {
+                return `텍스트+${fileTypes.join('+')}`;
+            } else if (message) {
+                return '텍스트';
+            } else if (hasFiles) {
+                return fileTypes.join('+');
+            }
+            
+            return '';
+        }
+
+        function updateSearchTimeInHistory(tookMs) {
+            // 가장 최근에 추가된 히스토리 아이템의 시간 업데이트
+            const latestHistoryItem = searchHistory.querySelector('.search-history-item');
+            if (latestHistoryItem) {
+                const timeElement = latestHistoryItem.querySelector('.search-history-time');
+                if (timeElement) {
+                    timeElement.textContent = `${tookMs}ms`;
+                }
+            }
+        }
+
+        function clearSearchResults() {
+            searchResultsHeader.style.display = 'none';
+            searchResultsContent.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔍</div>
+                    <div>검색어를 입력하거나 미디어 파일을 업로드하여 검색을 시작하세요</div>
+                </div>
+            `;
+            
+            // Clear input and files
+            messageInput.value = '';
+            selectedFiles = { image: null, video: null, audio: null };
+            imageInput.value = '';
+            videoInput.value = '';
+            audioInput.value = '';
+            updateFilePreview();
+            updateFileButtonState();
+            
+            messageInput.focus();
         }
 
         // Focus on input on page load
