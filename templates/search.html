@@ -7,873 +7,129 @@
     <link rel="stylesheet" href="/static/css/search.css">
 </head>
 <body>
-    <div class="header" style="text-align: center; margin-bottom: 30px; padding-top: 40px;">
-        <h1>Multimodal Search</h1>
-        <p>OpenSearch 기반 멀티모달 검색 시스템</p>
-    </div>
+<div class="header" style="text-align: center; margin-bottom: 30px; padding-top: 40px;">
+    <h1>Multimodal Search</h1>
+    <p>OpenSearch 기반 멀티모달 검색 시스템</p>
+</div>
 
-    <div class="container">
+<div class="container">
 
-        <!-- 왼쪽 패널 -->
-        <div class="left-panel">
-            <!-- 검색 입력 -->
-            <div class="search-input-container">
-                <div class="search-input-header">
-                    <div class="search-input-title">검색 입력</div>
-                    <div class="search-input-description">텍스트와 미디어 파일을 조합하여 검색하세요</div>
-                </div>
-                
-                <div class="chat-input">
-                    <div class="input-section">
-                        <input type="text" id="messageInput" placeholder="검색어를 입력하세요">
-                        <div class="file-inputs">
-                            <input type="file" id="imageInput" accept="image/*" style="display: none;">
-                            <input type="file" id="videoInput" accept="video/*" style="display: none;">
-                            <input type="file" id="audioInput" accept="audio/*" style="display: none;">
-                            
-                            <button type="button" class="file-btn" onclick="document.getElementById('imageInput').click()">📷</button>
-                            <button type="button" class="file-btn" onclick="document.getElementById('videoInput').click()">🎥</button>
-                            <button type="button" class="file-btn" onclick="document.getElementById('audioInput').click()">🎵</button>
-                        </div>
-                    </div>
-                    <button id="sendButton" onclick="sendMessage()">검색</button>
-                </div>
-                
-                <div id="selectedFiles" class="selected-files"></div>
+    <!-- 왼쪽 패널 -->
+    <div class="left-panel">
+        <!-- 검색 입력 -->
+        <div class="search-input-container">
+            <div class="search-input-header">
+                <div class="search-input-title">검색 입력</div>
+                <div class="search-input-description">텍스트와 미디어 파일을 조합하여 검색하세요</div>
             </div>
 
-            <!-- 검색 옵션 -->
-            <div class="settings">
-                <h3 style="margin: 0 0 15px 0;">검색 옵션</h3>
-                
-                <div class="option-group">
-                    <div class="settings-row">
-                        <label>결과 수:</label>
-                        <input type="number" id="maxResults" value="10" min="1" max="50" style="width: 70px;">
+            <div class="chat-input">
+                <div class="input-section">
+                    <input type="text" id="messageInput" placeholder="검색어를 입력하세요">
+                    <div class="file-inputs">
+                        <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                        <input type="file" id="videoInput" accept="video/*" style="display: none;">
+                        <input type="file" id="audioInput" accept="audio/*" style="display: none;">
+
+                        <button type="button" class="file-btn" onclick="document.getElementById('imageInput').click()">
+                            📷
+                        </button>
+                        <button type="button" class="file-btn" onclick="document.getElementById('videoInput').click()">
+                            🎥
+                        </button>
+                        <button type="button" class="file-btn" onclick="document.getElementById('audioInput').click()">
+                            🎵
+                        </button>
                     </div>
                 </div>
-                
-                <div class="option-group">
-                    <strong style="font-size: 13px; color: #495057; margin-bottom: 8px; display: block;">메타데이터 포함:</strong>
-                    <div class="checkbox-row">
-                        <input type="checkbox" id="includeChunkMeta" checked>
-                        <label for="includeChunkMeta">청크 메타데이터</label>
-                    </div>
-                    <div class="checkbox-row">
-                        <input type="checkbox" id="includeMediaMeta" checked>
-                        <label for="includeMediaMeta">미디어 메타데이터</label>
-                    </div>
+                <button id="sendButton" onclick="sendMessage()">검색</button>
+            </div>
+
+            <div id="selectedFiles" class="selected-files"></div>
+        </div>
+
+        <!-- 검색 옵션 -->
+        <div class="settings">
+            <h3 style="margin: 0 0 15px 0;">검색 옵션</h3>
+
+            <div class="option-group">
+                <div class="settings-row">
+                    <label>결과 수:</label>
+                    <input type="number" id="maxResults" value="10" min="1" max="50" style="width: 70px;">
                 </div>
             </div>
 
-            <!-- 빠른 검색 -->
-            <div class="settings">
-                <h3 style="margin: 0 0 15px 0;">빠른 검색</h3>
-                
-                <div class="quick-search-examples">
-                    <div class="example-buttons">
-                        <button class="example-btn" onclick="setSearchExample('AI 기술 동향과 미래 전망')">AI 기술 동향과 미래 전망</button>
-                        <button class="example-btn" onclick="setSearchExample('머신러닝 알고리즘과 응용 사례')">머신러닝 알고리즘과 응용 사례</button>
-                        <button class="example-btn" onclick="setSearchExample('데이터 분석 방법과 도구')">데이터 분석 방법과 도구</button>
-                        <button class="example-btn" onclick="setSearchExample('파이썬 프로그래밍 기초와 응용')">파이썬 프로그래밍 기초와 응용</button>
-                        <button class="example-btn" onclick="setSearchExample('웹 개발 프레임워크와 기술')">웹 개발 프레임워크와 기술</button>
-                    </div>
+            <div class="option-group">
+                <strong style="font-size: 13px; color: #495057; margin-bottom: 8px; display: block;">메타데이터 포함:</strong>
+                <div class="checkbox-row">
+                    <input type="checkbox" id="includeChunkMeta" checked>
+                    <label for="includeChunkMeta">청크 메타데이터</label>
                 </div>
-            </div>
-
-            <!-- 검색 히스토리 -->
-            <div class="search-history">
-                <div class="search-history-title">최근 검색</div>
-                <div class="search-history-list" id="searchHistory">
+                <div class="checkbox-row">
+                    <input type="checkbox" id="includeMediaMeta" checked>
+                    <label for="includeMediaMeta">미디어 메타데이터</label>
                 </div>
             </div>
         </div>
 
-        <!-- 메인 콘텐츠 -->
-        <div class="main-content">
-            <!-- 검색 결과 -->
-            <div class="search-results-container">
-                <div class="search-results-header" id="searchResultsHeader" style="display: none;">
-                    <div class="search-results-title">검색 결과</div>
-                    <div class="search-results-info" id="searchResultsInfo"></div>
+        <!-- 빠른 검색 -->
+        <div class="settings">
+            <h3 style="margin: 0 0 15px 0;">빠른 검색</h3>
+
+            <div class="quick-search-examples">
+                <div class="example-buttons">
+                    <button class="example-btn" onclick="setSearchExample('AI 기술 동향과 미래 전망')">AI 기술 동향과 미래 전망</button>
+                    <button class="example-btn" onclick="setSearchExample('머신러닝 알고리즘과 응용 사례')">머신러닝 알고리즘과 응용 사례</button>
+                    <button class="example-btn" onclick="setSearchExample('데이터 분석 방법과 도구')">데이터 분석 방법과 도구</button>
+                    <button class="example-btn" onclick="setSearchExample('파이썬 프로그래밍 기초와 응용')">파이썬 프로그래밍 기초와 응용</button>
+                    <button class="example-btn" onclick="setSearchExample('웹 개발 프레임워크와 기술')">웹 개발 프레임워크와 기술</button>
                 </div>
-                
-                <div class="search-results-content" id="searchResultsContent">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🔍</div>
-                        <div>검색어를 입력하거나 미디어 파일을 업로드하여 검색을 시작하세요</div>
-                    </div>
-                </div>
+            </div>
+        </div>
+
+        <!-- 검색 히스토리 -->
+        <div class="search-history">
+            <div class="search-history-title">최근 검색</div>
+            <div class="search-history-list" id="searchHistory">
             </div>
         </div>
     </div>
 
-    <script>
-        const messageInput = document.getElementById('messageInput');
-        const sendButton = document.getElementById('sendButton');
-        const selectedFilesDiv = document.getElementById('selectedFiles');
-        const searchResultsContent = document.getElementById('searchResultsContent');
-        const searchResultsHeader = document.getElementById('searchResultsHeader');
-        const searchResultsInfo = document.getElementById('searchResultsInfo');
-        const searchHistory = document.getElementById('searchHistory');
-        
-        // File inputs
-        const imageInput = document.getElementById('imageInput');
-        const videoInput = document.getElementById('videoInput');
-        const audioInput = document.getElementById('audioInput');
-        
-        // Store selected files
-        let selectedFiles = {
-            image: null,
-            video: null,
-            audio: null
-        };
+    <!-- 메인 콘텐츠 -->
+    <div class="main-content">
+        <!-- 검색 결과 -->
+        <div class="search-results-container">
+            <div class="search-results-header" id="searchResultsHeader" style="display: none;">
+                <div class="search-results-title">검색 결과</div>
+                <div class="search-results-info" id="searchResultsInfo"></div>
+            </div>
 
-        messageInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-
-        // File input handlers
-        imageInput.addEventListener('change', function(e) {
-            handleFileSelection('image', e.target.files[0], '📷');
-        });
-
-        videoInput.addEventListener('change', function(e) {
-            handleFileSelection('video', e.target.files[0], '🎥');
-        });
-
-        audioInput.addEventListener('change', function(e) {
-            handleFileSelection('audio', e.target.files[0], '🎵');
-        });
-
-        function handleFileSelection(type, file, emoji) {
-            if (file) {
-                selectedFiles[type] = file;
-                updateFilePreview();
-                updateFileButtonState();
-            }
-        }
-
-        function updateFilePreview() {
-            selectedFilesDiv.innerHTML = '';
-            
-            Object.entries(selectedFiles).forEach(([type, file]) => {
-                if (file) {
-                    const preview = document.createElement('div');
-                    preview.className = 'file-preview';
-                    
-                    const emoji = type === 'image' ? '📷' : type === 'video' ? '🎥' : '🎵';
-                    const size = (file.size / 1024 / 1024).toFixed(1);
-                    
-                    preview.innerHTML = `
-                        ${emoji} ${file.name} (${size}MB)
-                        <span class="remove-file" onclick="removeFile('${type}')">×</span>
-                    `;
-                    
-                    selectedFilesDiv.appendChild(preview);
-                }
-            });
-        }
-
-        function updateFileButtonState() {
-            Object.entries(selectedFiles).forEach(([type, file]) => {
-                const button = document.querySelector(`[onclick*="${type}Input"]`);
-                if (file) {
-                    button.classList.add('selected');
-                } else {
-                    button.classList.remove('selected');
-                }
-            });
-        }
-
-        function removeFile(type) {
-            selectedFiles[type] = null;
-            const input = document.getElementById(type + 'Input');
-            input.value = '';
-            updateFilePreview();
-            updateFileButtonState();
-        }
-
-        async function sendMessage() {
-            const message = messageInput.value.trim();
-            const hasFiles = Object.values(selectedFiles).some(file => file !== null);
-            
-            if (!message && !hasFiles) return;
-
-            // Check if this looks like a conversational query
-            if (message && checkConversationalQuery(message)) {
-                addMessage('user', message);
-                messageInput.value = '';
-                
-                const guideMessage = `
-                    <div class="message-content">
-                        <strong>알림:</strong> 이 시스템은 대화형이 아닌 <strong>독립적인 검색</strong>을 수행합니다.<br><br>
-                        
-                        이전 검색과 연관된 질문을 하신 것 같습니다. 더 정확한 결과를 위해 <strong>구체적인 검색어</strong>를 입력해주세요.<br><br>
-                        
-                        <strong>예시:</strong><br>
-                        • "AI 기술 동향"<br>
-                        • "머신러닝 알고리즘"<br>
-                        • "데이터 분석 방법"<br>
-                        • 또는 관련 파일을 업로드해주세요
-                    </div>
-                `;
-                
-                const messageDiv = document.createElement('div');
-                messageDiv.className = 'message assistant';
-                messageDiv.innerHTML = guideMessage;
-                chatMessages.appendChild(messageDiv);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-                return;
-            }
-
-            // Create user message with file info
-            let userMessageContent = '';
-            
-            const createFilePreview = (type, file) => {
-                const typeLabels = {
-                    'image': { label: '이미지', icon: '🖼️' },
-                    'video': { label: '비디오', icon: '🎬' },
-                    'audio': { label: '오디오', icon: '🎵' }
-                };
-                
-                const { label, icon } = typeLabels[type];
-                const fileUrl = URL.createObjectURL(file);
-                
-                let preview = '';
-                if (type === 'image') {
-                    preview = `<img src="${fileUrl}" class="user-file-preview" alt="${file.name}">`;
-                } else {
-                    preview = `<div class="user-file-preview">${icon}</div>`;
-                }
-                
-                return `
-                    <div class="user-file-item">
-                        ${preview}
-                        <div class="user-file-info">
-                            <div class="user-file-name">${file.name}</div>
-                            <div class="user-file-type">${label} • ${(file.size / 1024 / 1024).toFixed(1)}MB</div>
-                        </div>
-                    </div>
-                `;
-            };
-            
-            if (message && hasFiles) {
-                // 텍스트 쿼리와 파일이 모두 있는 경우
-                const fileItems = Object.entries(selectedFiles)
-                    .filter(([type, file]) => file !== null)
-                    .map(([type, file]) => createFilePreview(type, file))
-                    .join('');
-                    
-                userMessageContent = `
-                    <div class="user-message-media">
-                        <div class="user-message-text">${message}</div>
-                        <div class="user-message-files">
-                            ${fileItems}
-                        </div>
-                    </div>
-                `;
-            } else if (message) {
-                // 텍스트 쿼리만 있는 경우
-                userMessageContent = message;
-            } else if (hasFiles) {
-                // 파일만 있는 경우
-                const fileItems = Object.entries(selectedFiles)
-                    .filter(([type, file]) => file !== null)
-                    .map(([type, file]) => createFilePreview(type, file))
-                    .join('');
-                    
-                userMessageContent = `
-                    <div class="user-message-files">
-                        ${fileItems}
-                    </div>
-                `;
-            }
-
-            // 검색 히스토리에 추가
-            let historyText = '';
-            let originalText = '';
-            
-            if (message && hasFiles) {
-                const fileNames = Object.entries(selectedFiles)
-                    .filter(([type, file]) => file !== null)
-                    .map(([type, file]) => {
-                        // 파일명이 너무 길면 줄임
-                        const fileName = file.name;
-                        if (fileName.length > 25) {
-                            const ext = fileName.split('.').pop();
-                            const name = fileName.substring(0, 20);
-                            return `${name}...${ext}`;
-                        }
-                        return fileName;
-                    });
-                
-                const fileCount = fileNames.length;
-                if (fileCount === 1) {
-                    historyText = `${message} (+${fileNames[0]})`;
-                } else {
-                    historyText = `${message} (+${fileCount}개: ${fileNames.join(', ')})`;
-                }
-                originalText = message; // 원본 텍스트만 저장
-            } else if (message) {
-                historyText = message;
-                originalText = message;
-            } else if (hasFiles) {
-                const fileNames = Object.entries(selectedFiles)
-                    .filter(([type, file]) => file !== null)
-                    .map(([type, file]) => {
-                        // 파일명이 너무 길면 줄임 (더 긴 이름 허용)
-                        const fileName = file.name;
-                        if (fileName.length > 50) {
-                            const ext = fileName.split('.').pop();
-                            const name = fileName.substring(0, 45);
-                            return `${name}...${ext}`;
-                        }
-                        return fileName;
-                    });
-                historyText = fileNames.join(', ');
-                originalText = ''; // 파일만 검색한 경우 빈 문자열
-            }
-            
-            if (historyText) {
-                const isFileOnly = !message && hasFiles; // 파일만 검색했는지 확인
-                addToSearchHistory(historyText, originalText, isFileOnly, null); // 검색 결과는 나중에 업데이트
-            }
-            
-            messageInput.value = '';
-            sendButton.disabled = true;
-
-            // Show loading in results area
-            searchResultsContent.innerHTML = `
-                <div class="empty-state">
-                    <div class="loading">
-                        검색 중
-                        <div class="loading-dots">
-                            <div class="loading-dot"></div>
-                            <div class="loading-dot"></div>
-                            <div class="loading-dot"></div>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            try {
-                // Prepare form data
-                const formData = new FormData();
-                if (message) {
-                    formData.append('text_query', message);
-                }
-                
-                // Add files if selected
-                if (selectedFiles.image) {
-                    formData.append('image', selectedFiles.image);
-                }
-                if (selectedFiles.video) {
-                    formData.append('video', selectedFiles.video);
-                }
-                if (selectedFiles.audio) {
-                    formData.append('audio', selectedFiles.audio);
-                }
-                
-                formData.append('max_results', document.getElementById('maxResults').value);
-                formData.append('include_chunk_meta', document.getElementById('includeChunkMeta').checked);
-                formData.append('include_media_meta', document.getElementById('includeMediaMeta').checked);
-
-                // Send search request
-                const response = await fetch('/api/v1/search/multimodal', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const searchResult = await response.json();
-                
-                // Debug: Log the response to see original_score
-                console.log('Search result:', searchResult);
-                if (searchResult.results && searchResult.results.length > 0) {
-                    console.log('First result:', searchResult.results[0]);
-                    console.log('Original score:', searchResult.results[0].original_score);
-                }
-                
-                // Update search history with results
-                updateSearchHistoryWithResults(searchResult);
-                
-                // Display search results
-                displaySearchResults(searchResult);
-
-                // Clear files after successful search
-                selectedFiles = { image: null, video: null, audio: null };
-                imageInput.value = '';
-                videoInput.value = '';
-                audioInput.value = '';
-                updateFilePreview();
-                updateFileButtonState();
-
-            } catch (error) {
-                console.error('Search failed:', error);
-                searchResultsContent.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">⚠️</div>
-                        <div>검색 중 오류가 발생했습니다: ${error.message}</div>
-                    </div>
-                `;
-            } finally {
-                sendButton.disabled = false;
-            }
-        }
-
-        // Check for conversational queries and provide guidance
-        function checkConversationalQuery(query) {
-            const conversationalPatterns = [
-                /^(그|그거|그것|저것|이것|이거)/,
-                /더 알려.*줘|더 자세히|추가.*정보/,
-                /어떤.*뜻|무슨.*말|어떻게.*해/,
-                /^(네|예|아니|아니요|맞|틀렸)/,
-                /이전|앞서|위에서|방금/
-            ];
-            
-            return conversationalPatterns.some(pattern => pattern.test(query.toLowerCase()));
-        }
-
-        function addMessage(sender, content, isLoading = false) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender}`;
-            
-            if (isLoading) {
-                messageDiv.innerHTML = `
-                    <div class="message-content">
-                        <div class="loading">
-                            검색 중
-                            <div class="loading-dots">
-                                <div class="loading-dot"></div>
-                                <div class="loading-dot"></div>
-                                <div class="loading-dot"></div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            } else {
-                messageDiv.innerHTML = `<div class="message-content">${content}</div>`;
-            }
-            
-            chatMessages.appendChild(messageDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-            return messageDiv;
-        }
-
-        function displaySearchResults(searchResult) {
-            const resultCount = searchResult.total_hits;
-            const took = searchResult.took_ms;
-            
-            // 검색 결과 헤더 업데이트
-            searchResultsInfo.innerHTML = `${resultCount}개 결과 • ${took}ms • ${searchResult.element_types_used.join(', ')}`;
-            searchResultsHeader.style.display = 'block';
-            
-            // 검색 결과 내용 생성
-            let resultsHtml = '';
-
-            if (searchResult.results && searchResult.results.length > 0) {
-                searchResult.results.forEach((result, index) => {
-                    const element = result.element;
-                    const rrfScore = result.score.toFixed(6);
-                    const originalScore = result.original_score ? result.original_score.toFixed(6) : null;
-                    
-                    // 기본 메타데이터 정보
-                    let basicMetaInfo = '';
-                    let hasDetailedMeta = false;
-                    
-                    // 청크 메타데이터 기본 정보
-                    if (result.chunk_meta) {
-                        const chunk = result.chunk_meta;
-                        basicMetaInfo += `<div class="search-result-meta-item">
-                            <strong>청크:</strong> ${chunk.chunk_type} (순서: ${chunk.chunk_seq}, 요소: ${chunk.element_count}개)
-                        </div>`;
-                        hasDetailedMeta = true;
-                    }
-                    
-                    // 미디어 메타데이터 기본 정보
-                    if (result.media_meta) {
-                        const media = result.media_meta;
-                        let mediaDetails = `${media.media_type}`;
-                        if (media.title) mediaDetails += ` - ${media.title}`;
-                        if (media.file_size_bytes) {
-                            const sizeMB = (media.file_size_bytes / 1024 / 1024).toFixed(1);
-                            mediaDetails += ` (${sizeMB}MB)`;
-                        }
-                        if (media.duration_seconds) {
-                            const duration = Math.round(media.duration_seconds);
-                            mediaDetails += ` (${duration}초)`;
-                        }
-                        
-                        basicMetaInfo += `<div class="search-result-meta-item">
-                            <strong>미디어:</strong> ${mediaDetails}
-                        </div>`;
-                        hasDetailedMeta = true;
-                    }
-                    
-                    // 상세 메타데이터 토글 버튼 및 내용
-                    let detailedMetaSection = '';
-                    if (hasDetailedMeta) {
-                        const resultId = `result-${index}`;
-                        detailedMetaSection = `
-                            <div class="metadata-toggle">
-                                ${result.chunk_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'chunk')">
-                                    <span>📄</span> 청크 상세정보
-                                </button>` : ''}
-                                ${result.media_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'media')">
-                                    <span>🎬</span> 미디어 상세정보
-                                </button>` : ''}
-                            </div>
-                            ${result.chunk_meta ? `<div id="${resultId}-chunk" class="metadata-content">
-                                <pre>${JSON.stringify(result.chunk_meta, null, 2)}</pre>
-                            </div>` : ''}
-                            ${result.media_meta ? `<div id="${resultId}-media" class="metadata-content">
-                                <pre>${JSON.stringify(result.media_meta, null, 2)}</pre>
-                            </div>` : ''}
-                        `;
-                    }
-                    
-                    let scoreDisplay = `<span class="score-tag rrf" data-tooltip="RRF (Reciprocal Rank Fusion): 여러 검색 알고리즘의 결과를 결합한 점수입니다. 텍스트 검색과 벡터 검색 결과를 융합하여 더 정확한 순위를 제공합니다.">RRF: ${rrfScore}</span>`;
-                    if (originalScore) {
-                        scoreDisplay += `<span class="score-tag opensearch" data-tooltip="OpenSearch 원본 점수: BM25 텍스트 유사도와 벡터 코사인 유사도를 결합한 하이브리드 검색 점수입니다. 높을수록 쿼리와 더 관련이 높습니다.">OpenSearch: ${originalScore}</span>`;
-                    }
-                    
-                    resultsHtml += `
-                        <div class="search-result-card">
-                            <div class="search-result-header">
-                                <div class="search-result-type">${element.element_type} (${element.modality})</div>
-                                <div class="search-result-score">${scoreDisplay}</div>
-                            </div>
-                            <div class="search-result-content">
-                                ${element.content.substring(0, 300)}${element.content.length > 300 ? '...' : ''}
-                            </div>
-                            ${basicMetaInfo ? `<div class="search-result-meta">${basicMetaInfo}</div>` : ''}
-                            ${detailedMetaSection}
-                        </div>
-                    `;
-                });
-            } else {
-                resultsHtml = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📝</div>
-                        <div>검색 결과가 없습니다.</div>
-                    </div>
-                `;
-            }
-            
-            searchResultsContent.innerHTML = resultsHtml;
-        }
-
-        function setSearchExample(example) {
-            messageInput.value = example;
-            messageInput.focus();
-            
-            // Optional: Auto-scroll to input
-            messageInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-
-        // 검색 히스토리 데이터 관리
-        function getSearchHistoryData() {
-            try {
-                const data = localStorage.getItem('searchHistory');
-                return data ? JSON.parse(data) : [];
-            } catch (e) {
-                console.error('Failed to load search history:', e);
-                return [];
-            }
-        }
-
-        function saveSearchHistoryData(historyData) {
-            try {
-                // 최대 10개까지만 저장
-                const limitedData = historyData.slice(0, 10);
-                localStorage.setItem('searchHistory', JSON.stringify(limitedData));
-            } catch (e) {
-                console.error('Failed to save search history:', e);
-            }
-        }
-
-        function addToSearchHistory(query, originalText = '', isFileOnly = false, searchResult = null) {
-            // 모달리티 타입 결정
-            const modality = getSearchModality();
-            
-            // 새로운 히스토리 항목 생성
-            const historyEntry = {
-                id: Date.now().toString(),
-                query: query,
-                originalText: originalText,
-                isFileOnly: isFileOnly,
-                modality: modality,
-                timestamp: Date.now(),
-                searchResult: searchResult ? {
-                    total_hits: searchResult.total_hits,
-                    took_ms: searchResult.took_ms,
-                    element_types_used: searchResult.element_types_used,
-                    results: searchResult.results?.slice(0, 20) || [] // 최대 20개 결과만 저장
-                } : null
-            };
-
-            // 기존 히스토리 데이터 가져오기
-            let historyData = getSearchHistoryData();
-            
-            // 같은 쿼리 제거
-            historyData = historyData.filter(item => item.query !== query);
-            
-            // 새 항목을 맨 앞에 추가
-            historyData.unshift(historyEntry);
-            
-            // 저장
-            saveSearchHistoryData(historyData);
-            
-            // UI 업데이트
-            updateSearchHistoryUI();
-        }
-
-        function updateSearchHistoryUI() {
-            const historyData = getSearchHistoryData();
-            
-            // 기존 히스토리 아이템 제거 (placeholder 제외)
-            const existingItems = searchHistory.querySelectorAll('.search-history-item');
-            existingItems.forEach(item => item.remove());
-            
-            if (historyData.length === 0) {
-                // 히스토리가 없으면 placeholder 표시
-                if (!searchHistory.querySelector('.search-history-placeholder')) {
-                    const placeholder = document.createElement('div');
-                    placeholder.className = 'search-history-placeholder';
-                    placeholder.style.cssText = 'padding: 20px; text-align: center; color: #9ca3af; font-size: 13px;';
-                    placeholder.textContent = '검색 히스토리가 여기에 표시됩니다';
-                    searchHistory.appendChild(placeholder);
-                }
-                return;
-            }
-            
-            // placeholder 제거
-            const placeholder = searchHistory.querySelector('.search-history-placeholder');
-            if (placeholder) {
-                placeholder.remove();
-            }
-            
-            // 히스토리 아이템 생성
-            historyData.forEach(entry => {
-                const historyItem = document.createElement('div');
-                historyItem.className = 'search-history-item';
-                historyItem.dataset.historyId = entry.id;
-                
-                const timeDiff = Date.now() - entry.timestamp;
-                const timeText = entry.searchResult ? `${entry.searchResult.took_ms}ms` : '-';
-                
-                historyItem.innerHTML = `
-                    <div class="search-history-query">${entry.query}</div>
-                    <div class="search-history-meta">
-                        <div class="search-history-modality">${entry.modality}</div>
-                        <div class="search-history-time">${timeText}</div>
-                    </div>
-                `;
-                
-                // 클릭 동작 설정
-                if (entry.isFileOnly) {
-                    // 파일만 검색한 경우 결과 복원만 가능
-                    historyItem.onclick = () => {
-                        if (entry.searchResult) {
-                            restoreSearchResult(entry.searchResult);
-                        }
-                    };
-                } else if (entry.originalText) {
-                    // 텍스트 + 파일 조합인 경우
-                    historyItem.onclick = () => {
-                        if (entry.searchResult) {
-                            restoreSearchResult(entry.searchResult);
-                            setSearchExample(entry.originalText);
-                        } else {
-                            setSearchExample(entry.originalText);
-                        }
-                    };
-                } else {
-                    // 텍스트만 검색한 경우
-                    historyItem.onclick = () => {
-                        if (entry.searchResult) {
-                            restoreSearchResult(entry.searchResult);
-                            setSearchExample(entry.query);
-                        } else {
-                            setSearchExample(entry.query);
-                        }
-                    };
-                }
-                
-                searchHistory.appendChild(historyItem);
-            });
-        }
-
-        function restoreSearchResult(searchResult) {
-            // 검색 결과 복원
-            displaySearchResults(searchResult);
-            
-            // 검색 결과 영역으로 스크롤
-            searchResultsContent.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        function getSearchModality() {
-            const message = messageInput.value.trim();
-            const hasFiles = Object.values(selectedFiles).some(file => file !== null);
-            
-            if (!message && !hasFiles) {
-                return '';
-            }
-            
-            const fileTypes = [];
-            if (selectedFiles.image) fileTypes.push('이미지');
-            if (selectedFiles.video) fileTypes.push('비디오');
-            if (selectedFiles.audio) fileTypes.push('오디오');
-            
-            if (message && hasFiles) {
-                return `텍스트+${fileTypes.join('+')}`;
-            } else if (message) {
-                return '텍스트';
-            } else if (hasFiles) {
-                return fileTypes.join('+');
-            }
-            
-            return '';
-        }
-
-        function updateSearchHistoryWithResults(searchResult) {
-            // localStorage에서 히스토리 데이터 가져오기
-            let historyData = getSearchHistoryData();
-            
-            if (historyData.length > 0) {
-                // 가장 최근 항목에 검색 결과 추가
-                historyData[0].searchResult = {
-                    total_hits: searchResult.total_hits,
-                    took_ms: searchResult.took_ms,
-                    element_types_used: searchResult.element_types_used,
-                    results: searchResult.results?.slice(0, 20) || [] // 최대 20개 결과만 저장
-                };
-                
-                // 저장
-                saveSearchHistoryData(historyData);
-                
-                // UI 업데이트
-                updateSearchHistoryUI();
-            }
-        }
-
-        function clearSearchResults() {
-            searchResultsHeader.style.display = 'none';
-            searchResultsContent.innerHTML = `
+            <div class="search-results-content" id="searchResultsContent">
                 <div class="empty-state">
                     <div class="empty-state-icon">🔍</div>
                     <div>검색어를 입력하거나 미디어 파일을 업로드하여 검색을 시작하세요</div>
                 </div>
-            `;
-            
-            // Clear input and files
-            messageInput.value = '';
-            selectedFiles = { image: null, video: null, audio: null };
-            imageInput.value = '';
-            videoInput.value = '';
-            audioInput.value = '';
-            updateFilePreview();
-            updateFileButtonState();
-            
-            messageInput.focus();
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript 파일들 -->
+<script src="/static/js/tooltipManager.js"></script>
+<script src="/static/js/fileHandler.js"></script>
+<script src="/static/js/historyManager.js"></script>
+<script src="/static/js/uiController.js"></script>
+<script src="/static/js/search.js"></script>
+<script>
+    // 앱 초기화
+    document.addEventListener('DOMContentLoaded', function () {
+        if (window.uiController) {
+            window.uiController.initialize();
         }
-
-        function toggleMetadata(resultId, metaType) {
-            const button = event.target.closest('.metadata-button');
-            const content = document.getElementById(`${resultId}-${metaType}`);
-            
-            if (content.classList.contains('show')) {
-                content.classList.remove('show');
-                button.classList.remove('active');
-            } else {
-                content.classList.add('show');
-                button.classList.add('active');
-            }
+        if (window.historyManager) {
+            window.historyManager.initialize();
         }
-
-        // Dynamic tooltip system
-        let currentTooltip = null;
-
-        function createTooltip(content) {
-            const tooltip = document.createElement('div');
-            tooltip.className = 'custom-tooltip';
-            tooltip.textContent = content;
-            document.body.appendChild(tooltip);
-            return tooltip;
-        }
-
-        function showTooltip(element, content) {
-            hideTooltip();
-            
-            currentTooltip = createTooltip(content);
-            const rect = element.getBoundingClientRect();
-            
-            // Position tooltip above the element
-            const tooltipRect = currentTooltip.getBoundingClientRect();
-            let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
-            let top = rect.top - tooltipRect.height - 10;
-            
-            // Adjust if tooltip goes off screen
-            if (left < 10) left = 10;
-            if (left + tooltipRect.width > window.innerWidth - 10) {
-                left = window.innerWidth - tooltipRect.width - 10;
-            }
-            if (top < 10) {
-                top = rect.bottom + 10;
-                currentTooltip.style.transform = 'translateY(-100%)';
-            }
-            
-            currentTooltip.style.left = left + 'px';
-            currentTooltip.style.top = top + 'px';
-            
-            setTimeout(() => {
-                if (currentTooltip) {
-                    currentTooltip.classList.add('show');
-                }
-            }, 10);
-        }
-
-        function hideTooltip() {
-            if (currentTooltip) {
-                currentTooltip.classList.remove('show');
-                setTimeout(() => {
-                    if (currentTooltip && currentTooltip.parentNode) {
-                        currentTooltip.parentNode.removeChild(currentTooltip);
-                    }
-                    currentTooltip = null;
-                }, 200);
-            }
-        }
-
-        // Event listeners for tooltips
-        document.addEventListener('mouseover', function(e) {
-            const scoreTag = e.target.closest('.score-tag[data-tooltip]');
-            if (scoreTag) {
-                const content = scoreTag.getAttribute('data-tooltip');
-                showTooltip(scoreTag, content);
-            }
-        });
-
-        document.addEventListener('mouseout', function(e) {
-            const scoreTag = e.target.closest('.score-tag[data-tooltip]');
-            if (scoreTag) {
-                hideTooltip();
-            }
-        });
-
-        // Focus on input on page load
-        window.addEventListener('load', function() {
-            messageInput.focus();
-            // 페이지 로드 시 히스토리 복원
-            updateSearchHistoryUI();
-        });
-    </script>
+    });
+</script>
 </body>
 </html>
