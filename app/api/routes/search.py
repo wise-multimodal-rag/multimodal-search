@@ -22,7 +22,6 @@ async def search_multimodal(
         include_chunk_meta: bool = Form(default=True, description="Chunk 메타데이터 포함 여부"),
         include_media_meta: bool = Form(default=True, description="Media 메타데이터 포함 여부"),
         max_results: int = Form(default=10, ge=1, le=100, description="최대 결과 수"),
-        offset: int = Form(default=0, ge=0, description="결과 오프셋"),
         search_service: SearchService = Depends(get_search_service)
 ):
     """진정한 멀티모달 검색 엔드포인트 - 텍스트, 이미지, 비디오, 오디오 조합 입력"""
@@ -52,8 +51,7 @@ async def search_multimodal(
             audio_file=audio,
             include_chunk_meta=include_chunk_meta,
             include_media_meta=include_media_meta,
-            max_results=max_results,
-            offset=offset
+            max_results=max_results
         )
 
         logger.info(f"Multimodal search completed: {result.total_hits} hits in {result.took_ms}ms")

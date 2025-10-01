@@ -55,8 +55,7 @@ class SearchService:
             audio_file: Optional[UploadFile] = None,
             include_chunk_meta: bool = True,
             include_media_meta: bool = True,
-            max_results: int = 10,
-            offset: int = 0
+            max_results: int = 10
     ) -> SearchResponse:
         """멀티모달 검색 오케스트레이션"""
         logger.info("Processing multimodal search request")
@@ -114,7 +113,7 @@ class SearchService:
                 element_types=selected_element_types,
                 embeddings=embeddings,
                 size=max_results,
-                from_=offset,
+                from_=0,
                 filters=None
             )
 
