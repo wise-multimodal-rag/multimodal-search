@@ -1,4 +1,5 @@
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 import httpx
 from loguru import logger
 
@@ -94,6 +95,58 @@ class EmbeddingClient:
                     
             except Exception as e:
                 logger.error(f"Image embedding from storage request failed: {e}")
+                return None
+
+    async def get_video_embedding(self, video_data: bytes) -> Optional[List[float]]:
+        """Get video embedding from binary data"""
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                files = {"video": ("video.mp4", video_data, "video/mp4")}
+                response = await client.post(
+                    f"{self.base_url}/embedding/video",
+                    files=files,
+                    headers=self.file_headers
+                )
+                response.raise_for_status()
+                
+                result = response.json()
+                if result.get("status") == "success" and "data" in result and "embedding" in result["data"]:
+                    embedding = result["data"]["embedding"]
+                    logger.debug(f"Video embedding API response: status={result.get('status')}, embedding_dim={len(embedding)}, first_5_values={embedding[:5]}")
+                    return embedding
+                else:
+                    logger.debug(f"Video embedding API response: {result}")
+                    logger.error(f"Video embedding failed: {result}")
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"Video embedding request failed: {e}")
+                return None
+
+    async def get_audio_embedding(self, audio_data: bytes) -> Optional[List[float]]:
+        """Get audio embedding from binary data"""
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                files = {"audio": ("audio.wav", audio_data, "audio/wav")}
+                response = await client.post(
+                    f"{self.base_url}/embedding/audio",
+                    files=files,
+                    headers=self.file_headers
+                )
+                response.raise_for_status()
+                
+                result = response.json()
+                if result.get("status") == "success" and "data" in result and "embedding" in result["data"]:
+                    embedding = result["data"]["embedding"]
+                    logger.debug(f"Audio embedding API response: status={result.get('status')}, embedding_dim={len(embedding)}, first_5_values={embedding[:5]}")
+                    return embedding
+                else:
+                    logger.debug(f"Audio embedding API response: {result}")
+                    logger.error(f"Audio embedding failed: {result}")
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"Audio embedding request failed: {e}")
                 return None
 
 

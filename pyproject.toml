@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Multimodal search and RAG system using OpenSearch"
 requires-python = ">=3.11"
 authors = [
-    {name = "Research Team", email = "research@example.com"}
+    { name = "박서연", email = "sally9476@wisenut.co.kr" }
 ]
 dependencies = [
     "fastapi>=0.104.0",
@@ -22,12 +22,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "black>=23.9.0",
     "isort>=5.12.0",
-    "flake8>=6.1.0",
-    "mypy>=1.6.0",
+    "pyright>=1.1.0",
+    "ruff>=0.1.0",
 ]
 
 [build-system]
@@ -37,16 +34,64 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
-[tool.black]
-line-length = 88
-target-version = ['py311']
-
 [tool.isort]
-profile = "black"
 line_length = 88
 
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
+
+[tool.ruff]
+line-length = 125
+exclude = [
+    '.git',
+    '__pycache__',
+    '.ruff_cache',
+    'docs',
+    '.venv',
+    'venv',
+    'tests',
+    'build',
+    'dist',
+    './app/__init__.py',
+]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "D", # pydocstyle <https://docs.astral.sh/ruff/rules/#pydocstyle-d>
+    "FAST"  # FastAPI <https://docs.astral.sh/ruff/rules/#fastapi-fast>
+]
+ignore = ['W', "D100", "D101", "D102", "D103", "D104", "D107", "D414", "D415", "D417", "FAST002"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+
+[tool.pyright]
+pythonVersion = "3.11"
+defineConstant = { DEBUG = true }
+reportMissingImports = false
+reportMissingTypeStubs = false
+reportArgumentType = false
+typeCheckingMode = "basic"
+include = ["app"]
+exclude = [
+    '.git',
+    '__pycache__',
+    '.ruff_cache',
+    '.pytest_cache',
+    'docs',
+    'venv',
+    '.venv',
+    'tests',
+    'build',
+    'dist',
+    'pypi',
+    'app_logs',
+    '.cache',
+    'static',
+    'templates',
+    '.gitlab',
+]
+

@@ -1,5 +1,6 @@
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -75,6 +76,7 @@ class SearchResult(BaseModel):
     chunk_meta: Optional[ChunkMeta] = None
     media_meta: Optional[MediaMeta] = None
     score: float
+    original_score: Optional[float] = None
 
 
 class SearchResponse(BaseModel):

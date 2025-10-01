@@ -1,6 +1,7 @@
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional
+
 from fastapi import UploadFile
+from pydantic import BaseModel, Field
 
 
 class MultimodalSearchRequest(BaseModel):

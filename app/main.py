@@ -1,19 +1,19 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from app.core.config import settings
-from app.core.logging import setup_logging
 from app.api.routes import search
+from app.core.config import settings
 from app.core.dependencies import get_opensearch_service
+from app.core.logging import setup_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    setup_logging()
     logger.info("Starting multimodal search application")
     
     # Initialize OpenSearch connection
@@ -53,3 +53,8 @@ async def root():
 async def health_check():
     opensearch_service = get_opensearch_service()
     return {"status": "healthy", "opensearch": await opensearch_service.health_check()}
+
+
+@app.get("/search")
+async def search_page(request: Request):
+    return templates.TemplateResponse("search.html", {"request": request})

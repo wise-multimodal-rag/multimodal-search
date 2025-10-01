@@ -1,4 +1,5 @@
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 import httpx
 from loguru import logger
 
@@ -41,7 +42,7 @@ class FeatureExtractionClient:
                 
                 result = response.json()
                 logger.debug(f"Text summarization API response: {result}")
-                if result.get("code") == 100200:
+                if result.get("code") == 200:
                     return result["result"]
                 else:
                     logger.error(f"Text summarization failed: {result}")
@@ -75,7 +76,7 @@ class FeatureExtractionClient:
                 
                 result = response.json()
                 logger.debug(f"Keyword extraction API response: {result}")
-                if result.get("code") == 100200:
+                if result.get("code") == 200:
                     return result["result"]
                 else:
                     logger.error(f"Keyword extraction failed: {result}")
@@ -98,7 +99,7 @@ class FeatureExtractionClient:
                 
                 result = response.json()
                 logger.debug(f"Text classification API response: {result}")
-                if result.get("code") == 100200:
+                if result.get("code") == 200:
                     return result["result"]
                 else:
                     logger.error(f"Text classification failed: {result}")
@@ -130,7 +131,7 @@ class FeatureExtractionClient:
                 
                 result = response.json()
                 logger.debug(f"Entity extraction API response: {result}")
-                if result.get("code") == 100200:
+                if result.get("code") == 200:  # Fixed: API returns 200, not 100200
                     return result["result"]
                 else:
                     logger.error(f"Entity extraction failed: {result}")
@@ -157,7 +158,7 @@ class FeatureExtractionClient:
                 
                 result = response.json()
                 logger.debug(f"Sentiment analysis API response: {result}")
-                if result.get("code") == 100200:
+                if result.get("code") == 200:
                     return result["result"]
                 else:
                     logger.error(f"Sentiment analysis failed: {result}")

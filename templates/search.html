@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multimodal Search</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔍</text></svg>">
+    <link rel="stylesheet" href="/static/css/search.css">
+</head>
+<body>
+<div class="header" style="text-align: center; margin-bottom: 30px; padding-top: 40px;">
+    <h1>Multimodal Search</h1>
+    <p>OpenSearch 기반 멀티모달 검색 시스템</p>
+</div>
+
+<div class="container">
+
+    <!-- 왼쪽 패널 -->
+    <div class="left-panel">
+        <!-- 검색 입력 -->
+        <div class="search-input-container">
+            <div class="search-input-header">
+                <div class="search-input-title">검색 입력</div>
+                <div class="search-input-description">텍스트와 미디어 파일을 조합하여 검색하세요</div>
+            </div>
+
+            <div class="chat-input">
+                <div class="input-section">
+                    <input type="text" id="messageInput" placeholder="검색어를 입력하세요">
+                    <div class="file-inputs">
+                        <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                        <input type="file" id="videoInput" accept="video/*" style="display: none;">
+                        <input type="file" id="audioInput" accept="audio/*" style="display: none;">
+
+                        <button type="button" class="file-btn" onclick="document.getElementById('imageInput').click()">
+                            📷
+                        </button>
+                        <button type="button" class="file-btn" onclick="document.getElementById('videoInput').click()">
+                            🎥
+                        </button>
+                        <button type="button" class="file-btn" onclick="document.getElementById('audioInput').click()">
+                            🎵
+                        </button>
+                    </div>
+                </div>
+                <button id="sendButton" onclick="sendMessage()">검색</button>
+            </div>
+
+            <div id="selectedFiles" class="selected-files"></div>
+        </div>
+
+        <!-- 검색 옵션 -->
+        <div class="settings">
+            <h3 style="margin: 0 0 15px 0;">검색 옵션</h3>
+
+            <div class="option-group">
+                <div class="settings-row">
+                    <label>결과 수:</label>
+                    <input type="number" id="maxResults" value="10" min="1" max="50" style="width: 70px;">
+                </div>
+            </div>
+
+            <div class="option-group">
+                <strong style="font-size: 13px; color: #495057; margin-bottom: 8px; display: block;">메타데이터 포함:</strong>
+                <div class="checkbox-row">
+                    <input type="checkbox" id="includeChunkMeta" checked>
+                    <label for="includeChunkMeta">청크 메타데이터</label>
+                </div>
+                <div class="checkbox-row">
+                    <input type="checkbox" id="includeMediaMeta" checked>
+                    <label for="includeMediaMeta">미디어 메타데이터</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- 빠른 검색 -->
+        <div class="settings">
+            <h3 style="margin: 0 0 15px 0;">빠른 검색</h3>
+
+            <div class="quick-search-examples">
+                <div class="example-buttons">
+                    <button class="example-btn" onclick="setSearchExample('AI 기술 동향과 미래 전망')">AI 기술 동향과 미래 전망</button>
+                    <button class="example-btn" onclick="setSearchExample('머신러닝 알고리즘과 응용 사례')">머신러닝 알고리즘과 응용 사례</button>
+                    <button class="example-btn" onclick="setSearchExample('데이터 분석 방법과 도구')">데이터 분석 방법과 도구</button>
+                    <button class="example-btn" onclick="setSearchExample('파이썬 프로그래밍 기초와 응용')">파이썬 프로그래밍 기초와 응용</button>
+                    <button class="example-btn" onclick="setSearchExample('웹 개발 프레임워크와 기술')">웹 개발 프레임워크와 기술</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 검색 히스토리 -->
+        <div class="search-history">
+            <div class="search-history-title">최근 검색</div>
+            <div class="search-history-list" id="searchHistory">
+            </div>
+        </div>
+    </div>
+
+    <!-- 메인 콘텐츠 -->
+    <div class="main-content">
+        <!-- 검색 결과 -->
+        <div class="search-results-container">
+            <div class="search-results-header" id="searchResultsHeader" style="display: none;">
+                <div class="search-results-title">검색 결과</div>
+                <div class="search-results-info" id="searchResultsInfo"></div>
+            </div>
+
+            <div class="search-results-content" id="searchResultsContent">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔍</div>
+                    <div>검색어를 입력하거나 미디어 파일을 업로드하여 검색을 시작하세요</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript 파일들 -->
+<script src="/static/js/tooltipManager.js"></script>
+<script src="/static/js/fileHandler.js"></script>
+<script src="/static/js/historyManager.js"></script>
+<script src="/static/js/uiController.js"></script>
+<script src="/static/js/search.js"></script>
+<script>
+    // 앱 초기화
+    document.addEventListener('DOMContentLoaded', function () {
+        if (window.uiController) {
+            window.uiController.initialize();
+        }
+        if (window.historyManager) {
+            window.historyManager.initialize();
+        }
+    });
+</script>
+</body>
+</html>
