@@ -67,4 +67,4 @@ async def search_multimodal(
 @router.get("/demo", response_class=HTMLResponse)
 async def search_demo_interface(request: Request):
     """Multimodal search demo interface"""
-    return templates.TemplateResponse("chatbot.html", {"request": request})
+    return templates.TemplateResponse("search.html", {"request": request})

@@ -57,4 +57,4 @@ async def health_check():
 
 @app.get("/search")
 async def search_page(request: Request):
-    return templates.TemplateResponse("chatbot.html", {"request": request})
+    return templates.TemplateResponse("search.html", {"request": request})
