@@ -105,6 +105,12 @@ class RRFReranker:
         final_results = []
         for element_id, rrf_data in rrf_scores.items():
             hit = rrf_data["hit"].copy()
+            
+            # 원본 OpenSearch 점수 저장 - 이미 _original_score가 있으면 유지, 없으면 현재 점수를 원본으로 설정
+            if "_original_score" not in hit:
+                original_score = hit["_score"]  # 원본 OpenSearch 점수 저장
+                hit["_original_score"] = original_score  # 원본 점수 추가
+            
             hit["_score"] = rrf_data["rrf_score"]
             hit["_rrf_details"] = {
                 "queries_matched": len(rrf_data["query_details"]),

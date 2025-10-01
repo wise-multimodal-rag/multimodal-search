@@ -66,7 +66,7 @@ async def search_multimodal(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/chatbot", response_class=HTMLResponse)
-async def chatbot_interface(request: Request):
-    """Simple chatbot interface"""
+@router.get("/demo", response_class=HTMLResponse)
+async def search_demo_interface(request: Request):
+    """Multimodal search demo interface"""
     return templates.TemplateResponse("chatbot.html", {"request": request})

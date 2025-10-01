@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -53,3 +53,8 @@ async def root():
 async def health_check():
     opensearch_service = get_opensearch_service()
     return {"status": "healthy", "opensearch": await opensearch_service.health_check()}
+
+
+@app.get("/search")
+async def search_page(request: Request):
+    return templates.TemplateResponse("chatbot.html", {"request": request})

@@ -76,6 +76,7 @@ class SearchResult(BaseModel):
     chunk_meta: Optional[ChunkMeta] = None
     media_meta: Optional[MediaMeta] = None
     score: float
+    original_score: Optional[float] = None
 
 
 class SearchResponse(BaseModel):

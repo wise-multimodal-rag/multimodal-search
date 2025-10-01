@@ -41,7 +41,8 @@ class ResultEnricher:
                     element=element,
                     chunk_meta=chunk_meta,
                     media_meta=media_meta,
-                    score=hit["_score"]
+                    score=hit["_score"],
+                    original_score=hit.get("_original_score")
                 )
 
                 enriched_results.append(result)
