@@ -33,7 +33,8 @@ class EmbeddingClient:
                 # 임베딩 벡터는 길어서 처음 5개 값만 로그에 표시
                 if result.get("status") == "success" and "data" in result and "embedding" in result["data"]:
                     embedding = result["data"]["embedding"]
-                    logger.debug(f"Text embedding API response: status={result.get('status')}, embedding_dim={len(embedding)}, first_5_values={embedding[:5]}")
+                    logger.info(f"Text embedding API response: status={result.get('status')}, embedding_dim={len(embedding)}")
+                    logger.debug(f"Text embedding first_5_values={embedding[:5]}")
                     return embedding
                 else:
                     logger.debug(f"Text embedding API response: {result}")
@@ -60,7 +61,8 @@ class EmbeddingClient:
                 # 임베딩 벡터는 길어서 처음 5개 값만 로그에 표시
                 if result.get("status") == "success" and "data" in result and "embedding" in result["data"]:
                     embedding = result["data"]["embedding"]
-                    logger.debug(f"Image embedding API response: status={result.get('status')}, embedding_dim={len(embedding)}, first_5_values={embedding[:5]}")
+                    logger.info(f"Image embedding API response: status={result.get('status')}, embedding_dim={len(embedding)}")
+                    logger.debug(f"Image embedding first_5_values={embedding[:5]}")
                     return embedding
                 else:
                     logger.debug(f"Image embedding API response: {result}")

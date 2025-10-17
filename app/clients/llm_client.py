@@ -217,3 +217,176 @@ class LLMClient:
                 return None
 
         return None
+
+    async def expand_query(
+            self,
+            query: str,
+            context: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Comprehensive query expansion using Query Decomposition, Query Rewriting, and Semantic Expansion
+        
+        Args:
+            query: Original user query
+            context: Optional context information (search domain, user preferences, etc.)
+            
+        Returns:
+            Dictionary containing expanded queries and analysis
+        """
+        context_info = ""
+        if context:
+            domain = context.get("domain", "")
+            user_type = context.get("user_type", "")
+            search_scope = context.get("search_scope", "")
+            if domain:
+                context_info += f"검색 도메인: {domain}\n"
+            if user_type:
+                context_info += f"사용자 유형: {user_type}\n"
+            if search_scope:
+                context_info += f"검색 범위: {search_scope}\n"
+
+        system_message = f"""당신은 검색 쿼리 확장 전문가입니다. 주어진 쿼리의 특성을 분석하여 필요한 기법만 선택적으로 적용해 더 효과적인 검색 쿼리들을 생성하세요.
+
+{context_info}
+
+다음 기법들 중 쿼리에 적합한 것만 선택하여 적용하세요:
+
+1. **Query Decomposition (쿼리 분해)** - 복잡한 복합 쿼리에만 적용:
+   ✅ 적용 조건: 2개 이상의 독립적 개념이 AND/OR로 연결된 경우
+   ✅ 예시: "파이썬 머신러닝과 데이터 시각화" → "파이썬 머신러닝" + "데이터 시각화"
+   ❌ 불필요한 경우: 단일 개념, 단순한 키워드 검색
+   - 복합적인 쿼리를 논리적 구성 요소로 분해
+   - 각 하위 개념을 독립적으로 검색 가능한 단위로 변환
+
+2. **Query Rewriting (쿼리 재작성)** - 대부분의 쿼리에 유용:
+   ✅ 적용 조건: 동의어, 표현 변경으로 검색 품질 향상 가능
+   ✅ 예시: "AI" → "인공지능", "튜토리얼" → "가이드", "방법" → "how to"
+   - 원본 쿼리를 다양한 표현 방식으로 재작성
+   - 동의어, 유의어, 관련 용어 활용
+   - 질문형 → 키워드형, 구어체 → 표준어 등 형식 변환
+
+3. **Semantic Expansion (의미적 확장)** - 검색 범위 확대가 필요할 때:
+   ✅ 적용 조건: 관련 개념, 상하위 개념으로 검색 범위 확장이 도움되는 경우
+   ✅ 예시: "파이썬" → "pandas numpy matplotlib", "데이터 분석" → "통계 분석 시각화"
+   ❌ 불필요한 경우: 매우 구체적인 검색, 정확한 매칭이 중요한 경우
+   - 쿼리의 의미적 맥락을 확장
+   - 상위/하위 개념, 연관 개념 추가
+   - 도메인 특화 용어 및 전문 용어 포함
+
+**중요**: 각 기법의 적용 여부를 먼저 판단하고, 필요한 기법만 사용하세요. 모든 기법을 사용할 필요는 없습니다.
+
+JSON 형식으로만 응답하세요:
+{{
+    "original_query": "원본 쿼리",
+    "query_analysis": {{
+        "intent": "검색 의도 분석",
+        "complexity": "simple|moderate|complex",
+        "domain": "추정 도메인",
+        "query_type": "factual|procedural|navigational|transactional",
+        "requires_decomposition": false,
+        "requires_rewriting": true,
+        "requires_expansion": true
+    }},
+    "applied_techniques": ["rewriting", "semantic_expansion"],
+    "decomposition": {{
+        "applied": false,
+        "reason": "단일 개념으로 분해 불필요",
+        "main_concepts": [],
+        "sub_queries": []
+    }},
+    "rewritten_queries": [
+        {{
+            "query": "재작성된 쿼리1",
+            "type": "synonym|paraphrase|format_change|register_change",
+            "rationale": "재작성 이유"
+        }}
+    ],
+    "semantic_expansions": [
+        {{
+            "query": "의미적으로 확장된 쿼리1",
+            "expansion_type": "hypernym|hyponym|related_concept|domain_specific",
+            "added_concepts": ["추가된 개념1", "추가된 개념2"]
+        }}
+    ],
+    "final_queries": [
+        {{
+            "query": "최종 확장 쿼리1",
+            "priority": 1,
+            "search_strategy": "hybrid|semantic|keyword|multimodal",
+            "confidence": 0.95,
+            "source_technique": "rewriting|expansion|decomposition|original"
+        }}
+    ],
+    "search_suggestions": {{
+        "boolean_query": "Boolean 검색 쿼리",
+        "filters": ["추천 필터1", "추천 필터2"],
+        "query_operators": ["AND", "OR", "NEAR", "WILDCARD"]
+    }}
+}}
+
+참고: 
+- decomposition.applied가 false면 sub_queries는 빈 배열
+- rewritten_queries는 적용된 경우에만 항목 포함
+- semantic_expansions는 적용된 경우에만 항목 포함
+- applied_techniques에는 실제 사용된 기법만 나열"""
+
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": f"다음 쿼리를 확장해주세요: {query}"}
+        ]
+
+        response = await self.complete(messages, temperature=0.7, max_tokens=4000, force_json=True)
+
+        if response:
+            try:
+                import json
+
+                # JSON 추출 로직
+                response_cleaned = response.strip()
+                if "```json" in response_cleaned:
+                    start = response_cleaned.find("```json") + 7
+                    end = response_cleaned.find("```", start)
+                    if end != -1:
+                        response_cleaned = response_cleaned[start:end].strip()
+                elif response_cleaned.startswith("{") and response_cleaned.endswith("}"):
+                    pass
+                else:
+                    start = response_cleaned.find("{")
+                    end = response_cleaned.rfind("}") + 1
+                    if start != -1 and end > start:
+                        response_cleaned = response_cleaned[start:end]
+
+                logger.debug(f"Parsing query expansion JSON, length: {len(response_cleaned)} chars")
+                result = json.loads(response_cleaned)
+
+                # 결과 검증 및 기본값 설정
+                if not isinstance(result.get("final_queries"), list):
+                    result["final_queries"] = []
+                
+                # 최소한 원본 쿼리라도 포함
+                if not result["final_queries"]:
+                    result["final_queries"] = [{
+                        "query": query,
+                        "priority": 1,
+                        "search_strategy": "hybrid",
+                        "confidence": 0.8
+                    }]
+
+                # priority로 정렬
+                result["final_queries"] = sorted(
+                    result["final_queries"], 
+                    key=lambda x: x.get("priority", 999)
+                )
+
+                logger.info(f"Query expansion generated {len(result['final_queries'])} expanded queries")
+                return result
+
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse query expansion JSON: {e}")
+                logger.error(f"Raw response: {response}")
+                return None
+            except Exception as e:
+                logger.error(f"Error processing query expansion response: {e}")
+                return None
+
+        return None

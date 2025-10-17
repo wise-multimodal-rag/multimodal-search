@@ -77,3 +77,113 @@ class QueryAnalyzer:
             "reasoning": f"{reason}, using all element types",
             "confidence": 0.5
         }
+
+    async def expand_query(
+        self, 
+        query: str, 
+        context: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        텍스트 쿼리를 확장하여 더 효과적인 검색 쿼리들을 생성
+        Query Decomposition, Query Rewriting, Semantic Expansion을 동시에 수행
+        
+        Args:
+            query: 원본 사용자 쿼리
+            context: 검색 컨텍스트 정보 (도메인, 사용자 유형 등)
+            
+        Returns:
+            확장된 쿼리들과 분석 결과를 포함한 딕셔너리
+        """
+        try:
+            result = await self.llm_client.expand_query(query, context)
+            if result:
+                logger.info(f"Query expansion successful for: '{query[:50]}...'")
+                return result
+            else:
+                logger.warning("LLM query expansion returned None, using fallback")
+                return self._fallback_query_expansion(query)
+        except Exception as e:
+            logger.error(f"Query expansion failed: {e}, using fallback")
+            return self._fallback_query_expansion(query)
+
+    def _fallback_query_expansion(self, query: str) -> Dict[str, Any]:
+        """LLM 쿼리 확장 실패 시 사용하는 간단한 폴백 확장"""
+        words = query.strip().split()
+        
+        # 간단한 동의어 매핑 (예시)
+        synonym_map = {
+            "이미지": ["사진", "그림", "picture", "image"],
+            "비디오": ["영상", "동영상", "video", "movie"],
+            "문서": ["document", "텍스트", "text", "파일"],
+            "데이터": ["data", "정보", "information"],
+            "분석": ["analysis", "해석", "연구"],
+            "검색": ["search", "찾기", "조회"]
+        }
+        
+        # 기본 재작성 쿼리들 생성
+        rewritten_queries = [query]
+        
+        # 동의어 기반 확장
+        for word in words:
+            if word in synonym_map:
+                for synonym in synonym_map[word][:2]:  # 최대 2개 동의어만
+                    expanded = query.replace(word, synonym)
+                    if expanded != query:
+                        rewritten_queries.append(expanded)
+        
+        # 키워드 추출 및 확장
+        if len(words) > 1:
+            # 개별 키워드들
+            for word in words:
+                if len(word) > 2:  # 2글자 이상만
+                    rewritten_queries.append(word)
+        
+        # 중복 제거 및 원본 포함
+        final_queries = list(dict.fromkeys(rewritten_queries))
+        
+        return {
+            "original_query": query,
+            "query_analysis": {
+                "intent": "기본 검색",
+                "complexity": "simple" if len(words) <= 3 else "moderate",
+                "domain": "일반",
+                "query_type": "factual"
+            },
+            "decomposition": {
+                "main_concepts": words,
+                "sub_queries": [
+                    {
+                        "query": word,
+                        "focus": "키워드",
+                        "relationship": "OR"
+                    } for word in words if len(word) > 2
+                ]
+            },
+            "rewritten_queries": [
+                {
+                    "query": q,
+                    "type": "synonym" if q != query else "original",
+                    "rationale": "동의어 기반 확장" if q != query else "원본 쿼리"
+                } for q in rewritten_queries[:5]  # 최대 5개
+            ],
+            "semantic_expansions": [
+                {
+                    "query": f"{query} 관련",
+                    "expansion_type": "related_concept",
+                    "added_concepts": ["관련"]
+                }
+            ],
+            "final_queries": [
+                {
+                    "query": q,
+                    "priority": i + 1,
+                    "search_strategy": "hybrid",
+                    "confidence": 0.6 if i == 0 else 0.4
+                } for i, q in enumerate(final_queries[:3])  # 최대 3개
+            ],
+            "search_suggestions": {
+                "boolean_query": " OR ".join(f'"{word}"' for word in words),
+                "filters": [],
+                "query_operators": ["OR", "AND"]
+            }
+        }
