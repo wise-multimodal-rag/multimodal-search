@@ -66,15 +66,14 @@ flowchart TD
     I --> L[Step 5: OpenSearch 검색<br/>OpenSearchService]
     K1 --> L
     K2 --> L
-    L --> L1[확장된 쿼리별 개별 검색<br/>Query 1, 2, 3 순차 실행]
-    L1 --> L2[각 쿼리마다<br/>하이브리드 쿼리 구성 BM25+벡터]
-    L2 --> L3[OpenSearch 인덱스 검색<br/>multimodal_rag_element]
+    L --> L1[확장된 쿼리별 통합 검색<br/>Query 1, 2, 3 순차 실행]
+    L1 --> L2[각 쿼리마다<br/>element_types 필터 + 하이브리드 검색]
+    L2 --> L3[OpenSearch 통합 쿼리<br/>multimodal_rag_element]
     L3 --> L4[쿼리별 가중치 적용<br/>1st-1.0 2nd-0.9 3rd-0.8]
-    L4 --> L5[결과 통합 및 중복 제거<br/>점수 기준 재정렬]
-    L5 --> L6[RRF 리랭킹<br/>최종 순위 조정]
+    L4 --> L5[결과 통합 및 중복 제거<br/>점수 기준 최종 정렬]
     
     %% Step 6: 결과 강화
-    L6 --> M[Step 6: 결과 enrichment<br/>ResultEnricher]
+    L5 --> M[Step 6: 결과 enrichment<br/>ResultEnricher]
     M --> M1{chunk_meta 포함?}
     M --> M2{media_meta 포함?}
     M1 -->|Yes| M3[청크 메타데이터 조회]

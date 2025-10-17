@@ -7,7 +7,6 @@ from app.core.config import settings
 from app.core.index_mappings import (get_chunk_meta_mapping, get_elements_mapping,
                                      get_media_meta_mapping)
 from app.services.embeddings.embedding_service import EmbeddingService
-from app.services.search.rrf_reranker import RRFReranker
 
 
 class OpenSearchService:
@@ -18,7 +17,6 @@ class OpenSearchService:
         self.elements_index = "multimodal_rag_element"
 
         # Initialize helper components
-        self.rrf_reranker = RRFReranker()
         self.embedding_service = EmbeddingService()
 
     async def initialize(self):
@@ -97,74 +95,45 @@ class OpenSearchService:
             from_: int = 0,
             filters: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Search elements by running separate queries per element_type and aggregating results"""
-        all_results = []
-        total_took = 0
-
+        """Search elements with unified query filtering by element_types"""
         try:
-            # Run separate query for each element_type
-            for element_type in element_types:
-                response = await self._execute_single_query(query, element_type, embeddings, filters, size)
+            # Select appropriate embedding for the query
+            # For now, use text embedding as primary, can be enhanced later
+            selected_embedding = embeddings.get('text') if embeddings else None
+            
+            # Build unified search query
+            search_query = self._build_search_query(query, element_types, {'text': selected_embedding} if selected_embedding else None, filters)
 
-                # Log query results
-                self._log_query_results(element_type, response)
+            if not self.client:
+                raise RuntimeError("OpenSearch client not initialized")
+                
+            response = await self.client.search(
+                index=self.elements_index,
+                body={
+                    "query": search_query,
+                    "size": size,
+                    "from": from_,
+                    "_source": True
+                }
+            )
 
-                # Add element_type info and collect results
-                for hit in response["hits"]["hits"]:
-                    hit["_element_type_query"] = element_type
+            # Log unified query results
+            hits_count = len(response["hits"]["hits"])
+            max_score = response["hits"]["max_score"] if response["hits"]["hits"] else 0.0
+            logger.info(f"[{','.join(element_types)}] unified query → {hits_count} hits (max: {max_score:.4f})")
 
-                all_results.extend(response["hits"]["hits"])
-                total_took += response["took"]
-
-            # Rerank and return results
-            aggregated_response = self.rrf_reranker.rerank_results(all_results, size, from_, total_took)
-            self.rrf_reranker.log_reranking_summary(aggregated_response)
-
-            return aggregated_response
+            # Convert to standard format
+            return {
+                "results": [hit["_source"] for hit in response["hits"]["hits"]],
+                "total_hits": response["hits"]["total"]["value"],
+                "max_score": max_score,
+                "took_ms": response["took"]
+            }
 
         except Exception as e:
             logger.error(f"Element search failed: {e}")
             raise
 
-    async def _execute_single_query(
-            self,
-            query: str,
-            element_type: str,
-            embeddings: Optional[Dict[str, List[float]]],
-            filters: Optional[Dict[str, Any]],
-            size: int
-    ) -> Dict[str, Any]:
-        """Execute search query for single element type"""
-        selected_embedding = self.embedding_service.select_for_element_type(element_type, embeddings)
-        search_query = self._build_search_query(query, [element_type], selected_embedding, filters)
-
-        if not self.client:
-            raise RuntimeError("OpenSearch client not initialized")
-        return await self.client.search(
-            index=self.elements_index,
-            body={
-                "query": search_query,
-                "size": size,
-                "from": 0,
-                "_source": True
-            }
-        )
-
-    def _log_query_results(self, element_type: str, response: Dict[str, Any]) -> None:
-        """Log compact query results"""
-        hits_count = len(response["hits"]["hits"])
-        max_score = response["hits"]["max_score"] if response["hits"]["hits"] else 0.0
-
-        # Get top 3 results summary
-        top_results = []
-        if hits_count > 0:
-            for hit in response["hits"]["hits"][:3]:
-                element_id = hit["_source"].get("element_id", "unknown")
-                score = hit["_score"]
-                top_results.append(f"{element_id}({score:.3f})")
-
-        results_summary = ", ".join(top_results) if top_results else "no results"
-        logger.info(f"[{element_type}] query → {hits_count} hits (max: {max_score:.4f}) → top3: [{results_summary}]")
 
     def _build_search_query(
             self,
