@@ -32,12 +32,17 @@ flowchart TD
     H1A -->|성공| H2[적응형 확장 쿼리 생성<br/>쿼리 특성에 따라 1-3개]
     H1A -->|실패| H3[원본 쿼리 사용<br/>확장 없이 진행]
     
-    H2 --> H4[Step 2-2: 🤖 의도 분석<br/>확장된 주요 쿼리 기반]
+    H2 --> H2A{🤖 의존성 판단<br/>has_dependency?}
+    H2A -->|true| H2B[순차적 의존성 표시<br/>Query 2가 Query 1 결과 필요]
+    H2A -->|false| H2C[병렬 독립 실행 표시<br/>모든 쿼리 독립적]
+    
+    H2B --> H4[Step 2-2: 🤖 의도 분석<br/>확장된 주요 쿼리 기반]
+    H2C --> H4
     H3 --> H4
     H4 --> H4A{🤖 LLM 분석 성공?}
     H4A -->|성공| H5[🤖 LLM 기반 element_type 선택]
     H4A -->|실패| H6[휴리스틱 기반 폴백 분석]
-    H5 --> I[선택된 element_types + 확장된 쿼리들<br/>paragraph, title, image, etc.]
+    H5 --> I[선택된 element_types + 확장된 쿼리들 + 의존성 정보<br/>paragraph, title, image, etc.]
     H6 --> I
     
     %% Step 3: 특징 추출 (선택된 element_types에 따라 제어됨)
@@ -66,9 +71,18 @@ flowchart TD
     I --> L[Step 5: OpenSearch 검색<br/>OpenSearchService]
     K1 --> L
     K2 --> L
-    L --> L1[확장된 쿼리별 통합 검색<br/>Query 1, 2, 3 순차 실행]
-    L1 --> L2[각 쿼리마다<br/>element_types 필터 + 하이브리드 검색]
-    L2 --> L3[OpenSearch 통합 쿼리<br/>multimodal_rag_element]
+    L --> L0{의존성 확인<br/>has_dependency?}
+    L0 -->|true| L1A[순차적 검색 실행<br/>Query 1 → 컨텍스트 추출 → Query 2]
+    L0 -->|false| L1B[병렬 검색 실행<br/>Query 1, 2, 3 동시 실행]
+    
+    L1A --> L1A1[Query 1 실행<br/>element_types 필터 + 하이브리드 검색]
+    L1A1 --> L1A2[결과에서 컨텍스트 추출<br/>키워드, 엔티티, 개념]
+    L1A2 --> L1A3[Query 2 컨텍스트 보강<br/>이전 결과 정보 활용]
+    L1A3 --> L1A4[Query 2 실행<br/>보강된 쿼리로 검색]
+    
+    L1B --> L2[각 쿼리마다<br/>element_types 필터 + 하이브리드 검색]
+    L1A4 --> L3[OpenSearch 통합 쿼리<br/>multimodal_rag_element]
+    L2 --> L3
     L3 --> L4[쿼리별 가중치 적용<br/>1st-1.0 2nd-0.9 3rd-0.8]
     L4 --> L5[결과 통합 및 중복 제거<br/>점수 기준 최종 정렬]
     
@@ -113,7 +127,7 @@ flowchart TD
     class G,H,J,J1,K,L,M,O stepClass
     class API1,API2,API4 apiClass
     class API3 llmClass
-    class H1,H1A,H2,H4,H4A,H5,J4,J5 llmClass
+    class H1,H1A,H2,H2A,H2B,H2C,H4,H4A,H5,J4,J5 llmClass
     class IDX1,IDX2,IDX3 dbClass
 ```
 
@@ -121,8 +135,10 @@ flowchart TD
 
 - **멀티모달 입력**: 텍스트, 이미지, 비디오, 오디오 동시 지원
 - **적응형 쿼리 확장**: 쿼리 특성에 따른 선택적 기법 적용 (Decomposition, Rewriting, Expansion)
+- **🆕 지능형 의존성 처리**: LLM이 판단하는 순차/병렬 실행 방식 자동 선택
 - **하이브리드 검색**: BM25 텍스트 검색 + 벡터 유사도 검색 + 확장 쿼리 통합
 - **LLM 기반 질의 분석**: 검색 의도 파악 및 최적 element type 선택
+- **🆕 컨텍스트 전파**: 이전 검색 결과를 활용한 다음 쿼리 보강
 - **가중치 기반 결과 융합**: 확장된 쿼리별 가중치 적용 및 중복 제거
 - **3계층 인덱스 구조**: media_meta, chunk_meta, elements로 체계적 관리
 - **외부 API 통합**: Feature Extraction 및 Embedding API 활용
@@ -275,19 +291,36 @@ STORAGE_PATH=/storage
 ```
 적용 기법: Rewriting, Semantic Expansion
 분해 여부: ⏭️ 건너뜀 (단일 개념)
+의존성: has_dependency = false (독립적)
 확장 결과:
   1. "Python 가이드" (재작성)
   2. "파이썬 프로그래밍 학습" (의미 확장)
+실행 방식: 병렬 처리
 ```
 
-**복합 쿼리 ("파이썬 머신러닝과 데이터 시각화")**:
+**복합 독립 쿼리 ("파이썬 머신러닝과 데이터 시각화")**:
 ```
 적용 기법: Decomposition, Rewriting, Semantic Expansion  
 분해 결과: "파이썬 머신러닝" + "데이터 시각화"
+의존성: has_dependency = false (각각 독립적)
 확장 결과:
   1. "Python scikit-learn pandas" (기법별 통합)
   2. "머신러닝 모델 시각화" (의미 확장)
   3. "데이터 분석 차트 그래프" (관련 개념)
+실행 방식: 병렬 처리
+```
+
+**복합 의존 쿼리 ("최신 파이썬 라이브러리와 그 사용법")**:
+```
+적용 기법: Decomposition, Rewriting, Semantic Expansion
+분해 결과: "최신 파이썬 라이브러리" + "사용법"
+의존성: has_dependency = true (Query 2가 Query 1 결과 필요)
+확장 결과:
+  1. "최신 Python 라이브러리 2024" (1차 쿼리)
+  2. "파이썬 라이브러리 사용법" (2차 쿼리 - 컨텍스트로 보강될 예정)
+실행 방식: 순차적 처리
+  - Query 1 실행 → "FastAPI, Pandas, NumPy" 발견
+  - Query 2를 "파이썬 라이브러리 사용법 FastAPI Pandas NumPy"로 보강하여 실행
 ```
 
 **구체적 쿼리 ("Matplotlib pyplot.show() 함수")**:
@@ -295,8 +328,10 @@ STORAGE_PATH=/storage
 적용 기법: Rewriting만
 분해 여부: ⏭️ 건너뜀 (구체적 검색)
 의미 확장: ⏭️ 건너뜀 (정확한 매칭 중요)
+의존성: has_dependency = false (단일 쿼리)
 확장 결과:
   1. "Matplotlib show 메서드" (표현 변경)
+실행 방식: 단일 실행
 ```
 
 ### OpenSearch 인덱스 설계
@@ -339,8 +374,10 @@ STORAGE_PATH=/storage
 
 ### 🔍 지능형 검색
 - **적응형 쿼리 확장**: 쿼리 특성에 따른 선택적 기법 적용 (분해, 재작성, 의미 확장)
+- **🆕 지능형 의존성 판단**: LLM이 쿼리 간 의존성을 자동 분석하여 실행 방식 결정
 - **하이브리드 검색**: BM25 텍스트 검색 + 벡터 유사도 검색 결합
-- **병렬 검색 실행**: 확장된 쿼리들을 동시 처리하여 성능 향상
+- **🆕 적응형 실행**: 독립적 쿼리는 병렬, 의존적 쿼리는 순차 처리
+- **🆕 컨텍스트 보강**: 이전 검색 결과를 활용한 다음 쿼리 정확도 향상
 - **폴백 메커니즘**: LLM 실패 시 원본 쿼리로 안정적 서비스 지속
 
 ### 🛡️ 시스템 안정성
@@ -358,11 +395,18 @@ STORAGE_PATH=/storage
 ## 🚀 최근 업데이트 (v0.2.0)
 
 ### 주요 개선사항
+- **🆕 지능형 Query Decomposition**: LLM이 판단하는 순차/병렬 실행 방식으로 검색 정확도 대폭 향상
+- **🆕 컨텍스트 전파 시스템**: 이전 검색 결과를 활용한 다음 쿼리 보강으로 의존적 질의 처리 개선
 - **성능 최적화**: 로깅 볼륨 86% 감소, 불필요한 코드 350줄 제거
 - **시스템 안정성**: Circuit Breaker 패턴 및 재시도 메커니즘 도입
 - **보안 강화**: API 키 마스킹, 파일 시그니처 검증 개선
 - **코드 품질**: 미사용 코드 정리, 병렬 처리 최적화
 - **모니터링**: 외부 API 헬스체크 및 성능 추적
+
+### 새로운 기능
+- **의존성 인식 검색**: "최신 기술과 그 활용법" 같은 복합 쿼리에서 1차 결과를 2차 쿼리에 반영
+- **적응형 실행 엔진**: 쿼리 특성에 따른 최적 실행 방식 자동 선택
+- **컨텍스트 추출 알고리즘**: 검색 결과에서 키워드, 엔티티, 개념 자동 추출
 
 ### 삭제된 컴포넌트
 - `RRFReranker` 클래스: 불필요한 리랭킹 과정 제거

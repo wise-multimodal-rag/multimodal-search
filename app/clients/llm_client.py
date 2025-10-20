@@ -259,6 +259,10 @@ class LLMClient:
    ❌ 불필요한 경우: 단일 개념, 단순한 키워드 검색
    - 복합적인 쿼리를 논리적 구성 요소로 분해
    - 각 하위 개념을 독립적으로 검색 가능한 단위로 변환
+   
+   **의존성 판단**: 분해된 쿼리들이 순차적으로 실행되어야 하는지 결정
+   - has_dependency = true: "최신 파이썬 라이브러리와 그 사용법" (1차에서 라이브러리 식별 → 2차에서 해당 라이브러리 사용법)
+   - has_dependency = false: "머신러닝과 데이터 시각화" (각각 독립적으로 검색 가능)
 
 2. **Query Rewriting (쿼리 재작성)** - 대부분의 쿼리에 유용:
    ✅ 적용 조건: 동의어, 표현 변경으로 검색 품질 향상 가능
@@ -290,6 +294,8 @@ JSON 형식으로만 응답하세요:
         "requires_expansion": true
     }},
     "applied_techniques": ["rewriting", "semantic_expansion"],
+    "has_dependency": false,
+    "dependency_reason": "분해된 쿼리들이 독립적으로 실행 가능",
     "decomposition": {{
         "applied": false,
         "reason": "단일 개념으로 분해 불필요",

@@ -84,9 +84,10 @@ class SearchService:
                 modalities_data, extracted_features
             )
 
-            # Step 5: 확장 쿼리 검색 실행 (복잡한 로직이므로 함수 분리)
+            # Step 5: 확장 쿼리 검색 실행 (복잡한 로직이므로 함수 분리)  
+            expansion_result = query_analysis.get("expansion_analysis") if "expansion_analysis" in query_analysis else None
             search_results = await self._execute_expanded_search(
-                expanded_queries, query_analysis["selected_element_types"], embeddings, max_results
+                expanded_queries, query_analysis["selected_element_types"], embeddings, max_results, expansion_result
             )
 
             # Step 6: 결과 enrichment
@@ -153,10 +154,27 @@ class SearchService:
 
         return query_analysis
 
-    async def _execute_expanded_search(self, expanded_queries, selected_element_types, embeddings, max_results):
-        """Step 5: 확장 쿼리 검색 실행 (병렬 처리 최적화)"""
+    async def _execute_expanded_search(self, expanded_queries, selected_element_types, embeddings, max_results, expansion_result=None):
+        """Step 5: 확장 쿼리 검색 실행 (순차/병렬 처리 최적화)"""
+        
+        # LLM 결과에서 의존성 확인
+        has_dependency = expansion_result.get("has_dependency", False) if expansion_result else False
+        
+        if has_dependency:
+            logger.info(f"Sequential search execution for {len(expanded_queries)} dependent queries")
+            all_search_results = await self._execute_sequential_search(
+                expanded_queries, selected_element_types, embeddings, max_results, expansion_result
+            )
+        else:
+            logger.info(f"Parallel search execution for {len(expanded_queries)} independent queries")
+            all_search_results = await self._execute_parallel_search(
+                expanded_queries, selected_element_types, embeddings, max_results
+            )
+        
+        return self._process_search_results(all_search_results, expanded_queries, max_results)
 
-        # 병렬로 각 확장된 쿼리 검색 수행
+    async def _execute_parallel_search(self, expanded_queries, selected_element_types, embeddings, max_results):
+        """기존 병렬 검색 실행"""
         import asyncio
         search_tasks = [
             self._execute_single_query_search(
@@ -166,8 +184,43 @@ class SearchService:
         ]
         
         # 모든 검색을 병렬로 실행
-        all_search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
+        return await asyncio.gather(*search_tasks, return_exceptions=True)
+
+    async def _execute_sequential_search(self, expanded_queries, selected_element_types, embeddings, max_results, expansion_result):
+        """순차적 의존성 처리를 위한 검색"""
+        accumulated_context = {}
+        all_results = []
         
+        dependency_reason = expansion_result.get("dependency_reason", "") if expansion_result else ""
+        logger.info(f"Sequential execution reason: {dependency_reason}")
+        
+        for i, query in enumerate(expanded_queries):
+            # 이전 결과를 컨텍스트로 활용
+            if i > 0 and accumulated_context:
+                enriched_query = await self._enrich_query_with_context(query, accumulated_context)
+                logger.info(f"Query {i+1} enriched with context: '{query}' → '{enriched_query}'")
+            else:
+                enriched_query = query
+                
+            # 단일 쿼리 검색 실행
+            result = await self._execute_single_query_search(
+                enriched_query, i, len(expanded_queries), selected_element_types, embeddings, max_results
+            )
+            
+            if not isinstance(result, Exception) and result is not None:
+                all_results.append(result)
+                # 다음 쿼리를 위한 컨텍스트 추출
+                new_context = self._extract_context_from_results(result)
+                accumulated_context.update(new_context)
+                logger.debug(f"Context extracted from query {i+1}: {list(new_context.keys())}")
+            else:
+                logger.warning(f"Query {i+1} failed, continuing with existing context")
+                all_results.append(result)  # 실패한 결과도 포함 (후에 필터링됨)
+        
+        return all_results
+
+    def _process_search_results(self, all_search_results, expanded_queries, max_results):
+        """검색 결과 처리 및 검증"""
         # 예외가 발생한 결과는 필터링하고 상세 로깅
         valid_results = []
         failed_queries = []
@@ -318,6 +371,90 @@ class SearchService:
             element_types_used=query_analysis["selected_element_types"],
             query_analysis=query_analysis
         )
+
+    async def _enrich_query_with_context(self, query: str, context: dict) -> str:
+        """이전 검색 결과 컨텍스트를 활용하여 쿼리 보강"""
+        if not context:
+            return query
+            
+        # 컨텍스트에서 핵심 키워드 추출
+        keywords = context.get("keywords", [])
+        entities = context.get("entities", [])
+        concepts = context.get("concepts", [])
+        
+        # 쿼리에 컨텍스트 정보 추가
+        enriched_parts = [query]
+        
+        if keywords:
+            # 상위 3개 키워드만 사용
+            top_keywords = keywords[:3]
+            enriched_parts.extend(top_keywords)
+            
+        if entities:
+            # 상위 2개 엔티티만 사용  
+            top_entities = entities[:2]
+            enriched_parts.extend(top_entities)
+            
+        if concepts:
+            # 상위 2개 개념만 사용
+            top_concepts = concepts[:2]
+            enriched_parts.extend(top_concepts)
+        
+        # 중복 제거 및 조합
+        unique_parts = list(dict.fromkeys(enriched_parts))
+        enriched_query = " ".join(unique_parts)
+        
+        # 너무 길어지면 원본 쿼리와 핵심 키워드만 사용
+        if len(enriched_query) > 200:
+            enriched_query = f"{query} {' '.join(keywords[:2])}"
+            
+        return enriched_query
+    
+    def _extract_context_from_results(self, search_results: dict) -> dict:
+        """검색 결과에서 다음 쿼리를 위한 컨텍스트 추출"""
+        context = {
+            "keywords": [],
+            "entities": [],
+            "concepts": []
+        }
+        
+        if not search_results or not search_results.get("results"):
+            return context
+            
+        # 상위 5개 결과에서 컨텍스트 추출
+        top_results = search_results["results"][:5]
+        
+        for result in top_results:
+            # content에서 키워드 추출 (간단한 방식)
+            content = result.get("content", "")
+            if content:
+                # 공백으로 분리된 단어들 중 의미있는 것 추출
+                words = content.split()
+                meaningful_words = [
+                    word.strip(".,!?()[]{}\"'")
+                    for word in words 
+                    if len(word) > 2 and not word.isnumeric() and word.isalpha()
+                ]
+                context["keywords"].extend(meaningful_words[:3])
+            
+            # 메타데이터에서 추가 정보 추출
+            if "features" in result:
+                features = result["features"]
+                if isinstance(features, dict):
+                    # 키워드가 있다면 추가
+                    if "keywords" in features and isinstance(features["keywords"], list):
+                        context["keywords"].extend(features["keywords"][:3])
+                    
+                    # 엔티티가 있다면 추가
+                    if "entities" in features and isinstance(features["entities"], list):
+                        context["entities"].extend([e.get("text", e) if isinstance(e, dict) else e for e in features["entities"][:2]])
+        
+        # 중복 제거 및 빈도수 기반 정렬
+        context["keywords"] = list(dict.fromkeys(context["keywords"]))[:10]
+        context["entities"] = list(dict.fromkeys(context["entities"]))[:5]
+        context["concepts"] = list(dict.fromkeys(context["concepts"]))[:5]
+        
+        return context
 
     def _get_current_time_ms(self) -> int:
         """현재 시간을 밀리초로 반환"""
