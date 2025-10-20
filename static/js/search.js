@@ -128,7 +128,7 @@ class SearchController {
         if (searchResult.results && searchResult.results.length > 0) {
             searchResult.results.forEach((result, index) => {
                 const element = result.element;
-                const rrfScore = result.score.toFixed(6);
+                const hybridScore = result.score.toFixed(6);
                 const originalScore = result.original_score ? result.original_score.toFixed(6) : null;
                 
                 // 기본 메타데이터 정보
@@ -186,7 +186,7 @@ class SearchController {
                     `;
                 }
                 
-                let scoreDisplay = `<span class="score-tag rrf" data-tooltip="RRF (Reciprocal Rank Fusion): 여러 검색 알고리즘의 결과를 결합한 점수입니다. 텍스트 검색과 벡터 검색 결과를 융합하여 더 정확한 순위를 제공합니다.">RRF: ${rrfScore}</span>`;
+                let scoreDisplay = `<span class="score-tag hybrid" data-tooltip="Hybrid 점수: OpenSearch의 BM25 텍스트 검색과 벡터 유사도 검색을 결합한 하이브리드 점수입니다. 높을수록 쿼리와 더 관련이 높습니다.">Hybrid: ${hybridScore}</span>`;
                 if (originalScore) {
                     scoreDisplay += `<span class="score-tag opensearch" data-tooltip="OpenSearch 원본 점수: BM25 텍스트 유사도와 벡터 코사인 유사도를 결합한 하이브리드 검색 점수입니다. 높을수록 쿼리와 더 관련이 높습니다.">OpenSearch: ${originalScore}</span>`;
                 }
