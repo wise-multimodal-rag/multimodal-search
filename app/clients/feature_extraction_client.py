@@ -4,18 +4,20 @@ import httpx
 from loguru import logger
 
 from app.core.config import settings
+from app.core.security import security_manager
 
 
 class FeatureExtractionClient:
     def __init__(self):
         self.base_url = settings.feature_extraction_api_url
         self.timeout = 60.0
+        api_key = security_manager.get_api_key('MULTIMODAL_API_KEY') or settings.multimodal_api_key
         self.headers = {
-            "x-token": settings.multimodal_api_key,
+            "x-token": api_key,
             "Content-Type": "application/json"
         }
         self.file_headers = {
-            "x-token": settings.multimodal_api_key
+            "x-token": api_key
         }
 
     async def extract_text_summary(

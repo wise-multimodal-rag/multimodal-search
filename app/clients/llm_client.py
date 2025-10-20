@@ -4,12 +4,13 @@ import httpx
 from loguru import logger
 
 from app.core.config import settings
+from app.core.security import security_manager
 
 
 class LLMClient:
     def __init__(self):
         self.base_url = settings.litellm_url
-        self.api_key = settings.litellm_api_key
+        self.api_key = security_manager.get_api_key('LITELLM_API_KEY') or settings.litellm_api_key
         self.model = settings.litellm_model
         self.timeout = 60.0
 
@@ -49,7 +50,8 @@ class LLMClient:
                     else:
                         headers["Authorization"] = f"Bearer {self.api_key}"
 
-                logger.debug(f"LLM request payload keys: {list(payload.keys())}")
+                # 간결한 요청 로깅
+                logger.debug(f"LLM request: model={payload.get('model')}, messages={len(payload.get('messages', []))}, temp={payload.get('temperature')}")
 
                 response = await client.post(
                     f"{self.base_url}/v1/chat/completions",

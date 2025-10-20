@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from app.core.dependencies import get_search_service
+from app.core.validators import input_validator
 from app.models.opensearch import SearchResponse
 from app.services import SearchService
 
@@ -26,9 +27,66 @@ async def search_multimodal(
 ):
     """진정한 멀티모달 검색 엔드포인트 - 텍스트, 이미지, 비디오, 오디오 조합 입력"""
     try:
-        # 입력 검증
-        if not any([text_query, image, video, audio]):
-            raise HTTPException(status_code=400, detail="최소 하나의 입력(텍스트, 이미지, 비디오, 오디오)이 필요합니다")
+        # 고급 입력 검증
+        request_data = {
+            'text_query': text_query,
+            'max_results': max_results,
+            'include_chunk_meta': include_chunk_meta,
+            'include_media_meta': include_media_meta
+        }
+        
+        # 파일 데이터 추가 (필요한 경우)
+        if image:
+            import base64
+            image_content = await image.read()
+            request_data['image'] = {
+                'base64_data': base64.b64encode(image_content).decode('utf-8'),
+                'content_type': image.content_type or 'image/jpeg',
+                'filename': image.filename
+            }
+        
+        if video:
+            import base64
+            video_content = await video.read()
+            request_data['video'] = {
+                'base64_data': base64.b64encode(video_content).decode('utf-8'),
+                'content_type': video.content_type or 'video/mp4',
+                'filename': video.filename
+            }
+        
+        if audio:
+            import base64
+            audio_content = await audio.read()
+            request_data['audio'] = {
+                'base64_data': base64.b64encode(audio_content).decode('utf-8'),
+                'content_type': audio.content_type or 'audio/mp3',
+                'filename': audio.filename
+            }
+        
+        # 통합 검증 실행
+        try:
+            validated_data = input_validator.validate_search_request(request_data)
+        except Exception as validation_error:
+            logger.error(f"Input validation failed: {validation_error}")
+            # Log request data without base64 content
+            debug_data = {}
+            for key, value in request_data.items():
+                if key in ['image', 'video', 'audio'] and isinstance(value, dict):
+                    debug_data[key] = {
+                        'content_type': value.get('content_type'),
+                        'filename': value.get('filename'),
+                        'data_size': len(value.get('base64_data', '')) if 'base64_data' in value else 0
+                    }
+                else:
+                    debug_data[key] = value
+            logger.debug(f"Request data: {debug_data}")
+            raise
+        
+        # 검증된 데이터에서 값 추출
+        text_query = validated_data.get('text_query')
+        max_results = validated_data['max_results']
+        include_chunk_meta = validated_data['include_chunk_meta']
+        include_media_meta = validated_data['include_media_meta']
 
         # 입력 타입 로깅
         input_types = []
@@ -41,7 +99,6 @@ async def search_multimodal(
         if audio:
             input_types.append("audio")
 
-        logger.info(f"Multimodal search request with inputs: {', '.join(input_types)}")
 
         # 멀티모달 검색 수행
         result = await search_service.search_multimodal(
@@ -54,10 +111,10 @@ async def search_multimodal(
             max_results=max_results
         )
 
-        logger.info(f"Multimodal search completed: {result.total_hits} hits in {result.took_ms}ms")
         return result
 
-    except HTTPException:
+    except HTTPException as e:
+        logger.warning(f"HTTP {e.status_code} error in multimodal search: {e.detail}")
         raise
     except Exception as e:
         logger.error(f"Multimodal search failed: {e}")

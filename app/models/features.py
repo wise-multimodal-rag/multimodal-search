@@ -42,31 +42,3 @@ class MultimodalFeatures(BaseModel):
     video: Optional[VideoFeatures] = None
     audio: Optional[AudioFeatures] = None
 
-    def get_all_keywords(self) -> List[Dict[str, Any]]:
-        """Get all keywords from all modalities"""
-        all_keywords = []
-        
-        for feature in [self.text, self.video, self.audio]:
-            if feature and hasattr(feature, 'keywords') and feature.keywords:
-                all_keywords.extend(feature.keywords)
-                
-        return all_keywords
-
-    def get_all_entities(self) -> List[Dict[str, Any]]:
-        """Get all entities from all modalities"""
-        all_entities = []
-        
-        for feature in [self.text, self.audio]:
-            if feature and hasattr(feature, 'entities') and feature.entities:
-                all_entities.extend(feature.entities)
-                
-        return all_entities
-
-    def has_any_features(self) -> bool:
-        """Check if any features were extracted"""
-        return any([
-            self.text and any([self.text.keywords, self.text.entities, self.text.summary, self.text.classification]),
-            self.image and any([self.image.caption, self.image.objects]),
-            self.video and any([self.video.keywords, self.video.scenes, self.video.objects, self.video.activities, self.video.description]),
-            self.audio and any([self.audio.keywords, self.audio.entities, self.audio.sounds, self.audio.audio_type, self.audio.transcription])
-        ])

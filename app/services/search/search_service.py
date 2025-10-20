@@ -58,7 +58,6 @@ class SearchService:
             max_results: int = 10
     ) -> SearchResponse:
         """멀티모달 검색 오케스트레이션"""
-        logger.info("Processing multimodal search request")
         start_time = self._get_current_time_ms()
 
         try:
@@ -67,10 +66,8 @@ class SearchService:
                 raise ValueError("최소 하나의 입력(텍스트, 이미지, 비디오, 오디오)이 필요합니다")
 
             input_types = self.input_processor.get_input_types(text_query, image_file, video_file, audio_file)
-            logger.info(f"Multimodal search request with inputs: {', '.join(input_types)}")
 
             # Step 1: 멀티모달 입력 처리
-            logger.info("[Step 1: 멀티모달 입력 처리] Processing multimodal inputs")
             modalities_data = await self.input_processor.process_multimodal_inputs(
                 text_query, image_file, video_file, audio_file
             )
@@ -79,12 +76,10 @@ class SearchService:
             query_analysis, expanded_queries = await self._expand_and_analyze_query(text_query)
 
             # Step 3: 멀티모달 특징 추출
-            logger.info("[Step 3: 멀티모달 특징 추출] Extracting multimodal features")
             extracted_features = await self.feature_extractor.extract_features(modalities_data,
                                                                                query_analysis["selected_element_types"])
 
             # Step 4: 임베딩 생성
-            logger.info("[Step 4: 임베딩 생성] Generating embeddings")
             embeddings = await self.embedding_service.generate_multimodal_embeddings(
                 modalities_data, extracted_features
             )
@@ -95,7 +90,6 @@ class SearchService:
             )
 
             # Step 6: 결과 enrichment
-            logger.info("[Step 6: 결과 enrichment] Enriching search results")
             enriched_results = await self.result_enricher.enrich_search_results(
                 search_results, include_chunk_meta, include_media_meta
             )
@@ -112,7 +106,6 @@ class SearchService:
 
     async def _expand_and_analyze_query(self, text_query):
         """Step 2: 쿼리 확장 및 의도 분석"""
-        logger.info("[Step 2: 쿼리 확장 및 의도 분석] Expanding query and analyzing intent")
 
         if text_query:
             # 쿼리 확장
@@ -120,75 +113,35 @@ class SearchService:
             # 의도 분석
             query_analysis = await self._analyze_query_intent(expanded_queries, expansion_result)
         else:
-            logger.warning("[Step 2: 쿼리 분석] No text query provided. Using all element types as fallback.")
             query_analysis = self.query_analyzer.create_default_query_analysis(self.available_element_types)
             expanded_queries = ["multimodal search"]
-
-        selected_element_types = query_analysis["selected_element_types"]
-        logger.info(f"[Step 2-2: 의도 분석] Selected element types: {selected_element_types}")
-        logger.info(f"[Step 2: 완료] Final expanded queries: {expanded_queries}")
 
         return query_analysis, expanded_queries
 
     async def _expand_query(self, text_query):
         """쿼리 확장 수행"""
-        logger.info(f"[Step 2-1: 쿼리 확장] Expanding query: '{text_query}'")
         expansion_result = await self.query_analyzer.expand_query(text_query)
 
         if expansion_result and expansion_result.get("final_queries"):
             final_queries = expansion_result["final_queries"][:3]  # 상위 3개 사용
             expanded_queries = [q["query"] for q in final_queries]
 
-            self._log_expansion_results(final_queries, expansion_result)
+            logger.info(f"Query expanded: {len(final_queries)} variants generated")
             return expanded_queries, expansion_result
         else:
-            logger.warning(f"[Step 2-1: 쿼리 확장] ❌ Query expansion failed, using original query: '{text_query}'")
+            logger.warning(f"Query expansion failed, using original: '{text_query}'")
             return [text_query], None
 
-    def _log_expansion_results(self, final_queries, expansion_result):
-        """쿼리 확장 결과 로깅"""
-        logger.info(f"[Step 2-1: 쿼리 확장] ✅ Generated {len(final_queries)} expanded queries:")
-        for i, query_info in enumerate(final_queries, 1):
-            priority = query_info.get("priority", i)
-            confidence = query_info.get("confidence", 0.0)
-            strategy = query_info.get("search_strategy", "unknown")
-            query_text = query_info.get("query", "")
-            logger.info(f"  [{priority}] '{query_text}' (신뢰도: {confidence:.2f}, 전략: {strategy})")
-
-        # 적용된 기법 로깅
-        applied_techniques = expansion_result.get("applied_techniques", [])
-        if applied_techniques:
-            logger.info(f"[Step 2-1: 적용 기법] 🔧 {', '.join(applied_techniques)}")
-
-        # 분해 적용 여부 로깅
-        decomposition = expansion_result.get("decomposition", {})
-        if decomposition.get("applied", False):
-            main_concepts = decomposition.get("main_concepts", [])
-            logger.info(f"[Step 2-1: 쿼리 분해] ✂️  주요 개념: {', '.join(main_concepts)}")
-        else:
-            reason = decomposition.get("reason", "분해 불필요")
-            logger.info(f"[Step 2-1: 쿼리 분해] ⏭️  건너뜀 - {reason}")
-
-        # 쿼리 분석 정보 로깅
-        if expansion_result.get("query_analysis"):
-            analysis = expansion_result["query_analysis"]
-            intent = analysis.get("intent", "")
-            complexity = analysis.get("complexity", "")
-            domain = analysis.get("domain", "")
-            if intent or complexity or domain:
-                logger.info(f"[Step 2-1: 쿼리 분석] 📝 의도: {intent}, 복잡도: {complexity}, 도메인: {domain}")
 
     async def _analyze_query_intent(self, expanded_queries, expansion_result):
         """의도 분석 수행"""
-        logger.info("[Step 2-2: 의도 분석] Analyzing intent based on expanded queries")
         primary_query = expanded_queries[0] if expanded_queries else "multimodal search"
 
         query_analysis = await self.query_analyzer.analyze_query_intent(
             primary_query, self.available_element_types)
 
         if not query_analysis:
-            logger.warning(
-                f"[Step 2-2: 의도 분석] Query analysis failed for expanded query: '{primary_query}'. Falling back to default behavior.")
+            logger.warning(f"Query analysis failed for: '{primary_query}'. Using default.")
             query_analysis = self.query_analyzer.create_default_query_analysis(
                 self.available_element_types, "Query analysis failed"
             )
@@ -201,21 +154,53 @@ class SearchService:
         return query_analysis
 
     async def _execute_expanded_search(self, expanded_queries, selected_element_types, embeddings, max_results):
-        """Step 5: 확장 쿼리 검색 실행"""
-        logger.info(f"[Step 5: OpenSearch 검색 실행] Executing search with {len(expanded_queries)} expanded queries")
+        """Step 5: 확장 쿼리 검색 실행 (병렬 처리 최적화)"""
 
-        # 각 확장된 쿼리로 검색 수행
-        all_search_results = []
-        for i, expanded_query in enumerate(expanded_queries):
-            search_result = await self._execute_single_query_search(
+        # 병렬로 각 확장된 쿼리 검색 수행
+        import asyncio
+        search_tasks = [
+            self._execute_single_query_search(
                 expanded_query, i, len(expanded_queries), selected_element_types, embeddings, max_results
             )
-            all_search_results.append(search_result)
+            for i, expanded_query in enumerate(expanded_queries)
+        ]
+        
+        # 모든 검색을 병렬로 실행
+        all_search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
+        
+        # 예외가 발생한 결과는 필터링하고 상세 로깅
+        valid_results = []
+        failed_queries = []
+        
+        for i, result in enumerate(all_search_results):
+            if isinstance(result, Exception):
+                query = expanded_queries[i] if i < len(expanded_queries) else f"query_{i}"
+                logger.warning(f"Search query {i+1} '{query}' failed: {type(result).__name__}: {result}")
+                failed_queries.append((i+1, query, str(result)))
+            elif result is None:
+                query = expanded_queries[i] if i < len(expanded_queries) else f"query_{i}"
+                logger.warning(f"Search query {i+1} '{query}' returned no results")
+                failed_queries.append((i+1, query, "No results"))
+            else:
+                valid_results.append(result)
+
+        # 실패 통계 로깅
+        if failed_queries:
+            logger.warning(f"Search failures: {len(failed_queries)}/{len(expanded_queries)} queries failed")
+        
+        # 유효한 결과가 없는 경우 처리
+        if not valid_results:
+            logger.error("All search queries failed")
+            return {
+                'results': [],
+                'total_hits': 0,
+                'max_score': 0.0,
+                'took_ms': 0
+            }
 
         # 결과 통합
-        combined_results = self._combine_search_results(all_search_results, max_results)
-        self._log_final_search_results(combined_results, len(expanded_queries))
-
+        combined_results = self._combine_search_results(valid_results, max_results)
+        
         return combined_results
 
     async def _execute_single_query_search(self, expanded_query, query_index, total_queries,
@@ -224,8 +209,6 @@ class SearchService:
         weight = 1.0 - (query_index * 0.1)  # 0.1씩 감소
         search_size = max_results // total_queries + (max_results % total_queries if query_index == 0 else 0)
 
-        logger.info(
-            f"[Step 5: 검색 {query_index + 1}/{total_queries}] 🔍 Query: '{expanded_query}' (가중치: {weight:.1f}, size: {search_size})")
 
         search_results = await self.opensearch_service.search_elements(
             query=expanded_query,
@@ -236,13 +219,6 @@ class SearchService:
             filters=None
         )
 
-        # 검색 결과 로깅
-        if search_results and isinstance(search_results, dict):
-            total_hits = search_results.get('total_hits', 0)
-            max_score = search_results.get('max_score', 0.0)
-            results_count = len(search_results.get('results', []))
-            logger.info(
-                f"[Step 5: 검색 {query_index + 1} 결과] 📊 {results_count}개 결과 (총 {total_hits}개 히트, 최고점수: {max_score:.4f})")
 
         # 가중치 적용
         self._apply_query_weight(search_results, weight, expanded_query)
@@ -260,8 +236,6 @@ class SearchService:
                     result['weight_applied'] = weight  # 적용된 가중치 기록
                     weighted_count += 1
 
-            if weighted_count > 0:
-                logger.info(f"[Step 5: 가중치 적용] ⚖️  {weighted_count}개 결과에 가중치 {weight:.1f} 적용 완료")
 
     def _combine_search_results(self, all_search_results, max_results):
         """검색 결과 통합"""
@@ -296,41 +270,34 @@ class SearchService:
                 search_results['total_hits'] = len(unique_results)
                 if unique_results:
                     search_results['max_score'] = max(r.get('score', 0) for r in unique_results)
+            else:
+                # search_results가 None이거나 잘못된 형태인 경우 기본 구조 생성
+                search_results = {
+                    'results': unique_results[:max_results],
+                    'total_hits': len(unique_results),
+                    'max_score': max(r.get('score', 0) for r in unique_results) if unique_results else 0.0,
+                    'took_ms': 0
+                }
+
+        # search_results가 여전히 None인 경우 기본 구조 반환
+        if not search_results:
+            search_results = {
+                'results': [],
+                'total_hits': 0,
+                'max_score': 0.0,
+                'took_ms': 0
+            }
 
         return search_results
 
-    def _log_final_search_results(self, search_results, query_count):
-        """최종 검색 결과 로깅"""
-        if search_results and isinstance(search_results, dict):
-            final_total = search_results.get('total_hits', 0)
-            final_count = len(search_results.get('results', []))
-            final_max_score = search_results.get('max_score', 0.0)
-            logger.info(
-                f"[Step 5: 검색 완료] 🎯 통합 완료: {final_count}개 최종 결과 (총 히트: {final_total}, 최고점수: {final_max_score:.4f})")
-
-            # 상위 3개 결과의 쿼리 사용 현황 로깅
-            if 'results' in search_results and search_results['results']:
-                logger.info("[Step 5: 상위 결과] 📋 Top 3 results:")
-                for idx, result in enumerate(search_results['results'][:3], 1):
-                    if isinstance(result, dict):
-                        element_id = result.get('element_id', result.get('id', 'unknown'))
-                        score = result.get('score', 0.0)
-                        query_used = result.get('query_used', 'unknown')[:30] + '...' if len(
-                            result.get('query_used', '')) > 30 else result.get('query_used', 'unknown')
-                        weight = result.get('weight_applied', 1.0)
-                        logger.info(f"  {idx}. {element_id} (점수: {score:.4f}, 가중치: {weight:.1f}, 쿼리: '{query_used}')")
-        else:
-            logger.warning(f"[Step 5: 검색 완료] ⚠️  No valid search results from {query_count} queries")
 
     def _generate_search_response(self, text_query, input_types, expanded_queries, query_analysis,
                                   enriched_results, search_results, start_time):
         """Step 7: 응답 생성"""
-        logger.info("[Step 7: 응답 생성] Generating response")
         end_time = self._get_current_time_ms()
         stats = self.result_enricher.calculate_search_statistics(search_results)
 
-        logger.info(
-            f"[Step 7: 응답 생성] Multimodal search completed: {stats['total_hits']} hits in {end_time - start_time}ms")
+        logger.info(f"Search completed: {stats['total_hits']} hits in {end_time - start_time}ms")
 
         # 응답에 확장된 쿼리 정보 포함
         display_query = text_query or f"Multimodal search ({', '.join(input_types)})"

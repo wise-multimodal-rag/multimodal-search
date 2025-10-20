@@ -122,9 +122,16 @@ class OpenSearchService:
             max_score = response["hits"]["max_score"] if response["hits"]["hits"] else 0.0
             logger.info(f"[{','.join(element_types)}] unified query → {hits_count} hits (max: {max_score:.4f})")
 
-            # Convert to standard format
+            # Convert to standard format (score 정보 보존)
+            results = []
+            for hit in response["hits"]["hits"]:
+                result_item = hit["_source"].copy()
+                result_item["score"] = hit.get("_score", 0.0)
+                result_item["original_score"] = hit.get("_original_score")
+                results.append(result_item)
+            
             return {
-                "results": [hit["_source"] for hit in response["hits"]["hits"]],
+                "results": results,
                 "total_hits": response["hits"]["total"]["value"],
                 "max_score": max_score,
                 "took_ms": response["took"]
