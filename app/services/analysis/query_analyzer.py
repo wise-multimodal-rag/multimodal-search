@@ -77,3 +77,32 @@ class QueryAnalyzer:
             "reasoning": f"{reason}, using all element types",
             "confidence": 0.5
         }
+
+    async def expand_query(
+        self, 
+        query: str, 
+        context: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """텍스트 쿼리를 확장하여 더 효과적인 검색 쿼리들을 생성.
+        
+        Query Decomposition, Query Rewriting, Semantic Expansion을 동시에 수행
+        
+        Args:
+            query: 원본 사용자 쿼리
+            context: 검색 컨텍스트 정보 (도메인, 사용자 유형 등)
+            
+        Returns:
+            확장된 쿼리들과 분석 결과를 포함한 딕셔너리
+        """
+        try:
+            result = await self.llm_client.expand_query(query, context)
+            if result:
+                logger.info(f"Query expansion successful for: '{query[:50]}...'")
+                return result
+            else:
+                logger.warning("LLM query expansion returned None, using original query only")
+                return None
+        except Exception as e:
+            logger.error(f"Query expansion failed: {e}, using original query only")
+            return None
+

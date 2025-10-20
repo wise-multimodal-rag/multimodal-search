@@ -99,22 +99,22 @@ def get_elements_mapping() -> Dict[str, Any]:
                     "properties": {
                         "text": {
                             "type": "knn_vector",
-                            "dimension": 384,
+                            "dimension": 1152,
                             "method": {"name": "hnsw", "space_type": "cosinesimil"}
                         },
                         "image": {
                             "type": "knn_vector",
-                            "dimension": 512,
+                            "dimension": 1152,
                             "method": {"name": "hnsw", "space_type": "cosinesimil"}
                         },
                         "video": {
                             "type": "knn_vector",
-                            "dimension": 512,
+                            "dimension": 1152,
                             "method": {"name": "hnsw", "space_type": "cosinesimil"}
                         },
                         "audio": {
                             "type": "knn_vector",
-                            "dimension": 512,
+                            "dimension": 1152,
                             "method": {"name": "hnsw", "space_type": "cosinesimil"}
                         }
                     }

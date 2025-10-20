@@ -22,7 +22,8 @@ class InterceptHandler(logging.Handler):
             "Calling on_header_end",
             "Calling on_headers_finished",
             "Calling on_part_data",
-            "Calling on_part_end"
+            "Calling on_part_end",
+            "Calling on_end with no data"
         ]):
             return
 

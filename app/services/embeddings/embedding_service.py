@@ -33,43 +33,66 @@ class EmbeddingService:
         embeddings = {}
 
         try:
+            # 병렬 임베딩 생성을 위한 태스크 준비
+            embedding_tasks = []
+            task_names = []
+            import base64
+
             # 1. 텍스트 임베딩
             if "text" in modalities_data:
                 text_query = modalities_data["text"]["query"]
-                text_embedding = await self.embedding_client.get_text_embedding(text_query)
-                if text_embedding:
-                    embeddings["text"] = text_embedding
+                embedding_tasks.append(self.embedding_client.get_text_embedding(text_query))
+                task_names.append("text")
 
             # 2. 이미지 임베딩
             if "image" in modalities_data and "base64_data" in modalities_data["image"]:
-                import base64
-                image_bytes = base64.b64decode(modalities_data["image"]["base64_data"])
-                image_embedding = await self.embedding_client.get_image_embedding(image_bytes)
-                if image_embedding:
-                    embeddings["image"] = image_embedding
+                try:
+                    image_bytes = base64.b64decode(modalities_data["image"]["base64_data"])
+                    embedding_tasks.append(self.embedding_client.get_image_embedding(image_bytes))
+                    task_names.append("image")
+                except Exception as e:
+                    logger.warning(f"Failed to decode image data: {e}")
 
             # 3. 비디오 임베딩 (첫 프레임 또는 키프레임 사용)
             if "video" in modalities_data and "base64_data" in modalities_data["video"]:
-                import base64
-                video_bytes = base64.b64decode(modalities_data["video"]["base64_data"])
-                video_embedding = await self.embedding_client.get_video_embedding(video_bytes)
-                if video_embedding:
-                    embeddings["video"] = video_embedding
+                try:
+                    video_bytes = base64.b64decode(modalities_data["video"]["base64_data"])
+                    embedding_tasks.append(self.embedding_client.get_video_embedding(video_bytes))
+                    task_names.append("video")
+                except Exception as e:
+                    logger.warning(f"Failed to decode video data: {e}")
 
             # 4. 오디오 임베딩
             if "audio" in modalities_data and "base64_data" in modalities_data["audio"]:
-                import base64
-                audio_bytes = base64.b64decode(modalities_data["audio"]["base64_data"])
-                audio_embedding = await self.embedding_client.get_audio_embedding(audio_bytes)
-                if audio_embedding:
-                    embeddings["audio"] = audio_embedding
+                try:
+                    audio_bytes = base64.b64decode(modalities_data["audio"]["base64_data"])
+                    embedding_tasks.append(self.embedding_client.get_audio_embedding(audio_bytes))
+                    task_names.append("audio")
+                except Exception as e:
+                    logger.warning(f"Failed to decode audio data: {e}")
 
-            # 5. 추출된 특징들에서 임베딩 생성
+            # 병렬 실행 및 결과 처리
+            if embedding_tasks:
+                import asyncio
+                embedding_results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
+                
+                for i, result in enumerate(embedding_results):
+                    task_name = task_names[i]
+                    if isinstance(result, Exception):
+                        logger.warning(f"Embedding generation failed for {task_name}: {result}")
+                    elif result:
+                        embeddings[task_name] = result
+
+            # 5. 추출된 특징들에서 임베딩 생성 (이미 병렬 처리됨)
             if features:
-                feature_embeddings = await self._generate_feature_embeddings(features)
-                embeddings.update(feature_embeddings)
+                try:
+                    feature_embeddings = await self._generate_feature_embeddings(features)
+                    embeddings.update(feature_embeddings)
+                except Exception as e:
+                    logger.warning(f"Feature embedding generation failed: {e}")
 
-            logger.debug(f"Generated embeddings for: {list(embeddings.keys())}")
+            logger.info(f"Generated embeddings: {len(embeddings)} successful - {list(embeddings.keys())}")
+            
             return embeddings
 
         except Exception as e:
@@ -77,84 +100,84 @@ class EmbeddingService:
             return {}
 
     async def _generate_feature_embeddings(self, features: MultimodalFeatures) -> Dict[str, List[float]]:
-        """추출된 특징들에서 임베딩 생성"""
-        feature_embeddings = {}
+        """추출된 특징들에서 임베딩 생성 (병렬 처리 최적화)"""
+        import asyncio
+        
+        embedding_tasks = []
+        task_keys = []
 
-        try:
-            # 텍스트 특징 임베딩
-            if features.text:
-                if features.text.summary:
-                    summary_embedding = await self.embedding_client.get_text_embedding(features.text.summary)
-                    if summary_embedding:
-                        feature_embeddings["text_summary"] = summary_embedding
+        # 텍스트 특징 임베딩 태스크들 준비
+        if features.text:
+            if features.text.summary:
+                embedding_tasks.append(self.embedding_client.get_text_embedding(features.text.summary))
+                task_keys.append("text_summary")
 
-                # 키워드들을 텍스트로 결합하여 임베딩
-                if features.text.keywords:
-                    keywords_text = self._extract_keywords_text(features.text.keywords)
-                    if keywords_text:
-                        keywords_embedding = await self.embedding_client.get_text_embedding(keywords_text)
-                        if keywords_embedding:
-                            feature_embeddings["text_keywords"] = keywords_embedding
+            # 키워드들을 텍스트로 결합하여 임베딩
+            if features.text.keywords:
+                keywords_text = self._extract_keywords_text(features.text.keywords)
+                if keywords_text:
+                    embedding_tasks.append(self.embedding_client.get_text_embedding(keywords_text))
+                    task_keys.append("text_keywords")
 
-                # 엔티티들을 텍스트로 결합하여 임베딩
-                if features.text.entities:
-                    entities_text = self._extract_entities_text(features.text.entities)
-                    if entities_text:
-                        entities_embedding = await self.embedding_client.get_text_embedding(entities_text)
-                        if entities_embedding:
-                            feature_embeddings["text_entities"] = entities_embedding
+            # 엔티티들을 텍스트로 결합하여 임베딩
+            if features.text.entities:
+                entities_text = self._extract_entities_text(features.text.entities)
+                if entities_text:
+                    embedding_tasks.append(self.embedding_client.get_text_embedding(entities_text))
+                    task_keys.append("text_entities")
 
-            # 이미지 특징 임베딩
-            if features.image:
-                if features.image.caption:
-                    caption_embedding = await self.embedding_client.get_text_embedding(features.image.caption)
-                    if caption_embedding:
-                        feature_embeddings["image_caption"] = caption_embedding
+        # 이미지 특징 임베딩 태스크들 준비
+        if features.image:
+            if features.image.caption:
+                embedding_tasks.append(self.embedding_client.get_text_embedding(features.image.caption))
+                task_keys.append("image_caption")
 
-                if features.image.objects:
-                    objects_text = self._extract_objects_text(features.image.objects)
-                    if objects_text:
-                        objects_embedding = await self.embedding_client.get_text_embedding(objects_text)
-                        if objects_embedding:
-                            feature_embeddings["image_objects"] = objects_embedding
+            if features.image.objects:
+                objects_text = self._extract_objects_text(features.image.objects)
+                if objects_text:
+                    embedding_tasks.append(self.embedding_client.get_text_embedding(objects_text))
+                    task_keys.append("image_objects")
 
-            # 비디오 특징 임베딩
-            if features.video:
-                if features.video.description:
-                    video_desc_embedding = await self.embedding_client.get_text_embedding(features.video.description)
-                    if video_desc_embedding:
-                        feature_embeddings["video_description"] = video_desc_embedding
+        # 비디오 특징 임베딩 태스크들 준비
+        if features.video:
+            if features.video.description:
+                embedding_tasks.append(self.embedding_client.get_text_embedding(features.video.description))
+                task_keys.append("video_description")
 
-                if features.video.scenes:
-                    scenes_text = " ".join(features.video.scenes)
-                    scenes_embedding = await self.embedding_client.get_text_embedding(scenes_text)
-                    if scenes_embedding:
-                        feature_embeddings["video_scenes"] = scenes_embedding
+            if features.video.scenes:
+                scenes_text = " ".join(features.video.scenes)
+                embedding_tasks.append(self.embedding_client.get_text_embedding(scenes_text))
+                task_keys.append("video_scenes")
 
-                if features.video.activities:
-                    activities_text = " ".join(features.video.activities)
-                    activities_embedding = await self.embedding_client.get_text_embedding(activities_text)
-                    if activities_embedding:
-                        feature_embeddings["video_activities"] = activities_embedding
+            if features.video.activities:
+                activities_text = " ".join(features.video.activities)
+                embedding_tasks.append(self.embedding_client.get_text_embedding(activities_text))
+                task_keys.append("video_activities")
 
-            # 오디오 특징 임베딩
-            if features.audio:
-                if features.audio.transcription:
-                    transcription_embedding = await self.embedding_client.get_text_embedding(
-                        features.audio.transcription)
-                    if transcription_embedding:
-                        feature_embeddings["audio_transcription"] = transcription_embedding
+        # 오디오 특징 임베딩 태스크들 준비
+        if features.audio:
+            if features.audio.transcription:
+                embedding_tasks.append(self.embedding_client.get_text_embedding(features.audio.transcription))
+                task_keys.append("audio_transcription")
 
-                if features.audio.sounds:
-                    sounds_text = " ".join(features.audio.sounds)
-                    sounds_embedding = await self.embedding_client.get_text_embedding(sounds_text)
-                    if sounds_embedding:
-                        feature_embeddings["audio_sounds"] = sounds_embedding
+            if features.audio.sounds:
+                sounds_text = " ".join(features.audio.sounds)
+                embedding_tasks.append(self.embedding_client.get_text_embedding(sounds_text))
+                task_keys.append("audio_sounds")
 
+        # 모든 임베딩 태스크를 병렬로 실행
+        if embedding_tasks:
+            embedding_results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
+            
+            feature_embeddings = {}
+            for i, result in enumerate(embedding_results):
+                if isinstance(result, Exception):
+                    logger.warning(f"Embedding generation failed for {task_keys[i]}: {result}")
+                elif result:
+                    feature_embeddings[task_keys[i]] = result
+            
             return feature_embeddings
-
-        except Exception as e:
-            logger.error(f"Feature embedding generation failed: {e}")
+        else:
             return {}
 
     def _extract_keywords_text(self, keywords_data: Union[List[Dict[str, Any]], Dict[str, Any]]) -> str:
@@ -208,61 +231,3 @@ class EmbeddingService:
         except Exception:
             return ""
 
-    async def generate_enhanced_embeddings(
-            self,
-            query: str,
-            features: MultimodalFeatures
-    ) -> Dict[str, List[float]]:
-        """특징을 활용한 향상된 임베딩 생성"""
-        embeddings = {}
-
-        try:
-            # 기본 텍스트 임베딩 생성
-            text_embedding = await self.embedding_client.get_text_embedding(query)
-            if text_embedding:
-                embeddings["text"] = text_embedding
-
-
-            logger.debug(f"Generated embeddings for modalities: {list(embeddings.keys())}")
-            return embeddings
-
-        except Exception as e:
-            logger.error(f"Embedding generation failed: {e}")
-            return {}
-
-
-    def select_for_element_type(
-        self, 
-        element_type: str, 
-        embeddings: Optional[Dict[str, List[float]]]
-    ) -> Optional[Dict[str, List[float]]]:
-        """Select appropriate embedding based on element_type"""
-        if not embeddings:
-            return None
-        
-        # Select embedding based on element_type with fallback priority
-        if element_type in self.text_element_types:
-            return self._select_with_fallback(embeddings, ["text", "image", "video", "audio"])
-        elif element_type in self.image_element_types:
-            return self._select_with_fallback(embeddings, ["image", "text", "video", "audio"])
-        elif element_type in self.video_element_types:
-            return self._select_with_fallback(embeddings, ["video", "image", "text", "audio"])
-        elif element_type in self.audio_element_types:
-            return self._select_with_fallback(embeddings, ["audio", "text", "image", "video"])
-        
-        # If no match, return first available embedding
-        for key, value in embeddings.items():
-            return {key: value}
-        
-        return None
-    
-    def _select_with_fallback(
-        self, 
-        embeddings: Dict[str, List[float]], 
-        priority_order: List[str]
-    ) -> Optional[Dict[str, List[float]]]:
-        """Select embedding with fallback priority"""
-        for key in priority_order:
-            if key in embeddings:
-                return {key: embeddings[key]}
-        return None
