@@ -107,7 +107,6 @@ class SearchService:
 
     async def _expand_and_analyze_query(self, text_query):
         """Step 2: 쿼리 확장 및 의도 분석"""
-
         if text_query:
             # 쿼리 확장
             expanded_queries, expansion_result = await self._expand_query(text_query)
@@ -156,7 +155,6 @@ class SearchService:
 
     async def _execute_expanded_search(self, expanded_queries, selected_element_types, embeddings, max_results, expansion_result=None):
         """Step 5: 확장 쿼리 검색 실행 (순차/병렬 처리 최적화)"""
-        
         # LLM 결과에서 의존성 확인
         has_dependency = expansion_result.get("has_dependency", False) if expansion_result else False
         

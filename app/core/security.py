@@ -3,6 +3,7 @@
 import os
 import secrets
 from typing import Optional
+
 from loguru import logger
 
 
@@ -17,7 +18,7 @@ class SecurityManager:
         """Load API keys from settings object."""
         # Import here to avoid circular imports
         from app.core.config import settings
-        
+
         # API 키 검증 설정
         key_configs = {
             'MULTIMODAL_API_KEY': {

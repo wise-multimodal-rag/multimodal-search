@@ -83,8 +83,8 @@ class QueryAnalyzer:
         query: str, 
         context: Optional[Dict[str, Any]] = None
     ) -> Optional[Dict[str, Any]]:
-        """
-        텍스트 쿼리를 확장하여 더 효과적인 검색 쿼리들을 생성
+        """텍스트 쿼리를 확장하여 더 효과적인 검색 쿼리들을 생성.
+        
         Query Decomposition, Query Rewriting, Semantic Expansion을 동시에 수행
         
         Args:

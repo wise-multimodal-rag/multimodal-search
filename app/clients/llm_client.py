@@ -225,8 +225,7 @@ class LLMClient:
             query: str,
             context: Optional[Dict[str, Any]] = None
     ) -> Optional[Dict[str, Any]]:
-        """
-        Comprehensive query expansion using Query Decomposition, Query Rewriting, and Semantic Expansion
+        """Comprehensive query expansion using Query Decomposition, Query Rewriting, and Semantic Expansion
         
         Args:
             query: Original user query

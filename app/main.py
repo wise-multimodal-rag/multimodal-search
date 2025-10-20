@@ -8,9 +8,9 @@ from loguru import logger
 
 from app.api.routes import search
 from app.core.config import settings
-from app.core.dependencies import get_opensearch_service  
-from app.core.logging import setup_logging
+from app.core.dependencies import get_opensearch_service
 from app.core.exceptions import ExceptionHandlerMiddleware
+from app.core.logging import setup_logging
 
 
 @asynccontextmanager
@@ -84,8 +84,10 @@ async def health_check():
 @app.get("/health/external-apis")
 async def external_apis_health_check():
     """Check health of all external APIs."""
-    from app.core.dependencies import get_embedding_client, get_feature_extraction_client, get_llm_client
     import httpx
+
+    from app.core.dependencies import (get_embedding_client,
+                                       get_feature_extraction_client, get_llm_client)
     
     results = {}
     

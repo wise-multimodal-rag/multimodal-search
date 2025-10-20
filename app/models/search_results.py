@@ -1,6 +1,7 @@
 """Search result data structures and types."""
 
 from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -36,6 +37,7 @@ class SearchResultItem(BaseModel):
     
     # 추가 메타데이터는 모델에 의해 자동 처리됨
     class Config:
+        """Pydantic configuration for SearchResultItem."""
         extra = "allow"  # 추가 필드 허용
 
 

@@ -1,13 +1,14 @@
 """Custom exceptions and error handling middleware for the multimodal search application."""
 
-import traceback
-from typing import Any, Dict, Optional
-from fastapi import Request, HTTPException, status
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-from loguru import logger
 import asyncio
 import time
+import traceback
+from typing import Any, Dict, Optional
+
+from fastapi import HTTPException, Request, status
+from fastapi.responses import JSONResponse
+from loguru import logger
+from starlette.middleware.base import BaseHTTPMiddleware
 
 
 class MultimodalSearchException(Exception):
@@ -56,7 +57,7 @@ class CircuitBreakerException(MultimodalSearchException):
 class CircuitBreaker:
     """Circuit breaker pattern implementation for external services."""
     
-    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60, expected_exception: type = Exception):
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60, expected_exception: type[Exception] = Exception):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.expected_exception = expected_exception
@@ -79,7 +80,7 @@ class CircuitBreaker:
             return result
         except self.expected_exception as e:
             self._on_failure()
-            raise e
+            raise
     
     def _should_attempt_reset(self) -> bool:
         """Check if enough time has passed to attempt reset."""
@@ -132,7 +133,8 @@ class RetryHandler:
                 logger.warning(f"Function {func.__name__} failed (attempt {attempt + 1}), retrying in {delay}s: {e}")
                 await asyncio.sleep(delay)
         
-        raise last_exception
+        if last_exception:
+            raise last_exception
 
 
 class ExceptionHandlerMiddleware(BaseHTTPMiddleware):
