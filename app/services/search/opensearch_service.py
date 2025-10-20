@@ -10,14 +10,14 @@ from app.services.embeddings.embedding_service import EmbeddingService
 
 
 class OpenSearchService:
-    def __init__(self):
+    def __init__(self, embedding_service: EmbeddingService = None):
         self.client: Optional[AsyncOpenSearch] = None
         self.media_meta_index = "multimodal_rag_media"
         self.chunk_meta_index = "multimodal_rag_chunk"
         self.elements_index = "multimodal_rag_element"
 
-        # Initialize helper components
-        self.embedding_service = EmbeddingService()
+        # Initialize helper components with dependency injection
+        self.embedding_service = embedding_service or EmbeddingService()
 
     async def initialize(self):
         """Initialize OpenSearch client"""
