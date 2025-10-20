@@ -204,9 +204,7 @@ app/
 │   ├── config.py        # 설정 관리
 │   ├── logging.py       # 로깅 시스템 (스마트 필터링)
 │   ├── security.py      # 🆕 보안 관리 (API 키 마스킹, 보안 유틸리티)
-│   ├── circuit_breaker.py # 🆕 회로 차단기 패턴
-│   ├── retry_handler.py # 🆕 재시도 핸들러 (지수 백오프)
-│   ├── exceptions.py    # 🆕 예외 처리 미들웨어
+│   ├── exceptions.py    # 🆕 예외 처리 (Circuit Breaker, Retry Handler, 미들웨어)
 │   ├── validators.py    # 🆕 강화된 입력 검증 (파일 시그니처, XSS 방지)
 │   ├── dependencies.py  # 의존성 주입
 │   └── index_mappings.py # OpenSearch 인덱스 매핑
