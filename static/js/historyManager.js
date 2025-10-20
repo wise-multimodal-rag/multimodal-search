@@ -41,9 +41,10 @@ class HistoryManager {
             timestamp: Date.now(),
             searchResult: searchResult ? {
                 total_hits: searchResult.total_hits,
-                took_ms: searchResult.took_ms,
+                took_ms: Math.round(searchResult.took_ms) || 0, // 소수점 제거
                 element_types_used: searchResult.element_types_used,
-                results: searchResult.results?.slice(0, 20) || [] // 최대 20개 결과만 저장
+                results: searchResult.results?.slice(0, 20) || [], // 최대 20개 결과만 저장
+                searchProcess: searchResult.searchProcess || null // 진행 과정 데이터 저장
             } : null
         };
 
@@ -122,10 +123,16 @@ class HistoryManager {
             historyItem.className = 'search-history-item';
             historyItem.dataset.historyId = entry.id;
             
-            const timeText = entry.searchResult ? `${entry.searchResult.took_ms}ms` : '-';
+            const timeText = entry.searchResult && entry.searchResult.took_ms !== undefined 
+                ? `${Math.round(entry.searchResult.took_ms)}ms` 
+                : '-';
+            
+            // 진행 과정 데이터가 있는지 확인
+            const hasProcessData = entry.searchResult && entry.searchResult.searchProcess && entry.searchResult.searchProcess.length > 0;
+            const processIcon = hasProcessData ? '<span class="process-icon" title="검색 진행 과정 포함">⚙️</span>' : '';
             
             historyItem.innerHTML = `
-                <div class="search-history-query">${entry.query}</div>
+                <div class="search-history-query">${entry.query} ${processIcon}</div>
                 <div class="search-history-meta">
                     <div class="search-history-modality">${entry.modality}</div>
                     <div class="search-history-time">${timeText}</div>
@@ -167,14 +174,153 @@ class HistoryManager {
     }
     
     restoreSearchResult(searchResult) {
+        console.log('restoreSearchResult called with:', searchResult);
+        
         // 검색 결과 복원
         if (window.searchController) {
             window.searchController.displaySearchResults(searchResult);
         }
         
-        // 검색 결과 영역으로 스크롤
-        const searchResultsContent = document.getElementById('searchResultsContent');
-        searchResultsContent.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // 검색 진행 과정도 복원 (있는 경우)
+        console.log('Checking searchProcess:', searchResult.searchProcess);
+        console.log('streamingSearchController available:', !!window.streamingSearchController);
+        
+        if (searchResult.searchProcess && searchResult.searchProcess.length > 0) {
+            if (window.streamingSearchController) {
+                console.log('Restoring search process with', searchResult.searchProcess.length, 'steps');
+                this.restoreSearchProcess(searchResult.searchProcess);
+            } else {
+                console.log('StreamingSearchController not ready, waiting...');
+                // 컨트롤러가 준비될 때까지 대기 (최대 3초)
+                this.waitForStreamingController(searchResult.searchProcess, 0);
+            }
+        } else {
+            console.log('No search process to restore:', {
+                hasProcess: !!searchResult.searchProcess,
+                processLength: searchResult.searchProcess?.length || 0,
+                hasController: !!window.streamingSearchController
+            });
+        }
+        
+        // 페이지 상단으로 스크롤 (검색 결과가 최상단에 위치)
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    
+    waitForStreamingController(searchProcessData, attempts) {
+        const maxAttempts = 30; // 3초 (100ms * 30)
+        
+        if (attempts >= maxAttempts) {
+            console.error('StreamingSearchController not available after waiting');
+            return;
+        }
+        
+        if (window.streamingSearchController) {
+            console.log('StreamingSearchController ready after', attempts * 100, 'ms');
+            this.restoreSearchProcess(searchProcessData);
+        } else {
+            setTimeout(() => {
+                this.waitForStreamingController(searchProcessData, attempts + 1);
+            }, 100);
+        }
+    }
+    
+    restoreSearchProcess(searchProcessData) {
+        console.log('restoreSearchProcess called with', searchProcessData.length, 'steps');
+        const streamingController = window.streamingSearchController;
+        
+        if (!streamingController) {
+            console.error('StreamingSearchController not found');
+            return;
+        }
+        
+        // 검색 진행 상황 컨테이너 초기화 (숨기지 않고)
+        console.log('Initializing search process container');
+        streamingController.searchSteps.innerHTML = '';
+        streamingController.currentStep = 0;
+        streamingController.searchProcessData = [...searchProcessData]; // 데이터 복사
+        
+        // 컨테이너 표시
+        streamingController.searchProcessContainer.style.display = 'block';
+        
+        // 저장된 각 단계를 순차적으로 복원
+        let stepCount = 0;
+        searchProcessData.forEach((stepData, index) => {
+            setTimeout(() => {
+                const { step, message, data, timestamp } = stepData;
+                
+                // 단계별 처리 (handleStepResult의 로직을 재사용)
+                switch (step) {
+                    case 'start':
+                        streamingController.addStep('검색 시작', message, data, 'info', timestamp);
+                        streamingController.currentStep = 1;
+                        break;
+                    case 'input_processing':
+                        streamingController.addStep('입력 처리 중', message, null, 'loading', timestamp);
+                        break;
+                    case 'input_processed':
+                        streamingController.addStep('입력 처리 완료', message, data, 'success', timestamp);
+                        streamingController.currentStep = 2;
+                        break;
+                    case 'query_analysis':
+                        streamingController.addStep('쿼리 분석 중', message, null, 'loading', timestamp);
+                        break;
+                    case 'query_analyzed':
+                        streamingController.addStep('쿼리 분석 완료', message, data, 'success', timestamp);
+                        streamingController.currentStep = 3;
+                        break;
+                    case 'feature_extraction':
+                        streamingController.addStep('특징 추출 중', message, null, 'loading', timestamp);
+                        break;
+                    case 'features_extracted':
+                        streamingController.addStep('특징 추출 완료', message, data, 'success', timestamp);
+                        streamingController.currentStep = 4;
+                        break;
+                    case 'embedding_generation':
+                        streamingController.addStep('임베딩 생성 중', message, null, 'loading', timestamp);
+                        break;
+                    case 'embeddings_generated':
+                        streamingController.addStep('임베딩 생성 완료', message, data, 'success', timestamp);
+                        streamingController.currentStep = 5;
+                        break;
+                    case 'search_execution':
+                        streamingController.addStep('검색 실행 중', message, null, 'loading', timestamp);
+                        break;
+                    case 'search_executed':
+                        streamingController.addStep('검색 실행 완료', message, data, 'success', timestamp);
+                        streamingController.currentStep = 6;
+                        break;
+                    case 'result_enrichment':
+                        streamingController.addStep('결과 보강 중', message, null, 'loading', timestamp);
+                        break;
+                    case 'result_enriched':
+                        streamingController.addStep('결과 보강 완료', message, data, 'success', timestamp);
+                        streamingController.currentStep = 7;
+                        break;
+                    case 'completed':
+                        streamingController.addStep('검색 완료', message, data, 'success', timestamp);
+                        break;
+                    case 'error':
+                        streamingController.addStep('오류 발생', message, data, 'error', timestamp);
+                        break;
+                    case 'file_read_failed':
+                        streamingController.addStep('파일 처리 실패', message, data, 'warning', timestamp);
+                        break;
+                    default:
+                        console.log('Unknown step in restore:', step);
+                        streamingController.addStep(step, message, data, 'info', timestamp);
+                        break;
+                }
+                
+                streamingController.updateProgress();
+                
+                // 마지막 단계 완료 후 접기
+                if (index === searchProcessData.length - 1) {
+                    setTimeout(() => {
+                        streamingController.makeCollapsible();
+                    }, 500);
+                }
+            }, index * 100); // 각 단계를 100ms 간격으로 표시
+        });
     }
     
     updateSearchHistoryWithResults(searchResult) {
@@ -185,9 +331,10 @@ class HistoryManager {
             // 가장 최근 항목에 검색 결과 추가
             historyData[0].searchResult = {
                 total_hits: searchResult.total_hits,
-                took_ms: searchResult.took_ms,
+                took_ms: Math.round(searchResult.took_ms) || 0, // 소수점 제거
                 element_types_used: searchResult.element_types_used,
-                results: searchResult.results?.slice(0, 20) || [] // 최대 20개 결과만 저장
+                results: searchResult.results?.slice(0, 20) || [], // 최대 20개 결과만 저장
+                searchProcess: searchResult.searchProcess || null // 진행 과정 데이터 저장
             };
             
             // 저장
@@ -201,6 +348,18 @@ class HistoryManager {
     initialize() {
         // 페이지 로드 시 히스토리 복원
         this.updateSearchHistoryUI();
+        
+        // 디버깅용: 히스토리 데이터 확인
+        window.debugHistory = () => {
+            const historyData = this.getSearchHistoryData();
+            console.log('Current history data:', historyData);
+            historyData.forEach((entry, index) => {
+                console.log(`Entry ${index}:`, entry.query);
+                console.log('- Has searchResult:', !!entry.searchResult);
+                console.log('- Has searchProcess:', !!(entry.searchResult?.searchProcess));
+                console.log('- Process steps:', entry.searchResult?.searchProcess?.length || 0);
+            });
+        };
     }
 }
 
