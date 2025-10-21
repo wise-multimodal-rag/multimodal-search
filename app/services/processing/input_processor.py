@@ -45,10 +45,139 @@ class InputProcessor:
 
         return modalities_data
 
+    async def process_multimodal_inputs_from_processed(
+        self,
+        text_query: Optional[str],
+        processed_files: Optional[Dict[str, Dict[str, Any]]]
+    ) -> Dict[str, Any]:
+        """이미 처리된 파일 데이터에서 멀티모달 입력을 구성"""
+        modalities_data = {}
+        processing_errors = []
+
+        # 텍스트 처리
+        if text_query:
+            modalities_data["text"] = {
+                "query": text_query,
+                "type": "text"
+            }
+
+        # 처리된 파일 데이터 사용
+        if processed_files:
+            # 이미지 처리
+            if "image" in processed_files:
+                try:
+                    image_info = processed_files["image"]
+                    image_data = self._process_processed_file(
+                        image_info["data"], 
+                        image_info["filename"], 
+                        image_info["content_type"],
+                        "image"
+                    )
+                    if image_data and "error" not in image_data:
+                        modalities_data["image"] = image_data
+                    else:
+                        error_msg = image_data.get("error", "Unknown image processing error") if image_data else "Image data is None"
+                        processing_errors.append(f"이미지 처리 실패: {error_msg}")
+                        logger.warning(f"Image processing failed: {error_msg}")
+                except Exception as e:
+                    processing_errors.append(f"이미지 처리 중 예외 발생: {str(e)}")
+                    logger.error(f"Exception during image processing: {e}")
+
+            # 비디오 처리
+            if "video" in processed_files:
+                try:
+                    video_info = processed_files["video"]
+                    video_data = self._process_processed_file(
+                        video_info["data"], 
+                        video_info["filename"], 
+                        video_info["content_type"],
+                        "video"
+                    )
+                    if video_data and "error" not in video_data:
+                        modalities_data["video"] = video_data
+                    else:
+                        error_msg = video_data.get("error", "Unknown video processing error") if video_data else "Video data is None"
+                        processing_errors.append(f"비디오 처리 실패: {error_msg}")
+                        logger.warning(f"Video processing failed: {error_msg}")
+                except Exception as e:
+                    processing_errors.append(f"비디오 처리 중 예외 발생: {str(e)}")
+                    logger.error(f"Exception during video processing: {e}")
+
+            # 오디오 처리
+            if "audio" in processed_files:
+                try:
+                    audio_info = processed_files["audio"]
+                    audio_data = self._process_processed_file(
+                        audio_info["data"], 
+                        audio_info["filename"], 
+                        audio_info["content_type"],
+                        "audio"
+                    )
+                    if audio_data and "error" not in audio_data:
+                        modalities_data["audio"] = audio_data
+                    else:
+                        error_msg = audio_data.get("error", "Unknown audio processing error") if audio_data else "Audio data is None"
+                        processing_errors.append(f"오디오 처리 실패: {error_msg}")
+                        logger.warning(f"Audio processing failed: {error_msg}")
+                except Exception as e:
+                    processing_errors.append(f"오디오 처리 중 예외 발생: {str(e)}")
+                    logger.error(f"Exception during audio processing: {e}")
+
+        # 처리 오류가 있었다면 로깅
+        if processing_errors:
+            logger.warning(f"File processing completed with {len(processing_errors)} errors")
+            for error in processing_errors:
+                logger.warning(f"Processing error: {error}")
+
+        # 텍스트만 있고 파일 처리가 모두 실패한 경우 경고
+        if text_query and len(modalities_data) == 1 and "text" in modalities_data and processed_files:
+            logger.warning("All file processing failed, continuing with text-only search")
+
+        return modalities_data
+
+    def _process_processed_file(
+        self, 
+        file_data: bytes, 
+        filename: str, 
+        content_type: str, 
+        file_type: str
+    ) -> Optional[Dict[str, Any]]:
+        """이미 읽힌 파일 데이터를 base64로 인코딩"""
+        try:
+            # 파일을 base64로 인코딩
+            base64_data = base64.b64encode(file_data).decode('utf-8')
+            
+            result = {
+                "filename": filename,
+                "content_type": content_type,
+                "size": len(file_data),
+                "base64_data": base64_data,
+                "type": file_type
+            }
+            
+            logger.info(f"Processed {file_type}: {filename} ({len(file_data)} bytes)")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to process {file_type}: {e}")
+            return {"error": str(e), "type": file_type}
+
     async def _process_image_file(self, image_file: UploadFile) -> Optional[Dict[str, Any]]:
         """이미지 파일을 base64로 인코딩"""
         try:
+            # 파일 포인터를 시작점으로 리셋 시도
+            try:
+                await image_file.seek(0)
+            except Exception:
+                # seek이 실패해도 계속 진행
+                pass
+                
             image_data = await image_file.read()
+            
+            # 데이터가 비어있는 경우 처리
+            if not image_data:
+                logger.warning(f"Image file {image_file.filename} is empty or already read")
+                return {"error": "File is empty or already processed", "type": "image"}
             
             # 이미지를 base64로 인코딩
             base64_image = base64.b64encode(image_data).decode('utf-8')
@@ -71,7 +200,18 @@ class InputProcessor:
     async def _process_video_file(self, video_file: UploadFile) -> Optional[Dict[str, Any]]:
         """비디오 파일을 base64로 인코딩"""
         try:
+            # 파일 포인터를 시작점으로 리셋 시도
+            try:
+                await video_file.seek(0)
+            except Exception:
+                pass
+                
             video_data = await video_file.read()
+            
+            # 데이터가 비어있는 경우 처리
+            if not video_data:
+                logger.warning(f"Video file {video_file.filename} is empty or already read")
+                return {"error": "File is empty or already processed", "type": "video"}
             
             # 비디오를 base64로 인코딩
             base64_video = base64.b64encode(video_data).decode('utf-8')
@@ -94,7 +234,18 @@ class InputProcessor:
     async def _process_audio_file(self, audio_file: UploadFile) -> Optional[Dict[str, Any]]:
         """오디오 파일을 base64로 인코딩"""
         try:
+            # 파일 포인터를 시작점으로 리셋 시도
+            try:
+                await audio_file.seek(0)
+            except Exception:
+                pass
+                
             audio_data = await audio_file.read()
+            
+            # 데이터가 비어있는 경우 처리
+            if not audio_data:
+                logger.warning(f"Audio file {audio_file.filename} is empty or already read")
+                return {"error": "File is empty or already processed", "type": "audio"}
             
             # 오디오를 base64로 인코딩  
             base64_audio = base64.b64encode(audio_data).decode('utf-8')

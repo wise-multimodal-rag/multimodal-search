@@ -1,7 +1,9 @@
+import json
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
@@ -119,6 +121,131 @@ async def search_multimodal(
     except Exception as e:
         logger.error(f"Multimodal search failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/search/multimodal/stream")
+async def search_multimodal_stream(
+        text_query: Optional[str] = Form(default="AI 기술에 대한 문서를 찾아줘", description="텍스트 검색 쿼리"),
+        image: Optional[UploadFile] = File(default=None, description="이미지 파일"),
+        video: Optional[UploadFile] = File(default=None, description="비디오 파일"),
+        audio: Optional[UploadFile] = File(default=None, description="오디오 파일"),
+        include_chunk_meta: bool = Form(default=True, description="Chunk 메타데이터 포함 여부"),
+        include_media_meta: bool = Form(default=True, description="Media 메타데이터 포함 여부"),
+        max_results: int = Form(default=10, ge=1, le=100, description="최대 결과 수"),
+        search_service: SearchService = Depends(get_search_service)
+):
+    """실시간 스트리밍 방식의 멀티모달 검색 엔드포인트"""
+    # 요청 받자마자 즉시 파일들을 읽어서 메모리에 보관
+    processed_files = {}
+    file_processing_errors = []
+    
+    # 파일들을 즉시 처리 (스트림 생성 전에)
+    if image:
+        try:
+            logger.info(f"🔄 Reading image file immediately: {image.filename}")
+            image_content = await image.read()
+            logger.info(f"📊 Image read result: {len(image_content) if image_content else 0} bytes")
+            
+            if image_content and len(image_content) > 0:
+                processed_files['image'] = {
+                    'data': image_content,
+                    'filename': image.filename or 'unknown_image',
+                    'content_type': image.content_type or 'image/jpeg'
+                }
+                logger.info(f"✅ Image processing successful: {len(image_content)} bytes")
+            else:
+                error_msg = f"이미지 파일이 비어있습니다: {image.filename}"
+                file_processing_errors.append(error_msg)
+                logger.error(f"❌ {error_msg}")
+        except Exception as e:
+            error_msg = f"이미지 파일 읽기 실패: {str(e)}"
+            file_processing_errors.append(error_msg)
+            logger.error(f"❌ {error_msg}")
+    
+    if video:
+        try:
+            logger.info(f"🔄 Reading video file immediately: {video.filename}")
+            video_content = await video.read()
+            logger.info(f"📊 Video read result: {len(video_content) if video_content else 0} bytes")
+            
+            if video_content and len(video_content) > 0:
+                processed_files['video'] = {
+                    'data': video_content,
+                    'filename': video.filename or 'unknown_video',
+                    'content_type': video.content_type or 'video/mp4'
+                }
+                logger.info(f"✅ Video processing successful: {len(video_content)} bytes")
+            else:
+                error_msg = f"비디오 파일이 비어있습니다: {video.filename}"
+                file_processing_errors.append(error_msg)
+                logger.error(f"❌ {error_msg}")
+        except Exception as e:
+            error_msg = f"비디오 파일 읽기 실패: {str(e)}"
+            file_processing_errors.append(error_msg)
+            logger.error(f"❌ {error_msg}")
+    
+    if audio:
+        try:
+            logger.info(f"🔄 Reading audio file immediately: {audio.filename}")
+            audio_content = await audio.read()
+            logger.info(f"📊 Audio read result: {len(audio_content) if audio_content else 0} bytes")
+            
+            if audio_content and len(audio_content) > 0:
+                processed_files['audio'] = {
+                    'data': audio_content,
+                    'filename': audio.filename or 'unknown_audio',
+                    'content_type': audio.content_type or 'audio/mp3'
+                }
+                logger.info(f"✅ Audio processing successful: {len(audio_content)} bytes")
+            else:
+                error_msg = f"오디오 파일이 비어있습니다: {audio.filename}"
+                file_processing_errors.append(error_msg)
+                logger.error(f"❌ {error_msg}")
+        except Exception as e:
+            error_msg = f"오디오 파일 읽기 실패: {str(e)}"
+            file_processing_errors.append(error_msg)
+            logger.error(f"❌ {error_msg}")
+    
+    logger.info(f"📋 Pre-processing complete: {len(processed_files)} files ready, {len(file_processing_errors)} errors")
+    
+    async def generate_search_stream():
+        try:
+            # 파일 처리 오류가 있었다면 스트리밍으로 알림
+            if file_processing_errors:
+                for error in file_processing_errors:
+                    yield f"data: {json.dumps({'step': 'file_read_failed', 'message': error, 'timestamp': time.time()}, ensure_ascii=False)}\\n\\n"
+            
+            # 처리된 파일 데이터와 함께 스트리밍 검색 시작
+            async for step_result in search_service.search_multimodal_stream(
+                text_query=text_query,
+                processed_files=processed_files,
+                include_chunk_meta=include_chunk_meta,
+                include_media_meta=include_media_meta,
+                max_results=max_results
+            ):
+                # SSE 형식으로 데이터 전송
+                yield f"data: {json.dumps(step_result, ensure_ascii=False, default=str)}\n\n"
+                
+        except Exception as e:
+            logger.error(f"Streaming search failed: {e}")
+            error_result = {
+                "step": "error",
+                "error": str(e),
+                "timestamp": time.time()
+            }
+            yield f"data: {json.dumps(error_result, ensure_ascii=False)}\n\n"
+    
+    return StreamingResponse(
+        generate_search_stream(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+
+    )
 
 
 @router.get("/demo", response_class=HTMLResponse)

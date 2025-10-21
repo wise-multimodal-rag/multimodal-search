@@ -33,10 +33,15 @@ class SearchController {
         
         window.uiController.clearInput();
         window.uiController.disableSearchButton();
-        window.uiController.showLoading();
+        
+        // 기존 검색 결과 숨기기
+        if (this.searchResultsHeader) {
+            this.searchResultsHeader.style.display = 'none';
+        }
+        this.searchResultsContent.innerHTML = '';
 
         try {
-            // Prepare form data
+            // Prepare form data for streaming
             const formData = new FormData();
             if (message) {
                 formData.append('text_query', message);
@@ -60,32 +65,19 @@ class SearchController {
             formData.append('include_chunk_meta', document.getElementById('includeChunkMeta').checked);
             formData.append('include_media_meta', document.getElementById('includeMediaMeta').checked);
 
-            // Send search request
-            const response = await fetch('/api/v1/search/multimodal', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            // Start streaming search
+            if (window.streamingSearchController) {
+                await window.streamingSearchController.startStreamingSearch(formData);
+                
+                // Update search history with streaming results
+                if (window.historyManager) {
+                    // Note: This will be updated once streaming completes
+                    // The streaming controller will handle the final results
+                }
+            } else {
+                // Fallback to regular search if streaming is not available
+                await this.fallbackToRegularSearch(formData);
             }
-
-            const searchResult = await response.json();
-            
-            // Debug: Log the response to see original_score
-            console.log('Search result:', searchResult);
-            if (searchResult.results && searchResult.results.length > 0) {
-                console.log('First result:', searchResult.results[0]);
-                console.log('Original score:', searchResult.results[0].original_score);
-            }
-            
-            // Update search history with results
-            if (window.historyManager) {
-                window.historyManager.updateSearchHistoryWithResults(searchResult);
-            }
-            
-            // Display search results
-            this.displaySearchResults(searchResult);
 
             // Clear files after successful search
             if (window.fileHandler) {
@@ -98,6 +90,28 @@ class SearchController {
         } finally {
             window.uiController.enableSearchButton();
         }
+    }
+    
+    async fallbackToRegularSearch(formData) {
+        // Original search logic as fallback
+        const response = await fetch('/api/v1/search/multimodal', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const searchResult = await response.json();
+        
+        // Update search history with results
+        if (window.historyManager) {
+            window.historyManager.updateSearchHistoryWithResults(searchResult);
+        }
+        
+        // Display search results
+        this.displaySearchResults(searchResult);
     }
     
     buildHistoryText(message, hasFiles) {
@@ -128,8 +142,8 @@ class SearchController {
         if (searchResult.results && searchResult.results.length > 0) {
             searchResult.results.forEach((result, index) => {
                 const element = result.element;
-                const hybridScore = result.score.toFixed(6);
-                const originalScore = result.original_score ? result.original_score.toFixed(6) : null;
+                const hybridScore = result.score.toFixed(3);
+                const originalScore = result.original_score ? result.original_score.toFixed(3) : null;
                 
                 // 기본 메타데이터 정보
                 let basicMetaInfo = '';

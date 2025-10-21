@@ -29,7 +29,7 @@ def get_llm_client() -> LLMClient:
 @lru_cache()
 def get_opensearch_service() -> OpenSearchService:
     """Get singleton instance of OpenSearchService"""
-    return OpenSearchService()
+    return OpenSearchService(embedding_service=get_embedding_service())
 
 
 @lru_cache()

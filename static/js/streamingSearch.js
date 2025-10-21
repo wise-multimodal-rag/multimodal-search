@@ -1,0 +1,966 @@
+/**
+ * 실시간 스트리밍 검색 컨트롤러 (v2.0)
+ */
+class StreamingSearchController {
+    constructor() {
+        this.eventSource = null;
+        this.searchProcessContainer = document.getElementById('searchProcessContainer');
+        this.searchSteps = document.getElementById('searchSteps');
+        this.progressFill = document.getElementById('progressFill');
+        this.progressText = document.getElementById('progressText');
+        this.currentStep = 0;
+        this.totalSteps = 8;
+        this.isStreaming = false;
+        this.searchProcessData = []; // 검색 진행 과정 데이터 저장
+    }
+    
+    async startStreamingSearch(formData) {
+        if (this.isStreaming) {
+            console.log('Search already in progress');
+            return;
+        }
+        
+        this.isStreaming = true;
+        
+        // 검색 과정 데이터 초기화
+        this.searchProcessData = [];
+        
+        // 검색 과정 컨테이너 표시
+        this.searchProcessContainer.style.display = 'block';
+        this.searchSteps.innerHTML = '';
+        this.currentStep = 0;
+        this.updateProgress();
+        
+        try {
+            // FormData를 URLSearchParams로 변환 (GET 방식이 아니므로 POST로 전송)
+            const response = await fetch('/api/v1/search/multimodal/stream', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) {
+                    console.log('Streaming completed');
+                    break;
+                }
+                
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = line.slice(6); // 'data: ' 제거
+                            if (data.trim()) {
+                                console.log('📡 Raw streaming data received:', data.substring(0, 100) + '...');
+                                const stepResult = JSON.parse(data);
+                                console.log('✅ Parsed step result:', stepResult.step, stepResult.message);
+                                this.handleStepResult(stepResult);
+                            }
+                        } catch (error) {
+                            console.error('❌ Failed to parse streaming data:', error, line);
+                        }
+                    }
+                }
+            }
+            
+        } catch (error) {
+            console.error('Streaming search failed:', error);
+            this.showError(`스트리밍 검색 실패: ${error.message}`);
+        } finally {
+            this.isStreaming = false;
+        }
+    }
+    
+    handleStepResult(stepResult) {
+        const { step, message, data, timestamp, error } = stepResult;
+        
+        console.log('🔍 Step result received:', stepResult);
+        console.log('📊 Current step before:', this.currentStep, 'New step:', step);
+        console.log('⏰ Timestamp:', timestamp, 'Message:', message);
+        
+        // 진행 과정 데이터에 저장 (error가 있을 때는 message 대신 error 사용)
+        const processStep = {
+            step,
+            message: error || message,
+            data,
+            timestamp,
+            recordedAt: new Date().toISOString()
+        };
+        this.searchProcessData.push(processStep);
+        console.log('Added process step:', step, '- Total steps:', this.searchProcessData.length);
+        
+        switch (step) {
+            case 'start':
+                this.addStep('검색 시작', message, data, 'info', timestamp);
+                this.currentStep = 1;
+                break;
+                
+            case 'input_processing':
+                this.addStep('입력 처리 중', message, null, 'loading', timestamp);
+                break;
+                
+            case 'input_processed':
+                this.updateLastLoadingStep('입력 처리 완료', message, data, 'success', timestamp);
+                this.currentStep = 2;
+                break;
+                
+            case 'query_expansion':
+                this.addStep('쿼리 확장 중', message, null, 'loading', timestamp);
+                break;
+                
+            case 'query_expanded':
+                this.updateLastLoadingStep('쿼리 확장 완료', message, data, 'success', timestamp);
+                this.currentStep = 3;
+                break;
+                
+            case 'intent_analysis':
+                this.addStep('쿼리 의도 분석 중', message, null, 'loading', timestamp);
+                break;
+                
+            case 'intent_analyzed':
+                this.updateLastLoadingStep('쿼리 의도 분석 완료', message, data, 'success', timestamp);
+                this.currentStep = 4;
+                break;
+                
+            case 'feature_extraction':
+                this.addStep('특징 추출 중', message, null, 'loading', timestamp);
+                break;
+                
+            case 'features_extracted':
+                this.updateLastLoadingStep('특징 추출 완료', message, data, 'success', timestamp);
+                this.currentStep = 5;
+                break;
+                
+            case 'embedding_generation':
+                this.addStep('임베딩 생성 중', message, null, 'loading', timestamp);
+                break;
+                
+            case 'embeddings_generated':
+                this.updateLastLoadingStep('임베딩 생성 완료', message, data, 'success', timestamp);
+                this.currentStep = 6;
+                break;
+                
+            case 'search_execution':
+                this.addStep('검색 실행 중', message, null, 'loading', timestamp);
+                break;
+                
+            case 'search_executed':
+                this.updateLastLoadingStep('검색 실행 완료', message, data, 'success', timestamp);
+                this.currentStep = 7;
+                break;
+                
+            case 'result_enrichment':
+                this.addStep('결과 보강 중', message, null, 'loading', timestamp);
+                break;
+                
+            case 'result_enriched':
+                this.updateLastLoadingStep('결과 보강 완료', message, data, 'success', timestamp);
+                this.currentStep = 8;
+                break;
+                
+            case 'completed':
+                this.addStep('검색 완료', message, data, 'success', timestamp);
+                // currentStep은 이미 result_enriched에서 8로 설정됨
+                this.renderFinalResults(data);
+                break;
+                
+            case 'error':
+                this.addStep('오류 발생', error, null, 'error', timestamp);
+                this.showError(error);
+                break;
+                
+            case 'file_read_failed':
+                this.addStep('파일 처리 실패', message || '파일을 읽을 수 없어 텍스트만으로 검색을 진행합니다', data, 'warning', timestamp);
+                break;
+                
+            default:
+                console.log('Unknown step:', step);
+        }
+        
+        this.updateProgress();
+    }
+    
+    updateLastLoadingStep(title, message, data = null, type = 'success', serverTimestamp = null) {
+        // 마지막 loading 상태의 단계를 찾아서 업데이트
+        const loadingSteps = this.searchSteps.querySelectorAll('.search-step.loading');
+        if (loadingSteps.length > 0) {
+            const lastLoadingStep = loadingSteps[loadingSteps.length - 1];
+            
+            // 클래스 변경
+            lastLoadingStep.className = `search-step ${type}`;
+            
+            // 서버 타임스탬프가 있으면 사용, 없으면 클라이언트 시간 사용
+            let displayTime;
+            if (serverTimestamp) {
+                const date = new Date(serverTimestamp * 1000);
+                displayTime = date.toLocaleTimeString('ko-KR', { 
+                    hour12: false, 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    second: '2-digit' 
+                });
+            } else {
+                displayTime = new Date().toLocaleTimeString('ko-KR', { 
+                    hour12: false, 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    second: '2-digit' 
+                });
+            }
+            
+            // 내용 업데이트 (로딩 애니메이션 제거)
+            lastLoadingStep.innerHTML = `
+                <div class="step-header">
+                    <div class="step-title-and-message">
+                        <div class="step-title">${title}</div>
+                        <div class="step-message">${message}</div>
+                    </div>
+                    <div class="step-time">${displayTime}</div>
+                </div>
+                ${data ? `<div class="step-data" id="step-data-${Date.now()}"></div>` : ''}
+            `;
+            
+            // 데이터가 있으면 렌더링
+            if (data) {
+                const dataContainer = lastLoadingStep.querySelector('.step-data');
+                this.renderStepData(dataContainer, data, type);
+            }
+        } else {
+            // 마지막 loading 단계가 없으면 새로 추가
+            this.addStep(title, message, data, type, serverTimestamp);
+        }
+    }
+    
+    addStep(title, message, data = null, type = 'info', serverTimestamp = null) {
+        console.log('addStep called:', title, type, 'with timestamp:', serverTimestamp);
+        
+        const stepElement = document.createElement('div');
+        stepElement.className = `search-step ${type}`;
+        
+        // 서버 타임스탬프가 있으면 사용, 없으면 클라이언트 시간 사용
+        let displayTime;
+        if (serverTimestamp) {
+            // 서버 타임스탬프를 Date 객체로 변환 (초 단위를 밀리초로 변환)
+            const date = new Date(serverTimestamp * 1000);
+            displayTime = date.toLocaleTimeString('ko-KR', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit' 
+            });
+        } else {
+            displayTime = new Date().toLocaleTimeString('ko-KR', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit' 
+            });
+        }
+        
+        // 로딩 상태일 때만 메시지에 점 애니메이션 추가
+        const messageWithAnimation = type === 'loading' 
+            ? `${message}<span class="loading-dots"></span>` 
+            : message;
+        
+        stepElement.innerHTML = `
+            <div class="step-header">
+                <div class="step-title-and-message">
+                    <div class="step-title">${title}</div>
+                    <div class="step-message">${messageWithAnimation}</div>
+                </div>
+                <div class="step-time">${displayTime}</div>
+            </div>
+            ${data ? `<div class="step-data" id="step-data-${Date.now()}"></div>` : ''}
+        `;
+        
+        this.searchSteps.appendChild(stepElement);
+        
+        // 데이터가 있으면 렌더링
+        if (data) {
+            const dataContainer = stepElement.querySelector('.step-data');
+            this.renderStepData(dataContainer, data, type);
+        }
+        
+        // 검색 과정 컨테이너 내에서만 스크롤 (페이지 전체 스크롤 방지)
+        if (this.searchSteps.scrollHeight > this.searchSteps.clientHeight) {
+            this.searchSteps.scrollTop = this.searchSteps.scrollHeight;
+        }
+    }
+    
+    renderStepData(container, data, stepType) {
+        if (!container || !data) return;
+        
+        let content = '';
+        
+        // 시작 단계 데이터
+        if (data.input_types) {
+            content += `<div class="data-item"><strong>입력 타입:</strong> ${data.input_types.join(', ')}</div>`;
+        }
+        
+        // 입력 처리 완료 데이터
+        if (data.modalities) {
+            content += `<div class="data-item"><strong>처리된 모달리티:</strong> ${data.modalities.join(', ')}</div>`;
+            if (data.text_query) {
+                content += `<div class="data-item"><strong>텍스트 쿼리:</strong> "${data.text_query}"</div>`;
+            }
+        }
+        
+        // 쿼리 확장 데이터
+        if (data.expanded_queries) {
+            content += `
+                <div class="data-section">
+                    <h4>확장된 쿼리들 (${data.expanded_queries.length}개)</h4>
+                    <div class="expanded-queries">
+                        ${data.expanded_queries.map((query, index) => 
+                            `<div class="expanded-query">
+                                <strong>Query ${index + 1}:</strong> ${typeof query === 'object' ? query.query || JSON.stringify(query) : query}
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (data.expansion_used !== undefined) {
+            const expansionText = data.expansion_used ? 
+                `성공 (${data.total_queries || 1}개 쿼리 생성)` : 
+                '실패 (원본 쿼리만 사용)';
+            content += `<div class="data-item"><strong>쿼리 확장:</strong> ${expansionText}</div>`;
+        }
+        
+        // 확장 분석 상세 정보
+        if (data.expansion_analysis) {
+            const analysis = data.expansion_analysis;
+            
+            content += `<div class="data-section">
+                <h4>쿼리 확장 분석 상세</h4>`;
+            
+            // 의존성 정보
+            if (analysis.has_dependency !== undefined) {
+                content += `<div class="data-item">
+                    <strong>쿼리 의존성:</strong> ${analysis.has_dependency ? '있음' : '없음'}
+                </div>`;
+                
+                if (analysis.dependency_reason) {
+                    content += `<div class="data-item">
+                        <strong>의존성 이유:</strong> ${analysis.dependency_reason}
+                    </div>`;
+                }
+            }
+            
+            // 적용된 기법들
+            if (analysis.applied_techniques && analysis.applied_techniques.length > 0) {
+                content += `<div class="data-item">
+                    <strong>적용된 기법:</strong> ${analysis.applied_techniques.join(', ')}
+                </div>`;
+            }
+            
+            // 분해된 쿼리들
+            if (analysis.decomposition && analysis.decomposition.length > 0) {
+                content += `<div class="sub-section">
+                    <h5>쿼리 분해 (${analysis.decomposition.length}개)</h5>
+                    <div class="decomposition-list">
+                        ${analysis.decomposition.map((item, index) => 
+                            `<div class="decomposition-item">
+                                <strong>${index + 1}.</strong> ${typeof item === 'object' ? item.query || JSON.stringify(item) : item}
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>`;
+            }
+            
+            // 재작성된 쿼리들
+            if (analysis.rewritten_queries && analysis.rewritten_queries.length > 0) {
+                content += `<div class="sub-section">
+                    <h5>재작성된 쿼리 (${analysis.rewritten_queries.length}개)</h5>
+                    <div class="rewritten-list">
+                        ${analysis.rewritten_queries.map((item, index) => 
+                            `<div class="rewritten-item">
+                                <strong>${index + 1}.</strong> ${typeof item === 'object' ? item.query || JSON.stringify(item) : item}
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>`;
+            }
+            
+            // 의미적 확장들
+            if (analysis.semantic_expansions && analysis.semantic_expansions.length > 0) {
+                content += `<div class="sub-section">
+                    <h5>의미적 확장 (${analysis.semantic_expansions.length}개)</h5>
+                    <div class="semantic-list">
+                        ${analysis.semantic_expansions.map((item, index) => 
+                            `<div class="semantic-item">
+                                <strong>${index + 1}.</strong> ${typeof item === 'object' ? item.query || JSON.stringify(item) : item}
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>`;
+            }
+            
+            // 최종 쿼리들 (실제 사용된 것만 표시)
+            // expanded_queries와 매칭하여 실제 사용된 쿼리만 표시
+            if (analysis.final_queries && analysis.final_queries.length > 0 && data.expanded_queries) {
+                // expanded_queries와 매칭되는 final_queries만 찾기
+                const usedFinalQueries = analysis.final_queries.filter(item => {
+                    const queryText = typeof item === 'object' ? item.query : item;
+                    return data.expanded_queries.includes(queryText);
+                });
+                
+                if (usedFinalQueries.length > 0) {
+                    content += `<div class="sub-section">
+                        <h5>최종 선별된 쿼리 (${usedFinalQueries.length}개 - 실제 검색에 사용)</h5>
+                        <div class="final-queries-list">
+                            ${usedFinalQueries.map((item, index) => {
+                                if (typeof item === 'object' && item.query) {
+                                    return `<div class="final-query-item">
+                                        <div class="query-text"><strong>${index + 1}.</strong> ${item.query}</div>
+                                        ${item.score !== undefined ? `<div class="query-score">점수: ${item.score.toFixed(2)}</div>` : ''}
+                                        ${item.reason ? `<div class="query-reason">이유: ${item.reason}</div>` : ''}
+                                    </div>`;
+                                } else {
+                                    return `<div class="final-query-item">
+                                        <div class="query-text"><strong>${index + 1}.</strong> ${typeof item === 'object' ? JSON.stringify(item) : item}</div>
+                                    </div>`;
+                                }
+                            }).join('')}
+                        </div>
+                    </div>`;
+                }
+                
+                // 사용되지 않은 쿼리들도 참고용으로 표시
+                const unusedFinalQueries = analysis.final_queries.filter(item => {
+                    const queryText = typeof item === 'object' ? item.query : item;
+                    return !data.expanded_queries.includes(queryText);
+                });
+                
+                if (unusedFinalQueries.length > 0) {
+                    content += `<div class="sub-section">
+                        <h5>후보 쿼리 (${unusedFinalQueries.length}개 - 미사용)</h5>
+                        <div class="unused-queries-list">
+                            ${unusedFinalQueries.map((item, index) => {
+                                if (typeof item === 'object' && item.query) {
+                                    return `<div class="unused-query-item">
+                                        <div class="query-text"><strong>${index + 1}.</strong> ${item.query}</div>
+                                        ${item.score !== undefined ? `<div class="query-score">점수: ${item.score.toFixed(2)}</div>` : ''}
+                                        ${item.reason ? `<div class="query-reason">이유: ${item.reason}</div>` : ''}
+                                    </div>`;
+                                } else {
+                                    return `<div class="unused-query-item">
+                                        <div class="query-text"><strong>${index + 1}.</strong> ${typeof item === 'object' ? JSON.stringify(item) : item}</div>
+                                    </div>`;
+                                }
+                            }).join('')}
+                        </div>
+                    </div>`;
+                }
+            }
+            
+            // 검색 제안사항
+            if (analysis.search_suggestions && analysis.search_suggestions.length > 0) {
+                content += `<div class="sub-section">
+                    <h5>검색 제안사항 (${analysis.search_suggestions.length}개)</h5>
+                    <div class="suggestions-list">
+                        ${analysis.search_suggestions.map((suggestion, index) => 
+                            `<div class="suggestion-item">
+                                <strong>${index + 1}.</strong> ${typeof suggestion === 'object' ? suggestion.text || JSON.stringify(suggestion) : suggestion}
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>`;
+            }
+            
+            content += `</div>`;
+        }
+        
+        // 쿼리 의도 분석 데이터
+        if (data.selected_element_types) {
+            content += `
+                <div class="data-section">
+                    <h4>선택된 Element Types (${data.selected_element_types.length}개)</h4>
+                    <div class="element-types">
+                        ${data.selected_element_types.map(type => 
+                            `<span class="element-type-tag">${type}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (data.confidence !== undefined) {
+            content += `<div class="data-item"><strong>신뢰도:</strong> ${(data.confidence * 100).toFixed(1)}%</div>`;
+        }
+        
+        if (data.reasoning) {
+            content += `<div class="data-item"><strong>추론:</strong> ${data.reasoning}</div>`;
+        }
+        
+        // 특징 추출 데이터
+        if (data.extraction_success) {
+            const successCount = Object.values(data.extraction_success).filter(val => val === true).length;
+            content += `<div class="data-item"><strong>특징 추출 성공:</strong> ${successCount}/4 모달리티</div>`;
+            
+            Object.entries(data.extraction_success).forEach(([modality, success]) => {
+                let icon;
+                if (success === true) {
+                    icon = '✅'; // 성공
+                } else if (success === false) {
+                    icon = '❌'; // 실패 (데이터는 있었지만 처리 실패)
+                } else {
+                    icon = '⊘'; // 데이터 없음 (null, undefined 등)
+                }
+                content += `<div class="data-item">${icon} ${modality.toUpperCase()}</div>`;
+            });
+        }
+        
+        // 각 모달리티별 특징 정보 (실제 특징만 표시)
+        ['text_features', 'image_features', 'video_features', 'audio_features'].forEach(featureType => {
+            if (data[featureType]) {
+                const modalityName = featureType.replace('_features', '').toUpperCase();
+                const features = data[featureType];
+                
+                // 메타데이터와 실제 특징을 분리
+                const metaKeys = ['keywords_count', 'entities_count', 'has_summary', 'has_classification', 
+                                'has_caption', 'objects_count', 'has_description', 'scenes_count', 
+                                'activities_count', 'has_transcription', 'sounds_count', 'audio_type'];
+                
+                const actualFeatures = {};
+                const metaData = {};
+                
+                Object.entries(features).forEach(([key, value]) => {
+                    if (metaKeys.includes(key)) {
+                        metaData[key] = value;
+                    } else {
+                        actualFeatures[key] = value;
+                    }
+                });
+                
+                // 실제 특징이 있는 경우에만 표시
+                if (Object.keys(actualFeatures).length > 0) {
+                    content += `<div class="feature-section">
+                        <h5>${modalityName} 추출 특징</h5>`;
+                    
+                    Object.entries(actualFeatures).forEach(([key, value], index) => {
+                        // 모든 특징 데이터를 전체 표시 (토글 없음)
+                        let displayValue;
+                        
+                        if (Array.isArray(value)) {
+                            displayValue = JSON.stringify(value, null, 2);
+                        } else if (typeof value === 'object' && value !== null) {
+                            displayValue = JSON.stringify(value, null, 2);
+                        } else {
+                            displayValue = String(value);
+                        }
+                        
+                        content += `<div class="data-item">
+                            <strong>${key}:</strong>
+                            <div class="feature-value-full">
+                                <pre>${displayValue}</pre>
+                            </div>
+                        </div>`;
+                    });
+                    
+                    content += `</div>`;
+                }
+                
+                // 메타데이터는 별도 섹션으로 표시 (선택적)
+                if (Object.keys(metaData).length > 0) {
+                    content += `<div class="meta-section">
+                        <h6>${modalityName} 메타 정보</h6>`;
+                    
+                    Object.entries(metaData).forEach(([key, value]) => {
+                        content += `<div class="meta-item">
+                            <strong>${key}:</strong> ${value}
+                        </div>`;
+                    });
+                    
+                    content += `</div>`;
+                }
+            }
+        });
+        
+        // 추출된 특징의 전체 요약
+        if (data.text_features || data.image_features || data.video_features || data.audio_features) {
+            // 메타데이터 키 목록 (실제 특징이 아닌 메타정보)
+            const metaKeys = ['keywords_count', 'entities_count', 'has_summary', 'has_classification', 
+                            'has_caption', 'objects_count', 'has_description', 'scenes_count', 
+                            'activities_count', 'has_transcription', 'sounds_count', 'audio_type'];
+            
+            const countActualFeatures = (features) => {
+                if (!features) return 0;
+                return Object.keys(features).filter(key => !metaKeys.includes(key)).length;
+            };
+            
+            const totalFeatures = [
+                countActualFeatures(data.text_features),
+                countActualFeatures(data.image_features),
+                countActualFeatures(data.video_features),
+                countActualFeatures(data.audio_features)
+            ].reduce((a, b) => a + b, 0);
+            
+            content += `
+                <div class="feature-summary">
+                    <h5>특징 추출 요약</h5>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <strong>총 특징 수:</strong> ${totalFeatures}개
+                        </div>
+                        <div class="summary-item">
+                            <strong>처리 시간:</strong> ${
+                                data.processing_time_ms ? Math.round(data.processing_time_ms) + 'ms' :
+                                data.processing_time ? Math.round(data.processing_time) + 'ms' :
+                                data.took_ms ? Math.round(data.took_ms) + 'ms' :
+                                data.duration_ms ? Math.round(data.duration_ms) + 'ms' :
+                                '측정되지 않음'
+                            }
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 임베딩 데이터 (상세)
+        if (data.embedding_types) {
+            content += `
+                <div class="data-section">
+                    <h4>생성된 임베딩 (${data.embedding_types.length}개)</h4>
+                    <div class="embedding-grid">
+                        ${data.embedding_types.map(type => {
+                            const stats = data.embedding_stats?.[type];
+                            return `<div class="embedding-card">
+                                <div class="embedding-header">
+                                    <span class="embedding-type">${type}</span>
+                                    ${stats ? `<span class="embedding-badge">${stats.dimension}D</span>` : ''}
+                                </div>
+                                ${stats ? `
+                                    <div class="embedding-details">
+                                        <div class="embedding-stat">
+                                            <strong>차원:</strong> ${stats.dimension}
+                                        </div>
+                                        <div class="embedding-stat">
+                                            <strong>벡터 크기:</strong> ${stats.vector_norm.toFixed(3)}
+                                        </div>
+                                        ${stats.max_value ? `
+                                            <div class="embedding-stat">
+                                                <strong>최대값:</strong> ${stats.max_value.toFixed(3)}
+                                            </div>
+                                        ` : ''}
+                                        ${stats.min_value ? `
+                                            <div class="embedding-stat">
+                                                <strong>최소값:</strong> ${stats.min_value.toFixed(3)}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                ` : ''}
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 검색 실행 데이터
+        if (data.total_hits !== undefined) {
+            content += `
+                <div class="search-summary">
+                    <div class="search-stat"><strong>총 히트:</strong> ${data.total_hits}개</div>
+                    <div class="search-stat"><strong>최고 점수:</strong> ${data.max_score?.toFixed(2) || 0}</div>
+                    <div class="search-stat"><strong>반환 결과:</strong> ${data.result_count}개</div>
+                    <div class="search-stat"><strong>검색 시간:</strong> ${Math.round(data.took_ms)}ms</div>
+                    ${data.queries_executed ? `<div class="search-stat"><strong>실행된 쿼리:</strong> ${data.queries_executed}개</div>` : ''}
+                </div>
+            `;
+        }
+        
+        // 최종 결과 데이터
+        if (data.results && data.search_stats) {
+            content += `
+                <div class="final-summary">
+                    <div class="summary-stat"><strong>최종 결과:</strong> ${data.results.length}개</div>
+                    <div class="summary-stat"><strong>총 처리 시간:</strong> ${Math.round(data.total_time_ms / 1000)}초</div>
+                    <div class="summary-stat"><strong>처리 단계:</strong> ${data.processing_steps}단계</div>
+                </div>
+            `;
+        }
+        
+        container.innerHTML = content;
+    }
+    
+    renderFinalResults(data) {
+        console.log('renderFinalResults called with data:', data);
+        
+        if (data.results) {
+            console.log('Results found:', data.results.length, 'items');
+            
+            // 검색 진행 상황 컨테이너를 접을 수 있도록 수정
+            this.makeCollapsible();
+            
+            // 검색 결과 컨테이너 표시
+            const searchResultsContainer = document.querySelector('.search-results-container');
+            if (searchResultsContainer) {
+                searchResultsContainer.style.display = 'block';
+            }
+            
+            // 기존 검색 결과 영역에도 결과 표시
+            const searchResult = {
+                results: data.results,
+                total_hits: data.search_stats?.total_hits || data.results.length,
+                max_score: data.search_stats?.max_score || 0,
+                result_count: data.results.length,
+                took_ms: Math.round(data.total_time_ms) || 0,  // 총 처리 시간 추가 (정수로 반올림)
+                query_analysis: data.query_analysis,
+                expanded_queries: data.expanded_queries,
+                element_types_used: data.query_analysis?.selected_element_types || []
+            };
+            
+            console.log('Calling displaySearchResults with:', searchResult);
+            
+            // 먼저 직접 렌더링 시도
+            this.directRenderResults(data.results);
+            
+            // 그 다음 기존 컨트롤러도 호출 (중복 방지를 위해)
+            if (window.searchController) {
+                try {
+                    window.searchController.displaySearchResults(searchResult);
+                } catch (error) {
+                    console.error('Error calling searchController.displaySearchResults:', error);
+                }
+            }
+            
+            // 검색 히스토리 업데이트 (진행 과정 포함)
+            if (window.historyManager) {
+                console.log('Updating history with process data:', this.searchProcessData.length, 'steps');
+                const searchResultWithProcess = {
+                    ...searchResult,
+                    searchProcess: this.searchProcessData // 진행 과정 데이터 추가
+                };
+                console.log('searchResultWithProcess:', searchResultWithProcess);
+                window.historyManager.updateSearchHistoryWithResults(searchResultWithProcess);
+            }
+        } else {
+            console.log('No results found in data:', data);
+        }
+    }
+    
+    directRenderResults(results) {
+        console.log('Direct rendering results:', results);
+        
+        // 검색 결과 컨테이너 찾기
+        const searchResultsContent = document.getElementById('searchResultsContent');
+        const searchResultsHeader = document.getElementById('searchResultsHeader');
+        
+        if (!searchResultsContent) {
+            console.error('searchResultsContent not found');
+            return;
+        }
+        
+        // 헤더 표시
+        if (searchResultsHeader) {
+            searchResultsHeader.style.display = 'block';
+            const searchResultsInfo = document.getElementById('searchResultsInfo');
+            if (searchResultsInfo) {
+                searchResultsInfo.textContent = `${results.length}개의 검색 결과`;
+            }
+        }
+        
+        // 결과 렌더링
+        let resultsHtml = '';
+        
+        if (results && results.length > 0) {
+            results.forEach((result, index) => {
+                const element = result.element || result;
+                const score = result.score || 0;
+                const hybridScore = score.toFixed(3);
+                const originalScore = result.original_score ? result.original_score.toFixed(3) : null;
+                
+                // 기본 메타데이터 정보
+                let basicMetaInfo = '';
+                let hasDetailedMeta = false;
+                
+                // 청크 메타데이터 기본 정보
+                if (result.chunk_meta) {
+                    const chunk = result.chunk_meta;
+                    basicMetaInfo += `<div class="search-result-meta-item">
+                        <strong>청크:</strong> ${chunk.chunk_type} (순서: ${chunk.chunk_seq}, 요소: ${chunk.element_count}개)
+                    </div>`;
+                    hasDetailedMeta = true;
+                }
+                
+                // 미디어 메타데이터 기본 정보
+                if (result.media_meta) {
+                    const media = result.media_meta;
+                    let mediaDetails = `${media.media_type}`;
+                    if (media.title) mediaDetails += ` - ${media.title}`;
+                    if (media.file_size_bytes) {
+                        const sizeMB = (media.file_size_bytes / 1024 / 1024).toFixed(1);
+                        mediaDetails += ` (${sizeMB}MB)`;
+                    }
+                    if (media.duration_seconds) {
+                        const duration = Math.round(media.duration_seconds);
+                        mediaDetails += ` (${duration}초)`;
+                    }
+                    
+                    basicMetaInfo += `<div class="search-result-meta-item">
+                        <strong>미디어:</strong> ${mediaDetails}
+                    </div>`;
+                    hasDetailedMeta = true;
+                }
+                
+                // 상세 메타데이터 토글 버튼 및 내용
+                let detailedMetaSection = '';
+                if (hasDetailedMeta) {
+                    const resultId = `stream-result-${index}`;
+                    detailedMetaSection = `
+                        <div class="metadata-toggle">
+                            ${result.chunk_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'chunk')">
+                                <span>📄</span> 청크 상세정보
+                            </button>` : ''}
+                            ${result.media_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'media')">
+                                <span>🎬</span> 미디어 상세정보
+                            </button>` : ''}
+                        </div>
+                        ${result.chunk_meta ? `<div id="${resultId}-chunk" class="metadata-content">
+                            <pre>${JSON.stringify(result.chunk_meta, null, 2)}</pre>
+                        </div>` : ''}
+                        ${result.media_meta ? `<div id="${resultId}-media" class="metadata-content">
+                            <pre>${JSON.stringify(result.media_meta, null, 2)}</pre>
+                        </div>` : ''}
+                    `;
+                }
+                
+                // 점수 표시
+                let scoreDisplay = `<span class="score-tag hybrid" data-tooltip="Hybrid 점수: OpenSearch의 BM25 텍스트 검색과 벡터 유사도 검색을 결합한 하이브리드 점수입니다. 높을수록 쿼리와 더 관련이 높습니다.">Hybrid: ${hybridScore}</span>`;
+                if (originalScore) {
+                    scoreDisplay += `<span class="score-tag opensearch" data-tooltip="OpenSearch 원본 점수: BM25 텍스트 유사도와 벡터 코사인 유사도를 결합한 하이브리드 검색 점수입니다. 높을수록 쿼리와 더 관련이 높습니다.">OpenSearch: ${originalScore}</span>`;
+                }
+                
+                resultsHtml += `
+                    <div class="search-result-card">
+                        <div class="search-result-header">
+                            <div class="search-result-type">${element.element_type || 'Unknown'} (${element.modality || 'text'})</div>
+                            <div class="search-result-score">${scoreDisplay}</div>
+                        </div>
+                        <div class="search-result-content">
+                            ${element.content ? element.content.substring(0, 300) : 'No content'}${element.content && element.content.length > 300 ? '...' : ''}
+                        </div>
+                        ${basicMetaInfo ? `<div class="search-result-meta">${basicMetaInfo}</div>` : ''}
+                        ${detailedMetaSection}
+                    </div>
+                `;
+            });
+        } else {
+            resultsHtml = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📝</div>
+                    <div>검색 결과가 없습니다.</div>
+                </div>
+            `;
+        }
+        
+        searchResultsContent.innerHTML = resultsHtml;
+        
+        // 검색 결과가 최상단에 위치하므로 페이지 상단으로 부드럽게 스크롤
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    
+    makeCollapsible() {
+        // 검색 진행 상황을 접을 수 있도록 토글 버튼 추가
+        const header = this.searchProcessContainer.querySelector('.search-process-header');
+        if (header && !header.querySelector('.toggle-button')) {
+            const toggleButton = document.createElement('button');
+            toggleButton.className = 'toggle-button';
+            toggleButton.innerHTML = '검색 과정 숨기기';
+            toggleButton.onclick = () => {
+                const steps = this.searchSteps;
+                if (steps.style.display === 'none') {
+                    steps.style.display = 'block';
+                    toggleButton.innerHTML = '검색 과정 숨기기';
+                } else {
+                    steps.style.display = 'none';
+                    toggleButton.innerHTML = '검색 과정 보기';
+                }
+            };
+            
+            header.appendChild(toggleButton);
+            
+            // 검색 완료 후 바로 접어둠 (결과에 집중하도록)
+            setTimeout(() => {
+                this.searchSteps.style.display = 'none';
+                toggleButton.innerHTML = '검색 과정 보기';
+            }, 500);
+        }
+    }
+    
+    updateProgress() {
+        const progress = Math.min((this.currentStep / this.totalSteps) * 100, 100);
+        
+        // 진행률 바에 펄스 효과 추가
+        this.progressFill.classList.add('updating');
+        setTimeout(() => {
+            this.progressFill.classList.remove('updating');
+        }, 600);
+        
+        this.progressFill.style.width = `${progress}%`;
+        
+        console.log('Progress update:', this.currentStep, '/', this.totalSteps);
+        
+        if (this.progressText) {
+            const statusText = this.currentStep === this.totalSteps 
+                ? `검색 완료 (${this.totalSteps}/${this.totalSteps})`
+                : `${this.currentStep}/${this.totalSteps} 단계 완료`;
+            this.progressText.textContent = statusText;
+        }
+    }
+    
+    showError(message, timestamp = null) {
+        console.error('Streaming error:', message);
+        this.addStep('오류', message, null, 'error', timestamp);
+        this.isStreaming = false;
+    }
+    
+    stopStreaming() {
+        if (this.eventSource) {
+            this.eventSource.close();
+            this.eventSource = null;
+        }
+        this.isStreaming = false;
+    }
+    
+    reset() {
+        this.stopStreaming();
+        this.currentStep = 0;
+        this.searchProcessData = [];
+        this.updateProgress();
+        
+        if (this.searchSteps) {
+            this.searchSteps.innerHTML = '';
+        }
+        
+        if (this.searchProcessContainer) {
+            this.searchProcessContainer.style.display = 'none';
+        }
+    }
+    
+    clearProcess() {
+        // 진행 과정만 초기화 (결과는 유지)
+        this.searchProcessData = [];
+        this.currentStep = 0;
+        this.updateProgress();
+        
+        if (this.searchSteps) {
+            this.searchSteps.innerHTML = '';
+        }
+    }
+}
+
+// 전역 인스턴스 생성
+window.streamingSearchController = new StreamingSearchController();

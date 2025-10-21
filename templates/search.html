@@ -6,6 +6,7 @@
     <title>Multimodal Search</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔍</text></svg>">
     <link rel="stylesheet" href="/static/css/search.css">
+    <link rel="stylesheet" href="/static/css/streaming.css?v=26.0">
 </head>
 <body>
 <div class="header" style="text-align: center; margin-bottom: 30px; padding-top: 40px;">
@@ -98,7 +99,7 @@
 
     <!-- 메인 콘텐츠 -->
     <div class="main-content">
-        <!-- 검색 결과 -->
+        <!-- 검색 결과 (최우선 표시) -->
         <div class="search-results-container">
             <div class="search-results-header" id="searchResultsHeader" style="display: none;">
                 <div class="search-results-title">검색 결과</div>
@@ -112,6 +113,22 @@
                 </div>
             </div>
         </div>
+
+        <!-- 검색 과정 표시 (접을 수 있는 참고 자료) -->
+        <div class="search-process-container" id="searchProcessContainer" style="display: none;">
+            <div class="search-process-header">
+                <h2>검색 진행 상황</h2>
+                <div class="search-progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">0/8 단계 완료</div>
+            </div>
+            
+            <div class="search-steps" id="searchSteps">
+                <!-- 동적으로 단계별 결과가 추가됨 -->
+            </div>
+        </div>
+        </div>
     </div>
 </div>
 
@@ -120,15 +137,31 @@
 <script src="/static/js/fileHandler.js"></script>
 <script src="/static/js/historyManager.js"></script>
 <script src="/static/js/uiController.js"></script>
+<script src="/static/js/streamingSearch.js?v=22.0"></script>
 <script src="/static/js/search.js"></script>
 <script>
     // 앱 초기화
     document.addEventListener('DOMContentLoaded', function () {
+        console.log('DOMContentLoaded - Initializing controllers');
+        console.log('streamingSearchController available:', !!window.streamingSearchController);
+        console.log('historyManager available:', !!window.historyManager);
+        console.log('uiController available:', !!window.uiController);
+        
         if (window.uiController) {
             window.uiController.initialize();
         }
         if (window.historyManager) {
             window.historyManager.initialize();
+        }
+        
+        // 모든 컨트롤러가 준비되었는지 확인
+        if (window.streamingSearchController && window.historyManager) {
+            console.log('All controllers ready');
+        } else {
+            console.warn('Some controllers not ready:', {
+                streaming: !!window.streamingSearchController,
+                history: !!window.historyManager
+            });
         }
     });
 </script>
