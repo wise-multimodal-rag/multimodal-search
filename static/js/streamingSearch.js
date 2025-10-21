@@ -828,20 +828,3 @@ class StreamingSearchController {
 
 // 전역 인스턴스 생성
 window.streamingSearchController = new StreamingSearchController();
-
-// 특징 값 토글 함수
-window.toggleFeatureValue = function(featureId) {
-    const fullValueDiv = document.getElementById(featureId);
-    const toggleBtn = document.querySelector(`button[onclick="toggleFeatureValue('${featureId}')"]`);
-    const toggleIcon = toggleBtn.querySelector('.toggle-icon');
-    
-    if (fullValueDiv.style.display === 'none') {
-        fullValueDiv.style.display = 'block';
-        toggleIcon.textContent = '▲';
-        toggleBtn.childNodes[1].textContent = ' 숨기기';
-    } else {
-        fullValueDiv.style.display = 'none';
-        toggleIcon.textContent = '▼';
-        toggleBtn.childNodes[1].textContent = ' 전체보기';
-    }
-};

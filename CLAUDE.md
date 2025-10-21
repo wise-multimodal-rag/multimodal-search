@@ -30,10 +30,10 @@ This is a multimodal search and RAG system using OpenSearch. The system processe
 uv pip install -e .
 
 # Run development server
-python run.py
+uv run run.py
 
 # Run with uvicorn directly
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Code Quality
@@ -42,8 +42,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 uv pip install -e .[dev]
 
 # Code formatting and linting
-python -m isort app/
-python -m pyright app/
+uv run -m isort app/
+uv run -m pyright app/
 ```
 
 ### Docker

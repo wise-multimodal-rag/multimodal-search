@@ -20,9 +20,8 @@ class TooltipManager {
         
         this.currentTooltip = this.createTooltip(content);
         const rect = element.getBoundingClientRect();
-        
-        // Position tooltip above the element
         const tooltipRect = this.currentTooltip.getBoundingClientRect();
+        
         let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
         let top = rect.top - tooltipRect.height - 10;
         
