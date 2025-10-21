@@ -85,7 +85,9 @@ class MultimodalFeatureExtractor:
                 keywords = keywords_result["keywords"]  # Extract the keywords list
 
             # 엔티티 추출 (구조화된 콘텐츠용)
-            if any(t in element_types for t in ["paragraph", "title", "summary", "ocr", "stt", "caption"]):
+            # 텍스트 관련 element_type에 대해 엔티티 추출 수행 (현재 활성: paragraph, summary, caption)
+            if any(t in element_types for t in ["paragraph", "summary", "caption"]):
+                # 비활성화된 타입: "title", "ocr", "stt"
                 entities_result = await self.feature_extraction_client.extract_entities(text_query)
                 if entities_result and "entities" in entities_result:
                     entities = entities_result["entities"]  # Extract the entities list
@@ -122,9 +124,9 @@ class MultimodalFeatureExtractor:
     ) -> Optional[ImageFeatures]:
         """이미지 모달리티에서 특징 추출"""
         try:
-            # 이미지 관련 element_types가 선택된 경우에만 분석 수행
-            if not any(t in element_types for t in
-                       ["caption", "origin", "cropped", "detected_object", "chart", "diagram"]):
+            # 이미지 관련 element_types가 선택된 경우에만 분석 수행 (현재 활성: caption, origin)
+            if not any(t in element_types for t in ["caption", "origin"]):
+                # 비활성화된 타입: "cropped", "detected_object", "chart", "diagram"
                 return None
 
             if "base64_data" not in image_data:
@@ -142,11 +144,11 @@ class MultimodalFeatureExtractor:
             if caption_result and "caption" in caption_result:
                 caption = caption_result["caption"]
 
-            # 객체 탐지 (detected_object가 선택된 경우)
-            if "detected_object" in element_types:
-                detection_result = await self.embedding_client.detect_objects(image_bytes)
-                if detection_result and "objects" in detection_result:
-                    objects = detection_result["objects"]
+            # 객체 탐지 (비활성화됨: detected_object)
+            # if "detected_object" in element_types:
+            #     detection_result = await self.embedding_client.detect_objects(image_bytes)
+            #     if detection_result and "objects" in detection_result:
+            #         objects = detection_result["objects"]
 
             # 최소 하나의 feature가 추출된 경우만 ImageFeatures 반환
             if any([caption, objects]):
@@ -167,9 +169,11 @@ class MultimodalFeatureExtractor:
     ) -> Optional[VideoFeatures]:
         """비디오 모달리티에서 특징 추출"""
         try:
-            # 비디오 관련 element_types가 선택된 경우에만 LLM 분석 수행
-            if not any(t in element_types for t in ["scene", "clip", "segment", "keyframe", "thumbnail"]):
-                return None
+            # 비디오 관련 element_types 모두 비활성화됨
+            # 비활성화된 타입: "scene", "clip", "segment", "keyframe", "thumbnail"
+            return None
+            # if not any(t in element_types for t in ["scene", "clip", "segment", "keyframe", "thumbnail"]):
+            #     return None
 
             if "base64_data" not in video_data:
                 return None
@@ -224,9 +228,11 @@ class MultimodalFeatureExtractor:
     ) -> Optional[AudioFeatures]:
         """오디오 모달리티에서 특징 추출"""
         try:
-            # 오디오 관련 element_types가 선택된 경우에만 LLM 분석 수행
-            if not any(t in element_types for t in ["speech", "stt", "music", "sound_effect", "ambient"]):
-                return None
+            # 오디오 관련 element_types 모두 비활성화됨
+            # 비활성화된 타입: "speech", "stt", "music", "sound_effect", "ambient"
+            return None
+            # if not any(t in element_types for t in ["speech", "stt", "music", "sound_effect", "ambient"]):
+            #     return None
 
             if "base64_data" not in audio_data:
                 return None
