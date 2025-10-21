@@ -44,6 +44,7 @@ uv pip install -e .[dev]
 # Code formatting and linting
 uv run -m isort app/
 uv run -m pyright app/
+uv run -m ruff check app/
 ```
 
 ### Docker

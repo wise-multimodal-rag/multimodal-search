@@ -135,7 +135,6 @@ async def search_multimodal_stream(
         search_service: SearchService = Depends(get_search_service)
 ):
     """실시간 스트리밍 방식의 멀티모달 검색 엔드포인트"""
-    
     # 요청 받자마자 즉시 파일들을 읽어서 메모리에 보관
     processed_files = {}
     file_processing_errors = []

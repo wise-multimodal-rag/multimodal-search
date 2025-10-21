@@ -1,5 +1,5 @@
 import time
-from typing import AsyncGenerator, Dict, Any, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 from fastapi import UploadFile
 from loguru import logger
@@ -464,7 +464,6 @@ class SearchService:
         max_results: int = 10
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """스트리밍 방식의 멀티모달 검색 오케스트레이션"""
-        
         start_time = time.time()
         
         try:
@@ -623,10 +622,10 @@ class SearchService:
                     text_feature_data["summary"] = self._safely_serialize_feature(extracted_features.text.summary)
                 if extracted_features.text.classification:
                     text_feature_data["classification"] = self._safely_serialize_feature(extracted_features.text.classification)
-                if hasattr(extracted_features.text, 'sentiment') and extracted_features.text.sentiment:
-                    text_feature_data["sentiment"] = self._safely_serialize_feature(extracted_features.text.sentiment)
-                if hasattr(extracted_features.text, 'topics') and extracted_features.text.topics:
-                    text_feature_data["topics"] = self._safely_serialize_feature(extracted_features.text.topics)
+                if hasattr(extracted_features.text, 'sentiment') and getattr(extracted_features.text, 'sentiment', None):
+                    text_feature_data["sentiment"] = self._safely_serialize_feature(getattr(extracted_features.text, 'sentiment'))
+                if hasattr(extracted_features.text, 'topics') and getattr(extracted_features.text, 'topics', None):
+                    text_feature_data["topics"] = self._safely_serialize_feature(getattr(extracted_features.text, 'topics'))
                     
                 feature_data["text_features"] = text_feature_data
                 
@@ -641,12 +640,12 @@ class SearchService:
                     image_feature_data["caption"] = self._safely_serialize_feature(extracted_features.image.caption)
                 if extracted_features.image.objects:
                     image_feature_data["objects"] = self._safely_serialize_feature(extracted_features.image.objects)
-                if hasattr(extracted_features.image, 'tags') and extracted_features.image.tags:
-                    image_feature_data["tags"] = self._safely_serialize_feature(extracted_features.image.tags)
-                if hasattr(extracted_features.image, 'colors') and extracted_features.image.colors:
-                    image_feature_data["colors"] = self._safely_serialize_feature(extracted_features.image.colors)
-                if hasattr(extracted_features.image, 'scene_analysis') and extracted_features.image.scene_analysis:
-                    image_feature_data["scene_analysis"] = self._safely_serialize_feature(extracted_features.image.scene_analysis)
+                if hasattr(extracted_features.image, 'tags') and getattr(extracted_features.image, 'tags', None):
+                    image_feature_data["tags"] = self._safely_serialize_feature(getattr(extracted_features.image, 'tags'))
+                if hasattr(extracted_features.image, 'colors') and getattr(extracted_features.image, 'colors', None):
+                    image_feature_data["colors"] = self._safely_serialize_feature(getattr(extracted_features.image, 'colors'))
+                if hasattr(extracted_features.image, 'scene_analysis') and getattr(extracted_features.image, 'scene_analysis', None):
+                    image_feature_data["scene_analysis"] = self._safely_serialize_feature(getattr(extracted_features.image, 'scene_analysis'))
                     
                 feature_data["image_features"] = image_feature_data
                 
@@ -664,10 +663,10 @@ class SearchService:
                     video_feature_data["scenes"] = self._safely_serialize_feature(extracted_features.video.scenes)
                 if extracted_features.video.activities:
                     video_feature_data["activities"] = self._safely_serialize_feature(extracted_features.video.activities)
-                if hasattr(extracted_features.video, 'keyframes') and extracted_features.video.keyframes:
-                    video_feature_data["keyframes"] = self._safely_serialize_feature(extracted_features.video.keyframes)
-                if hasattr(extracted_features.video, 'motion_analysis') and extracted_features.video.motion_analysis:
-                    video_feature_data["motion_analysis"] = self._safely_serialize_feature(extracted_features.video.motion_analysis)
+                if hasattr(extracted_features.video, 'keyframes') and getattr(extracted_features.video, 'keyframes', None):
+                    video_feature_data["keyframes"] = self._safely_serialize_feature(getattr(extracted_features.video, 'keyframes'))
+                if hasattr(extracted_features.video, 'motion_analysis') and getattr(extracted_features.video, 'motion_analysis', None):
+                    video_feature_data["motion_analysis"] = self._safely_serialize_feature(getattr(extracted_features.video, 'motion_analysis'))
                     
                 feature_data["video_features"] = video_feature_data
                 
@@ -683,12 +682,12 @@ class SearchService:
                     audio_feature_data["transcription"] = self._safely_serialize_feature(extracted_features.audio.transcription)
                 if extracted_features.audio.sounds:
                     audio_feature_data["sounds"] = self._safely_serialize_feature(extracted_features.audio.sounds)
-                if hasattr(extracted_features.audio, 'emotions') and extracted_features.audio.emotions:
-                    audio_feature_data["emotions"] = self._safely_serialize_feature(extracted_features.audio.emotions)
-                if hasattr(extracted_features.audio, 'speaker_info') and extracted_features.audio.speaker_info:
-                    audio_feature_data["speaker_info"] = self._safely_serialize_feature(extracted_features.audio.speaker_info)
-                if hasattr(extracted_features.audio, 'acoustic_features') and extracted_features.audio.acoustic_features:
-                    audio_feature_data["acoustic_features"] = self._safely_serialize_feature(extracted_features.audio.acoustic_features)
+                if hasattr(extracted_features.audio, 'emotions') and getattr(extracted_features.audio, 'emotions', None):
+                    audio_feature_data["emotions"] = self._safely_serialize_feature(getattr(extracted_features.audio, 'emotions'))
+                if hasattr(extracted_features.audio, 'speaker_info') and getattr(extracted_features.audio, 'speaker_info', None):
+                    audio_feature_data["speaker_info"] = self._safely_serialize_feature(getattr(extracted_features.audio, 'speaker_info'))
+                if hasattr(extracted_features.audio, 'acoustic_features') and getattr(extracted_features.audio, 'acoustic_features', None):
+                    audio_feature_data["acoustic_features"] = self._safely_serialize_feature(getattr(extracted_features.audio, 'acoustic_features'))
                     
                 feature_data["audio_features"] = audio_feature_data
             
@@ -745,10 +744,10 @@ class SearchService:
             
             # 검색 실행 통계
             search_stats = {
-                "total_hits": search_results.get("total_hits", 0),
-                "max_score": search_results.get("max_score", 0.0),
-                "result_count": len(search_results.get("results", [])),
-                "took_ms": search_results.get("took_ms", 0),
+                "total_hits": search_results.get("total_hits", 0) if search_results else 0,
+                "max_score": search_results.get("max_score", 0.0) if search_results else 0.0,
+                "result_count": len(search_results.get("results", [])) if search_results else 0,
+                "took_ms": search_results.get("took_ms", 0) if search_results else 0,
                 "queries_executed": len(expanded_queries)
             }
             
