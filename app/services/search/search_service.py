@@ -534,27 +534,53 @@ class SearchService:
                 }
             }
             
-            # Step 2: 쿼리 분석 및 확장
+            # Step 2a: 쿼리 확장
             yield {
-                "step": "query_analysis",
-                "message": "쿼리 의도를 분석하고 확장하고 있습니다...",
+                "step": "query_expansion",
+                "message": "쿼리를 확장하고 있습니다...",
                 "timestamp": time.time()
             }
             
-            query_analysis, expanded_queries = await self._expand_and_analyze_query(text_query)
+            if text_query:
+                expanded_queries, expansion_result = await self._expand_query(text_query)
+            else:
+                expanded_queries = ["multimodal search"]
+                expansion_result = None
             
             yield {
-                "step": "query_analyzed",
-                "message": "쿼리 분석이 완료되었습니다",
+                "step": "query_expanded",
+                "message": "쿼리 확장이 완료되었습니다",
                 "timestamp": time.time(),
                 "data": {
                     "original_query": text_query,
-                    "selected_element_types": query_analysis["selected_element_types"],
                     "expanded_queries": expanded_queries,
+                    "expansion_used": len(expanded_queries) > 1,
+                    "total_queries": len(expanded_queries),
+                    "expansion_analysis": expansion_result
+                }
+            }
+            
+            # Step 2b: 쿼리 의도 분석
+            yield {
+                "step": "intent_analysis",
+                "message": "쿼리 의도를 분석하고 있습니다...",
+                "timestamp": time.time()
+            }
+            
+            if text_query:
+                query_analysis = await self._analyze_query_intent(expanded_queries, expansion_result)
+            else:
+                query_analysis = self.query_analyzer.create_default_query_analysis(self.available_element_types)
+            
+            yield {
+                "step": "intent_analyzed",
+                "message": "쿼리 의도 분석이 완료되었습니다",
+                "timestamp": time.time(),
+                "data": {
+                    "selected_element_types": query_analysis["selected_element_types"],
                     "reasoning": query_analysis.get("reasoning", ""),
                     "confidence": query_analysis.get("confidence", 0.0),
-                    "expansion_used": len(expanded_queries) > 1,
-                    "total_queries": len(expanded_queries)
+                    "element_types_count": len(query_analysis["selected_element_types"])
                 }
             }
             
@@ -767,7 +793,7 @@ class SearchService:
                     "results": [result.model_dump() if hasattr(result, 'model_dump') else result for result in enriched_results],
                     "search_stats": final_stats,
                     "total_time_ms": total_time * 1000,
-                    "processing_steps": 7,
+                    "processing_steps": 8,
                     "query_analysis": query_analysis,
                     "expanded_queries": expanded_queries
                 }

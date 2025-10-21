@@ -244,6 +244,73 @@
     top: 1px;
 }
 
+/* 쿼리 확장 분석 상세 스타일 */
+.sub-section {
+    margin: 10px 0;
+    padding: 8px 0;
+    border-top: 1px solid #e5e7eb;
+}
+
+.sub-section h5 {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.decomposition-list, .rewritten-list, .semantic-list, .final-queries-list, .suggestions-list {
+    margin: 5px 0;
+}
+
+.decomposition-item, .rewritten-item, .semantic-item, .suggestion-item {
+    padding: 4px 8px;
+    margin: 2px 0;
+    background-color: #f9fafb;
+    border-radius: 4px;
+    font-size: 12px;
+    border-left: 3px solid #d1d5db;
+}
+
+.final-query-item {
+    padding: 6px 8px;
+    margin: 4px 0;
+    background-color: #f0f9ff;
+    border-radius: 4px;
+    border-left: 3px solid #0ea5e9;
+}
+
+.unused-query-item {
+    padding: 6px 8px;
+    margin: 4px 0;
+    background-color: #fafafa;
+    border-radius: 4px;
+    border-left: 3px solid #9ca3af;
+    opacity: 0.8;
+}
+
+.query-text {
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 2px;
+}
+
+.query-score {
+    font-size: 11px;
+    color: #059669;
+    font-weight: 600;
+}
+
+.query-reason {
+    font-size: 11px;
+    color: #6b7280;
+    font-style: italic;
+    margin-top: 2px;
+}
+
+.decomposition-item strong, .rewritten-item strong, .semantic-item strong, .suggestion-item strong {
+    color: #4f46e5;
+}
+
 /* 완료된 상태에는 체크 마크 표시 */
 .search-step.success .step-title::before {
     content: '✓';
@@ -506,7 +573,6 @@
     color: #374151;
     white-space: pre-wrap;
     word-wrap: break-word;
-}
     max-height: 300px;
     overflow-y: auto;
 }

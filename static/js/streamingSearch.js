@@ -9,7 +9,7 @@ class StreamingSearchController {
         this.progressFill = document.getElementById('progressFill');
         this.progressText = document.getElementById('progressText');
         this.currentStep = 0;
-        this.totalSteps = 7;
+        this.totalSteps = 8;
         this.isStreaming = false;
         this.searchProcessData = []; // 검색 진행 과정 데이터 저장
     }
@@ -61,11 +61,13 @@ class StreamingSearchController {
                         try {
                             const data = line.slice(6); // 'data: ' 제거
                             if (data.trim()) {
+                                console.log('📡 Raw streaming data received:', data.substring(0, 100) + '...');
                                 const stepResult = JSON.parse(data);
+                                console.log('✅ Parsed step result:', stepResult.step, stepResult.message);
                                 this.handleStepResult(stepResult);
                             }
                         } catch (error) {
-                            console.error('Failed to parse streaming data:', error, line);
+                            console.error('❌ Failed to parse streaming data:', error, line);
                         }
                     }
                 }
@@ -82,8 +84,9 @@ class StreamingSearchController {
     handleStepResult(stepResult) {
         const { step, message, data, timestamp, error } = stepResult;
         
-        console.log('Step result:', stepResult);
-        console.log('Current step before:', this.currentStep, 'New step:', step);
+        console.log('🔍 Step result received:', stepResult);
+        console.log('📊 Current step before:', this.currentStep, 'New step:', step);
+        console.log('⏰ Timestamp:', timestamp, 'Message:', message);
         
         // 진행 과정 데이터에 저장 (error가 있을 때는 message 대신 error 사용)
         const processStep = {
@@ -111,13 +114,22 @@ class StreamingSearchController {
                 this.currentStep = 2;
                 break;
                 
-            case 'query_analysis':
-                this.addStep('쿼리 분석 중', message, null, 'loading', timestamp);
+            case 'query_expansion':
+                this.addStep('쿼리 확장 중', message, null, 'loading', timestamp);
                 break;
                 
-            case 'query_analyzed':
-                this.updateLastLoadingStep('쿼리 분석 완료', message, data, 'success', timestamp);
+            case 'query_expanded':
+                this.updateLastLoadingStep('쿼리 확장 완료', message, data, 'success', timestamp);
                 this.currentStep = 3;
+                break;
+                
+            case 'intent_analysis':
+                this.addStep('쿼리 의도 분석 중', message, null, 'loading', timestamp);
+                break;
+                
+            case 'intent_analyzed':
+                this.updateLastLoadingStep('쿼리 의도 분석 완료', message, data, 'success', timestamp);
+                this.currentStep = 4;
                 break;
                 
             case 'feature_extraction':
@@ -126,7 +138,7 @@ class StreamingSearchController {
                 
             case 'features_extracted':
                 this.updateLastLoadingStep('특징 추출 완료', message, data, 'success', timestamp);
-                this.currentStep = 4;
+                this.currentStep = 5;
                 break;
                 
             case 'embedding_generation':
@@ -135,7 +147,7 @@ class StreamingSearchController {
                 
             case 'embeddings_generated':
                 this.updateLastLoadingStep('임베딩 생성 완료', message, data, 'success', timestamp);
-                this.currentStep = 5;
+                this.currentStep = 6;
                 break;
                 
             case 'search_execution':
@@ -144,7 +156,7 @@ class StreamingSearchController {
                 
             case 'search_executed':
                 this.updateLastLoadingStep('검색 실행 완료', message, data, 'success', timestamp);
-                this.currentStep = 6;
+                this.currentStep = 7;
                 break;
                 
             case 'result_enrichment':
@@ -153,12 +165,12 @@ class StreamingSearchController {
                 
             case 'result_enriched':
                 this.updateLastLoadingStep('결과 보강 완료', message, data, 'success', timestamp);
-                this.currentStep = 7;
+                this.currentStep = 8;
                 break;
                 
             case 'completed':
                 this.addStep('검색 완료', message, data, 'success', timestamp);
-                // currentStep은 이미 result_enriched에서 7로 설정됨
+                // currentStep은 이미 result_enriched에서 8로 설정됨
                 this.renderFinalResults(data);
                 break;
                 
@@ -303,20 +315,7 @@ class StreamingSearchController {
             }
         }
         
-        // 쿼리 분석 데이터
-        if (data.selected_element_types) {
-            content += `
-                <div class="data-section">
-                    <h4>선택된 Element Types (${data.selected_element_types.length}개)</h4>
-                    <div class="element-types">
-                        ${data.selected_element_types.map(type => 
-                            `<span class="element-type-tag">${type}</span>`
-                        ).join('')}
-                    </div>
-                </div>
-            `;
-        }
-        
+        // 쿼리 확장 데이터
         if (data.expanded_queries) {
             content += `
                 <div class="data-section">
@@ -326,6 +325,171 @@ class StreamingSearchController {
                             `<div class="expanded-query">
                                 <strong>Query ${index + 1}:</strong> ${typeof query === 'object' ? query.query || JSON.stringify(query) : query}
                             </div>`
+                        ).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (data.expansion_used !== undefined) {
+            const expansionText = data.expansion_used ? 
+                `성공 (${data.total_queries || 1}개 쿼리 생성)` : 
+                '실패 (원본 쿼리만 사용)';
+            content += `<div class="data-item"><strong>쿼리 확장:</strong> ${expansionText}</div>`;
+        }
+        
+        // 확장 분석 상세 정보
+        if (data.expansion_analysis) {
+            const analysis = data.expansion_analysis;
+            
+            content += `<div class="data-section">
+                <h4>쿼리 확장 분석 상세</h4>`;
+            
+            // 의존성 정보
+            if (analysis.has_dependency !== undefined) {
+                content += `<div class="data-item">
+                    <strong>쿼리 의존성:</strong> ${analysis.has_dependency ? '있음' : '없음'}
+                </div>`;
+                
+                if (analysis.dependency_reason) {
+                    content += `<div class="data-item">
+                        <strong>의존성 이유:</strong> ${analysis.dependency_reason}
+                    </div>`;
+                }
+            }
+            
+            // 적용된 기법들
+            if (analysis.applied_techniques && analysis.applied_techniques.length > 0) {
+                content += `<div class="data-item">
+                    <strong>적용된 기법:</strong> ${analysis.applied_techniques.join(', ')}
+                </div>`;
+            }
+            
+            // 분해된 쿼리들
+            if (analysis.decomposition && analysis.decomposition.length > 0) {
+                content += `<div class="sub-section">
+                    <h5>쿼리 분해 (${analysis.decomposition.length}개)</h5>
+                    <div class="decomposition-list">
+                        ${analysis.decomposition.map((item, index) => 
+                            `<div class="decomposition-item">
+                                <strong>${index + 1}.</strong> ${typeof item === 'object' ? item.query || JSON.stringify(item) : item}
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>`;
+            }
+            
+            // 재작성된 쿼리들
+            if (analysis.rewritten_queries && analysis.rewritten_queries.length > 0) {
+                content += `<div class="sub-section">
+                    <h5>재작성된 쿼리 (${analysis.rewritten_queries.length}개)</h5>
+                    <div class="rewritten-list">
+                        ${analysis.rewritten_queries.map((item, index) => 
+                            `<div class="rewritten-item">
+                                <strong>${index + 1}.</strong> ${typeof item === 'object' ? item.query || JSON.stringify(item) : item}
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>`;
+            }
+            
+            // 의미적 확장들
+            if (analysis.semantic_expansions && analysis.semantic_expansions.length > 0) {
+                content += `<div class="sub-section">
+                    <h5>의미적 확장 (${analysis.semantic_expansions.length}개)</h5>
+                    <div class="semantic-list">
+                        ${analysis.semantic_expansions.map((item, index) => 
+                            `<div class="semantic-item">
+                                <strong>${index + 1}.</strong> ${typeof item === 'object' ? item.query || JSON.stringify(item) : item}
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>`;
+            }
+            
+            // 최종 쿼리들 (실제 사용된 것만 표시)
+            // expanded_queries와 매칭하여 실제 사용된 쿼리만 표시
+            if (analysis.final_queries && analysis.final_queries.length > 0 && data.expanded_queries) {
+                // expanded_queries와 매칭되는 final_queries만 찾기
+                const usedFinalQueries = analysis.final_queries.filter(item => {
+                    const queryText = typeof item === 'object' ? item.query : item;
+                    return data.expanded_queries.includes(queryText);
+                });
+                
+                if (usedFinalQueries.length > 0) {
+                    content += `<div class="sub-section">
+                        <h5>최종 선별된 쿼리 (${usedFinalQueries.length}개 - 실제 검색에 사용)</h5>
+                        <div class="final-queries-list">
+                            ${usedFinalQueries.map((item, index) => {
+                                if (typeof item === 'object' && item.query) {
+                                    return `<div class="final-query-item">
+                                        <div class="query-text"><strong>${index + 1}.</strong> ${item.query}</div>
+                                        ${item.score !== undefined ? `<div class="query-score">점수: ${item.score.toFixed(2)}</div>` : ''}
+                                        ${item.reason ? `<div class="query-reason">이유: ${item.reason}</div>` : ''}
+                                    </div>`;
+                                } else {
+                                    return `<div class="final-query-item">
+                                        <div class="query-text"><strong>${index + 1}.</strong> ${typeof item === 'object' ? JSON.stringify(item) : item}</div>
+                                    </div>`;
+                                }
+                            }).join('')}
+                        </div>
+                    </div>`;
+                }
+                
+                // 사용되지 않은 쿼리들도 참고용으로 표시
+                const unusedFinalQueries = analysis.final_queries.filter(item => {
+                    const queryText = typeof item === 'object' ? item.query : item;
+                    return !data.expanded_queries.includes(queryText);
+                });
+                
+                if (unusedFinalQueries.length > 0) {
+                    content += `<div class="sub-section">
+                        <h5>후보 쿼리 (${unusedFinalQueries.length}개 - 미사용)</h5>
+                        <div class="unused-queries-list">
+                            ${unusedFinalQueries.map((item, index) => {
+                                if (typeof item === 'object' && item.query) {
+                                    return `<div class="unused-query-item">
+                                        <div class="query-text"><strong>${index + 1}.</strong> ${item.query}</div>
+                                        ${item.score !== undefined ? `<div class="query-score">점수: ${item.score.toFixed(2)}</div>` : ''}
+                                        ${item.reason ? `<div class="query-reason">이유: ${item.reason}</div>` : ''}
+                                    </div>`;
+                                } else {
+                                    return `<div class="unused-query-item">
+                                        <div class="query-text"><strong>${index + 1}.</strong> ${typeof item === 'object' ? JSON.stringify(item) : item}</div>
+                                    </div>`;
+                                }
+                            }).join('')}
+                        </div>
+                    </div>`;
+                }
+            }
+            
+            // 검색 제안사항
+            if (analysis.search_suggestions && analysis.search_suggestions.length > 0) {
+                content += `<div class="sub-section">
+                    <h5>검색 제안사항 (${analysis.search_suggestions.length}개)</h5>
+                    <div class="suggestions-list">
+                        ${analysis.search_suggestions.map((suggestion, index) => 
+                            `<div class="suggestion-item">
+                                <strong>${index + 1}.</strong> ${typeof suggestion === 'object' ? suggestion.text || JSON.stringify(suggestion) : suggestion}
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>`;
+            }
+            
+            content += `</div>`;
+        }
+        
+        // 쿼리 의도 분석 데이터
+        if (data.selected_element_types) {
+            content += `
+                <div class="data-section">
+                    <h4>선택된 Element Types (${data.selected_element_types.length}개)</h4>
+                    <div class="element-types">
+                        ${data.selected_element_types.map(type => 
+                            `<span class="element-type-tag">${type}</span>`
                         ).join('')}
                     </div>
                 </div>
@@ -342,11 +506,18 @@ class StreamingSearchController {
         
         // 특징 추출 데이터
         if (data.extraction_success) {
-            const successCount = Object.values(data.extraction_success).filter(Boolean).length;
+            const successCount = Object.values(data.extraction_success).filter(val => val === true).length;
             content += `<div class="data-item"><strong>특징 추출 성공:</strong> ${successCount}/4 모달리티</div>`;
             
             Object.entries(data.extraction_success).forEach(([modality, success]) => {
-                const icon = success ? '✅' : '❌';
+                let icon;
+                if (success === true) {
+                    icon = '✅'; // 성공
+                } else if (success === false) {
+                    icon = '❌'; // 실패 (데이터는 있었지만 처리 실패)
+                } else {
+                    icon = '⊘'; // 데이터 없음 (null, undefined 등)
+                }
                 content += `<div class="data-item">${icon} ${modality.toUpperCase()}</div>`;
             });
         }
@@ -379,73 +550,22 @@ class StreamingSearchController {
                         <h5>${modalityName} 추출 특징</h5>`;
                     
                     Object.entries(actualFeatures).forEach(([key, value], index) => {
-                        // 디버깅: entities 데이터 확인
-                        if (key === 'entities') {
-                            console.log('Entities data:', value);
-                            console.log('Entities JSON length:', JSON.stringify(value).length);
-                        }
+                        // 모든 특징 데이터를 전체 표시 (토글 없음)
+                        let displayValue;
                         
-                        let previewValue = value;
-                        let fullValue = value;
-                        let needsToggle = false;
-                        
-                        // 값의 타입에 따라 표시 방식 조정
                         if (Array.isArray(value)) {
-                            fullValue = JSON.stringify(value, null, 2);
-                            const allItems = value.map(item => {
-                                if (typeof item === 'object' && item !== null) {
-                                    return typeof item === 'string' ? item : JSON.stringify(item);
-                                }
-                                return String(item);
-                            });
-                            previewValue = `[${allItems.join(', ')}]`;
-                            
-                            // 디버깅: 배열 처리 정보
-                            if (key === 'entities') {
-                                console.log('Entities preview:', previewValue);
-                                console.log('Entities full:', fullValue);
-                            }
-                            
-                            // 전체 JSON 문자열이 매우 긴 경우에만 토글 적용 (300자로 낮춤)
-                            if (JSON.stringify(value).length > 300) {
-                                needsToggle = true;
-                                if (key === 'entities') {
-                                    console.log('Entities will use toggle (length:', JSON.stringify(value).length, ')');
-                                }
-                            }
+                            displayValue = JSON.stringify(value, null, 2);
                         } else if (typeof value === 'object' && value !== null) {
-                            fullValue = JSON.stringify(value, null, 2);
-                            
-                            // 객체가 단순하고 작으면 바로 표시
-                            const jsonString = JSON.stringify(value);
-                            if (jsonString.length <= 200 && Object.keys(value).length <= 5) {
-                                previewValue = jsonString;
-                            } else {
-                                previewValue = `{${Object.keys(value).length}개 속성}`;
-                                needsToggle = true;
-                            }
-                        } else if (typeof value === 'string' && value.length > 300) {
-                            // 긴 텍스트만 토글 처리 (300자 이상)
-                            fullValue = value;
-                            previewValue = `${value.substring(0, 150)}... (총 ${value.length}자)`;
-                            needsToggle = true;
+                            displayValue = JSON.stringify(value, null, 2);
                         } else {
-                            previewValue = String(value);
+                            displayValue = String(value);
                         }
-                        
-                        const featureId = `feature-${modalityName.toLowerCase()}-${index}`;
                         
                         content += `<div class="data-item">
-                            <strong>${key}:</strong> 
-                            <span class="feature-value">${previewValue}</span>
-                            ${needsToggle ? `
-                                <button class="feature-toggle-btn" onclick="toggleFeatureValue('${featureId}')">
-                                    <span class="toggle-icon">▼</span> 전체보기
-                                </button>
-                                <div id="${featureId}" class="feature-full-value" style="display: none;">
-                                    <pre>${fullValue}</pre>
-                                </div>
-                            ` : ''}
+                            <strong>${key}:</strong>
+                            <div class="feature-value-full">
+                                <pre>${displayValue}</pre>
+                            </div>
                         </div>`;
                     });
                     
@@ -470,11 +590,21 @@ class StreamingSearchController {
         
         // 추출된 특징의 전체 요약
         if (data.text_features || data.image_features || data.video_features || data.audio_features) {
+            // 메타데이터 키 목록 (실제 특징이 아닌 메타정보)
+            const metaKeys = ['keywords_count', 'entities_count', 'has_summary', 'has_classification', 
+                            'has_caption', 'objects_count', 'has_description', 'scenes_count', 
+                            'activities_count', 'has_transcription', 'sounds_count', 'audio_type'];
+            
+            const countActualFeatures = (features) => {
+                if (!features) return 0;
+                return Object.keys(features).filter(key => !metaKeys.includes(key)).length;
+            };
+            
             const totalFeatures = [
-                data.text_features ? Object.keys(data.text_features).length : 0,
-                data.image_features ? Object.keys(data.image_features).length : 0,
-                data.video_features ? Object.keys(data.video_features).length : 0,
-                data.audio_features ? Object.keys(data.audio_features).length : 0
+                countActualFeatures(data.text_features),
+                countActualFeatures(data.image_features),
+                countActualFeatures(data.video_features),
+                countActualFeatures(data.audio_features)
             ].reduce((a, b) => a + b, 0);
             
             content += `
@@ -485,7 +615,13 @@ class StreamingSearchController {
                             <strong>총 특징 수:</strong> ${totalFeatures}개
                         </div>
                         <div class="summary-item">
-                            <strong>처리 시간:</strong> ${data.processing_time_ms ? Math.round(data.processing_time_ms) + 'ms' : '-'}
+                            <strong>처리 시간:</strong> ${
+                                data.processing_time_ms ? Math.round(data.processing_time_ms) + 'ms' :
+                                data.processing_time ? Math.round(data.processing_time) + 'ms' :
+                                data.took_ms ? Math.round(data.took_ms) + 'ms' :
+                                data.duration_ms ? Math.round(data.duration_ms) + 'ms' :
+                                '측정되지 않음'
+                            }
                         </div>
                     </div>
                 </div>

@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
+from app.clients.embedding_client import EmbeddingClient
 from app.clients.feature_extraction_client import FeatureExtractionClient
 from app.clients.llm_client import LLMClient
 from app.models.features import (AudioFeatures, ImageFeatures, MultimodalFeatures,
@@ -14,9 +15,11 @@ class MultimodalFeatureExtractor:
     def __init__(
         self,
         feature_extraction_client: FeatureExtractionClient = None,
+        embedding_client: EmbeddingClient = None,
         llm_client: LLMClient = None
     ):
         self.feature_extraction_client = feature_extraction_client or FeatureExtractionClient()
+        self.embedding_client = embedding_client or EmbeddingClient()
         self.llm_client = llm_client or LLMClient()
 
     async def extract_features(
@@ -134,14 +137,14 @@ class MultimodalFeatureExtractor:
             # 이미지 캡션 생성
             import base64
             image_bytes = base64.b64decode(base64_image)
-            caption_result = await self.feature_extraction_client.generate_image_caption(image_bytes)
+            caption_result = await self.embedding_client.generate_image_caption(image_bytes)
 
             if caption_result and "caption" in caption_result:
                 caption = caption_result["caption"]
 
             # 객체 탐지 (detected_object가 선택된 경우)
             if "detected_object" in element_types:
-                detection_result = await self.feature_extraction_client.detect_objects(image_bytes)
+                detection_result = await self.embedding_client.detect_objects(image_bytes)
                 if detection_result and "objects" in detection_result:
                     objects = detection_result["objects"]
 

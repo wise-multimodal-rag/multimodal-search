@@ -170,57 +170,6 @@ class FeatureExtractionClient:
                 logger.error(f"Sentiment analysis request failed: {e}")
                 return None
 
-    async def generate_image_caption(
-        self,
-        image_data: bytes
-    ) -> Optional[Dict[str, Any]]:
-        """Generate image caption"""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                files = {"image_file": ("image.jpg", image_data, "image/jpeg")}
-                
-                response = await client.post(
-                    f"{self.base_url}/analysis/image/captioning",
-                    files=files,
-                    headers=self.file_headers
-                )
-                response.raise_for_status()
-                
-                result = response.json()
-                logger.debug(f"Image caption API response: {result}")
-                if result.get("status") == "success":
-                    return result["data"]
-                else:
-                    logger.error(f"Image caption generation failed: {result}")
-                    return None
-                    
-            except Exception as e:
-                logger.error(f"Image caption request failed: {e}")
-                return None
-
-    async def detect_objects(self, image_data: bytes) -> Optional[Dict[str, Any]]:
-        """Detect objects in image"""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                files = {"image": ("image.jpg", image_data, "image/jpeg")}
-                response = await client.post(
-                    f"{self.base_url}/analysis/image/detection",
-                    files=files,
-                    headers=self.file_headers
-                )
-                response.raise_for_status()
-                
-                result = response.json()
-                logger.debug(f"Object detection API response: {result}")
-                if result.get("status") == "success":
-                    return result["data"]
-                else:
-                    logger.error(f"Object detection failed: {result}")
-                    return None
-                    
-            except Exception as e:
-                logger.error(f"Object detection request failed: {e}")
-                return None
 
     async def extract_document_text(
         self,

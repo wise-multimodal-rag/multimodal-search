@@ -86,17 +86,21 @@ app/
 ### Environment Variables
 Key settings in `.env`:
 - `OPENSEARCH_HOST`, `OPENSEARCH_PORT`: OpenSearch connection
-- `EMBEDDING_API_URL`: External embedding service
-- `FEATURE_EXTRACTION_API_URL`: External feature extraction service  
+- `EMBEDDING_API_URL`: Multimodal indexer API (embedding & image analysis)
+- `FEATURE_EXTRACTION_API_URL`: Document processor API (text features & OCR)
 - `LITELLM_URL`, `LITELLM_MODEL`: LLM service configuration
 - `LOG_LEVEL`: Logging level (info/debug)
 
 ### External API Dependencies
 The system requires external APIs for:
-- Text/image embedding generation
-- Feature extraction (summarization, keyword extraction, etc.)
-- Document parsing and OCR
-- LLM inference through LiteLLM
+- **Embedding API** (`internal.example.com`):
+  - Text/image embedding generation (Sentence Transformers, SigLIP-2)
+  - Image analysis (YOLO11 object detection, image captioning)
+- **Document Processor API** (`internal.example.com`):
+  - Text feature extraction (summarization, keyword extraction, classification, NER, sentiment analysis)
+  - Document parsing and OCR
+  - Document layout analysis and element extraction
+- **LLM inference** through LiteLLM
 
 ## Key Implementation Notes
 
