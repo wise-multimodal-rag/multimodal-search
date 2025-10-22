@@ -132,6 +132,35 @@ class SearchController {
         return '';
     }
     
+    sanitizeElementForDisplay(element) {
+        // element 객체를 복사하여 embedding 관련 필드 제거/요약
+        const sanitized = { ...element };
+        
+        // embedding 필드들을 찾아서 요약 처리
+        for (const [key, value] of Object.entries(sanitized)) {
+            if (typeof key === 'string' && key.toLowerCase().includes('embedding')) {
+                if (Array.isArray(value)) {
+                    // 배열인 경우: 길이와 첫 몇 개 값만 표시
+                    sanitized[key] = {
+                        __type: 'embedding_array',
+                        length: value.length,
+                        first_3_values: value.slice(0, 3),
+                        sample_values: `[${value.slice(0, 3).map(v => typeof v === 'number' ? v.toFixed(6) : v).join(', ')}...]`
+                    };
+                } else if (typeof value === 'object' && value !== null) {
+                    // 객체인 경우: 구조 정보만 표시
+                    sanitized[key] = {
+                        __type: 'embedding_object',
+                        keys: Object.keys(value),
+                        summary: 'embedding data (hidden for readability)'
+                    };
+                }
+            }
+        }
+        
+        return sanitized;
+    }
+    
     displaySearchResults(searchResult) {
         // 검색 결과 헤더 업데이트
         window.uiController.updateSearchResultsHeader(searchResult);
@@ -178,31 +207,34 @@ class SearchController {
                     hasDetailedMeta = true;
                 }
                 
-                // 상세 메타데이터 토글 버튼 및 내용
-                let detailedMetaSection = '';
-                if (hasDetailedMeta) {
-                    const resultId = `result-${index}`;
-                    detailedMetaSection = `
-                        <div class="metadata-toggle">
-                            ${result.chunk_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'chunk')">
-                                <span>📄</span> 청크 상세정보
-                            </button>` : ''}
-                            ${result.media_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'media')">
-                                <span>🎬</span> 미디어 상세정보
-                            </button>` : ''}
-                        </div>
-                        ${result.chunk_meta ? `<div id="${resultId}-chunk" class="metadata-content">
-                            <pre>${JSON.stringify(result.chunk_meta, null, 2)}</pre>
-                        </div>` : ''}
-                        ${result.media_meta ? `<div id="${resultId}-media" class="metadata-content">
-                            <pre>${JSON.stringify(result.media_meta, null, 2)}</pre>
-                        </div>` : ''}
-                    `;
-                }
+                // 상세 메타데이터 토글 버튼 및 내용 (Element는 항상 표시)
+                const resultId = `result-${index}`;
+                let detailedMetaSection = `
+                    <div class="metadata-toggle">
+                        <button class="metadata-button" onclick="toggleMetadata('${resultId}', 'element')">
+                            <span>🔍</span> Element 상세정보
+                        </button>
+                        ${result.chunk_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'chunk')">
+                            <span>📄</span> 청크 상세정보
+                        </button>` : ''}
+                        ${result.media_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'media')">
+                            <span>🎬</span> 미디어 상세정보
+                        </button>` : ''}
+                    </div>
+                    <div id="${resultId}-element" class="metadata-content">
+                        <pre>${JSON.stringify(this.sanitizeElementForDisplay(element), null, 2)}</pre>
+                    </div>
+                    ${result.chunk_meta ? `<div id="${resultId}-chunk" class="metadata-content">
+                        <pre>${JSON.stringify(result.chunk_meta, null, 2)}</pre>
+                    </div>` : ''}
+                    ${result.media_meta ? `<div id="${resultId}-media" class="metadata-content">
+                        <pre>${JSON.stringify(result.media_meta, null, 2)}</pre>
+                    </div>` : ''}
+                `;
                 
-                let scoreDisplay = `<span class="score-tag hybrid" data-tooltip="Hybrid 점수: OpenSearch의 BM25 텍스트 검색과 벡터 유사도 검색을 결합한 하이브리드 점수입니다. 높을수록 쿼리와 더 관련이 높습니다.">Hybrid: ${hybridScore}</span>`;
+                let scoreDisplay = `<span class="score-tag hybrid" data-tooltip="Hybrid 점수: OpenSearch 원본 점수에 쿼리별 가중치(첫 번째 쿼리 1.0, 두 번째 0.9, 세 번째 0.8...)를 적용하여 계산된 최종 점수입니다. 확장된 쿼리의 우선순위에 따라 가중치가 달라집니다.">Hybrid: ${hybridScore}</span>`;
                 if (originalScore) {
-                    scoreDisplay += `<span class="score-tag opensearch" data-tooltip="OpenSearch 원본 점수: BM25 텍스트 유사도와 벡터 코사인 유사도를 결합한 하이브리드 검색 점수입니다. 높을수록 쿼리와 더 관련이 높습니다.">OpenSearch: ${originalScore}</span>`;
+                    scoreDisplay += `<span class="score-tag opensearch" data-tooltip="OpenSearch 원본 점수: 추가 처리 전 OpenSearch에서 직접 반환한 원본 relevance 점수입니다. Hybrid 점수와 비교하여 점수 변화를 확인할 수 있습니다.">OpenSearch: ${originalScore}</span>`;
                 }
                 
                 resultsHtml += `

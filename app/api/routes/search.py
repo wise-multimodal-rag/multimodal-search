@@ -215,16 +215,22 @@ async def search_multimodal_stream(
                 for error in file_processing_errors:
                     yield f"data: {json.dumps({'step': 'file_read_failed', 'message': error, 'timestamp': time.time()}, ensure_ascii=False)}\\n\\n"
             
+            # 파일이 제공되었는지 확인 (실제 파일 업로드 시도가 있었는지)
+            files_were_provided = any([image, video, audio])
+            
             # 처리된 파일 데이터와 함께 스트리밍 검색 시작
             async for step_result in search_service.search_multimodal_stream(
                 text_query=text_query,
                 processed_files=processed_files,
                 include_chunk_meta=include_chunk_meta,
                 include_media_meta=include_media_meta,
-                max_results=max_results
+                max_results=max_results,
+                files_were_provided=files_were_provided
             ):
-                # SSE 형식으로 데이터 전송
-                yield f"data: {json.dumps(step_result, ensure_ascii=False, default=str)}\n\n"
+                # SSE 형식으로 데이터 전송 - flush를 위해 즉시 전송
+                data_str = f"data: {json.dumps(step_result, ensure_ascii=False, default=str)}\n\n"
+                logger.info(f"🚀 Sending SSE data: {step_result.get('step', 'unknown')}")
+                yield data_str
                 
         except Exception as e:
             logger.error(f"Streaming search failed: {e}")

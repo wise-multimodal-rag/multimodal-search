@@ -53,6 +53,15 @@
     position: relative;
 }
 
+.progress-fill.completed {
+    background: #10b981;
+    animation: none;
+}
+
+.progress-fill.completed::after {
+    animation: none;
+}
+
 .progress-fill::after {
     content: '';
     position: absolute;

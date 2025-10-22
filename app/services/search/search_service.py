@@ -480,7 +480,8 @@ class SearchService:
         processed_files: Optional[Dict[str, Dict[str, Any]]] = None,
         include_chunk_meta: bool = True,
         include_media_meta: bool = True,
-        max_results: int = 10
+        max_results: int = 10,
+        files_were_provided: bool = False
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """스트리밍 방식의 멀티모달 검색 오케스트레이션"""
         start_time = time.time()
@@ -510,10 +511,10 @@ class SearchService:
             if not text_query and (not processed_files or len(processed_files) == 0):
                 raise ValueError("파일 읽기에 실패했고 텍스트 쿼리도 없습니다. 텍스트 쿼리를 입력하거나 파일을 다시 업로드해주세요.")
             
-            # 파일 처리 실패 시 텍스트 전용 모드로 전환
-            if processed_files is None or len(processed_files) == 0:
+            # 파일이 제공되었지만 처리에 실패한 경우만 실패 메시지 표시
+            if files_were_provided and (processed_files is None or len(processed_files) == 0):
                 if text_query:
-                    logger.warning("No files processed successfully, continuing with text-only search")
+                    logger.warning("Files were provided but processing failed, continuing with text-only search")
                     yield {
                         "step": "file_read_failed",
                         "message": "파일 처리에 실패했지만 텍스트 쿼리로 검색을 계속 진행합니다",
@@ -613,38 +614,51 @@ class SearchService:
                 modalities_data, query_analysis["selected_element_types"]
             )
             
-            # 특징 추출 결과 데이터 준비
+            # 텍스트 기반 element types 체크
+            text_based_types = {"paragraph", "title", "heading", "list_item", "table_cell", "text"}
+            has_text_elements = bool(set(query_analysis["selected_element_types"]) & text_based_types)
+            
+            # 특징 추출 결과 데이터 준비 - 더 정확한 상태 구분
             feature_data = {
                 "extraction_success": {
-                    "text": extracted_features.text is not None,
-                    "image": extracted_features.image is not None,
-                    "video": extracted_features.video is not None,
-                    "audio": extracted_features.audio is not None
+                    "text": "success" if (extracted_features.text is not None or (text_query and has_text_elements)) else ("no_data" if not text_query and not has_text_elements else "failed"),
+                    "image": "success" if extracted_features.image is not None else ("no_data" if not modalities_data.get('image') else "failed"),
+                    "video": "success" if extracted_features.video is not None else ("no_data" if not modalities_data.get('video') else "failed"),
+                    "audio": "success" if extracted_features.audio is not None else ("no_data" if not modalities_data.get('audio') else "failed")
                 }
             }
             
             # 각 모달리티별 특징 정보 추가 (실제 값 포함)
-            if extracted_features.text:
-                text_feature_data = {
-                    "keywords_count": len(extracted_features.text.keywords) if extracted_features.text.keywords else 0,
-                    "entities_count": len(extracted_features.text.entities) if extracted_features.text.entities else 0,
-                    "has_summary": bool(extracted_features.text.summary),
+            if extracted_features.text or (text_query and has_text_elements):
+                if extracted_features.text:
+                    text_feature_data = {
+                        "keywords_count": len(extracted_features.text.keywords) if extracted_features.text.keywords else 0,
+                        "entities_count": len(extracted_features.text.entities) if extracted_features.text.entities else 0,
+                        "has_summary": bool(extracted_features.text.summary),
                     "has_classification": bool(extracted_features.text.classification)
                 }
                 
-                # 실제 특징 값들 추가 (안전한 직렬화)
-                if extracted_features.text.keywords:
-                    text_feature_data["keywords"] = self._safely_serialize_feature(extracted_features.text.keywords)
-                if extracted_features.text.entities:
-                    text_feature_data["entities"] = self._safely_serialize_feature(extracted_features.text.entities)
-                if extracted_features.text.summary:
-                    text_feature_data["summary"] = self._safely_serialize_feature(extracted_features.text.summary)
-                if extracted_features.text.classification:
-                    text_feature_data["classification"] = self._safely_serialize_feature(extracted_features.text.classification)
-                if hasattr(extracted_features.text, 'sentiment') and getattr(extracted_features.text, 'sentiment', None):
-                    text_feature_data["sentiment"] = self._safely_serialize_feature(getattr(extracted_features.text, 'sentiment'))
-                if hasattr(extracted_features.text, 'topics') and getattr(extracted_features.text, 'topics', None):
-                    text_feature_data["topics"] = self._safely_serialize_feature(getattr(extracted_features.text, 'topics'))
+                    # 실제 특징 값들 추가 (안전한 직렬화)
+                    if extracted_features.text.keywords:
+                        text_feature_data["keywords"] = self._safely_serialize_feature(extracted_features.text.keywords)
+                    if extracted_features.text.entities:
+                        text_feature_data["entities"] = self._safely_serialize_feature(extracted_features.text.entities)
+                    if extracted_features.text.summary:
+                        text_feature_data["summary"] = self._safely_serialize_feature(extracted_features.text.summary)
+                    if extracted_features.text.classification:
+                        text_feature_data["classification"] = self._safely_serialize_feature(extracted_features.text.classification)
+                    if hasattr(extracted_features.text, 'sentiment') and getattr(extracted_features.text, 'sentiment', None):
+                        text_feature_data["sentiment"] = self._safely_serialize_feature(getattr(extracted_features.text, 'sentiment'))
+                    if hasattr(extracted_features.text, 'topics') and getattr(extracted_features.text, 'topics', None):
+                        text_feature_data["topics"] = self._safely_serialize_feature(getattr(extracted_features.text, 'topics'))
+                else:
+                    # 텍스트 쿼리가 있고 텍스트 기반 element type이 있는 경우 (paragraph 등)
+                    text_feature_data = {
+                        "source": "원본 텍스트 쿼리",
+                        "query": text_query,
+                        "element_types": [t for t in query_analysis["selected_element_types"] if t in text_based_types],
+                        "note": "별도 특징 추출 없이 원본 텍스트가 임베딩 생성에 사용됨"
+                    }
                     
                 feature_data["text_features"] = text_feature_data
                 
@@ -761,13 +775,36 @@ class SearchService:
                 embeddings, max_results, expansion_result
             )
             
-            # 검색 실행 통계
+            # 검색 실행 상세 통계
+            executed_queries_info = []
+            for i, query in enumerate(expanded_queries):
+                weight = 1.0 - (i * 0.1)
+                executed_queries_info.append({
+                    "index": i + 1,
+                    "query": query,
+                    "weight": weight,
+                    "priority": i + 1
+                })
+            
+            # OpenSearch 쿼리 정보 (예시 - 실제로는 더 복잡)
+            opensearch_query_info = {
+                "index_used": "elements",
+                "query_type": "hybrid_search",
+                "search_fields": ["content^2", "description"],
+                "element_types_filter": query_analysis["selected_element_types"],
+                "has_vector_search": bool(embeddings),
+                "vector_modalities": list(embeddings.keys()) if embeddings else [],
+                "fuzziness": "AUTO"
+            }
+            
             search_stats = {
                 "total_hits": search_results.get("total_hits", 0) if search_results else 0,
                 "max_score": search_results.get("max_score", 0.0) if search_results else 0.0,
                 "result_count": len(search_results.get("results", [])) if search_results else 0,
                 "took_ms": search_results.get("took_ms", 0) if search_results else 0,
-                "queries_executed": len(expanded_queries)
+                "queries_executed": len(expanded_queries),
+                "executed_queries": executed_queries_info,
+                "opensearch_query": opensearch_query_info
             }
             
             yield {
@@ -784,41 +821,71 @@ class SearchService:
                 "timestamp": time.time()
             }
             
+            logger.info("🔄 Starting result enrichment...")
             enriched_results = await self.result_enricher.enrich_search_results(
                 search_results, include_chunk_meta, include_media_meta
             )
+            logger.info(f"✅ Result enrichment completed: {len(enriched_results)} results")
+            
+            # 보강된 결과의 상세 정보 계산
+            element_types_in_results = {}
+            for result in enriched_results:
+                element_type = result.element.element_type
+                element_types_in_results[element_type] = element_types_in_results.get(element_type, 0) + 1
+            
+            # 메타데이터 보강 통계
+            chunk_meta_added = sum(1 for result in enriched_results if result.chunk_meta is not None)
+            media_meta_added = sum(1 for result in enriched_results if result.media_meta is not None)
             
             yield {
                 "step": "result_enriched",
-                "message": "결과 보강이 완료되었습니다",
+                "message": f"결과 보강이 완료되었습니다 ({len(enriched_results)}개 결과)",
                 "timestamp": time.time(),
                 "data": {
                     "enriched_count": len(enriched_results),
                     "chunk_meta_included": include_chunk_meta,
-                    "media_meta_included": include_media_meta
+                    "media_meta_included": include_media_meta,
+                    "chunk_meta_added": chunk_meta_added,
+                    "media_meta_added": media_meta_added,
+                    "element_types_distribution": element_types_in_results,
+                    "enrichment_options": {
+                        "chunk_metadata": "포함됨" if include_chunk_meta else "제외됨",
+                        "media_metadata": "포함됨" if include_media_meta else "제외됨"
+                    }
                 }
             }
             
             # Step 7: 최종 결과
+            logger.info("🔄 Calculating final statistics...")
             total_time = time.time() - start_time
             final_stats = self.result_enricher.calculate_search_statistics(search_results)
+            logger.info(f"✅ Final statistics calculated: {final_stats}")
+            
+            logger.info("🎉 Preparing final completed step...")
+            results_data = [result.model_dump() if hasattr(result, 'model_dump') else result for result in enriched_results]
+            logger.info(f"📊 Final results prepared: {len(results_data)} items")
+            
+            completed_data = {
+                "results": results_data,
+                "search_stats": final_stats,
+                "total_time_ms": total_time * 1000,
+                "processing_steps": 8,
+                "query_analysis": query_analysis,
+                "expanded_queries": expanded_queries
+            }
             
             yield {
                 "step": "completed",
                 "message": f"검색이 완료되었습니다 ({total_time:.2f}초)",
                 "timestamp": time.time(),
-                "data": {
-                    "results": [result.model_dump() if hasattr(result, 'model_dump') else result for result in enriched_results],
-                    "search_stats": final_stats,
-                    "total_time_ms": total_time * 1000,
-                    "processing_steps": 8,
-                    "query_analysis": query_analysis,
-                    "expanded_queries": expanded_queries
-                }
+                "data": completed_data
             }
+            logger.info("🎉 COMPLETED step sent successfully!")
             
         except Exception as e:
-            logger.error(f"Streaming search failed: {e}")
+            import traceback
+            logger.error(f"❌ Streaming search failed: {e}")
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
             yield {
                 "step": "error",
                 "error": str(e),

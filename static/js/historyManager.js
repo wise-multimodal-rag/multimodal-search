@@ -28,6 +28,8 @@ class HistoryManager {
     }
     
     addToSearchHistory(query, originalText = '', isFileOnly = false, searchResult = null) {
+        console.log('🔍 Adding to search history:', { query, originalText, isFileOnly, hasSearchResult: !!searchResult });
+        
         // 모달리티 타입 결정
         const modality = this.getSearchModality(query, isFileOnly);
         
@@ -59,9 +61,11 @@ class HistoryManager {
         
         // 저장
         this.saveSearchHistoryData(historyData);
+        console.log('✅ Search history saved, total items:', historyData.length);
         
         // UI 업데이트
         this.updateSearchHistoryUI();
+        console.log('✅ Search history UI updated');
     }
     
     getSearchModality(query, isFileOnly) {
@@ -324,8 +328,15 @@ class HistoryManager {
     }
     
     updateSearchHistoryWithResults(searchResult) {
+        console.log('📊 Updating search history with results:', { 
+            total_hits: searchResult?.total_hits, 
+            took_ms: searchResult?.took_ms,
+            results_count: searchResult?.results?.length 
+        });
+        
         // localStorage에서 히스토리 데이터 가져오기
         let historyData = this.getSearchHistoryData();
+        console.log('📋 Current history data length:', historyData.length);
         
         if (historyData.length > 0) {
             // 가장 최근 항목에 검색 결과 추가
@@ -337,11 +348,17 @@ class HistoryManager {
                 searchProcess: searchResult.searchProcess || null // 진행 과정 데이터 저장
             };
             
+            console.log('✅ Updated latest history entry with results');
+            
             // 저장
             this.saveSearchHistoryData(historyData);
+            console.log('✅ Search history with results saved');
             
             // UI 업데이트
             this.updateSearchHistoryUI();
+            console.log('✅ Search history UI updated with results');
+        } else {
+            console.log('❌ No history data found to update with results');
         }
     }
     
