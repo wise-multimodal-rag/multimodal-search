@@ -134,18 +134,18 @@ class MultimodalFeatureExtractor:
                 if caption_result and "caption" in caption_result:
                     caption_text = caption_result["caption"]
             
-            # origin: 원본 이미지 데이터 그대로 반환
-            if "origin" in element_types:
-                origin_data = base64_image  # 원본 base64 데이터
+            # origin: OpenSearch에서 검색용이므로 별도 임베딩 불필요 (원본 image 임베딩 사용)
+            # if "origin" in element_types:
+            #     origin_data = base64_image  # 원본 base64 데이터
             
             # 비활성화된 기능들:
             # 객체 탐지 (detected_object), 잘린 이미지 (cropped), 차트 (chart), 다이어그램 (diagram)
             
             # 추출된 feature가 있는 경우만 반환
-            if caption_text or origin_data:
+            if caption_text:
                 return ImageFeatures(
                     caption=caption_text,
-                    objects=[{"type": "origin", "data": origin_data}] if origin_data else None
+                    objects=None  # origin은 원본 image와 동일하므로 중복 제거
                 )
             return None
 
