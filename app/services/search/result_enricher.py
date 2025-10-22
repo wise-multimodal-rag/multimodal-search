@@ -20,6 +20,9 @@ class ResultEnricher:
     ) -> List[SearchResult]:
         """검색 결과에 chunk 및 media 메타데이터 추가"""
         enriched_results = []
+        
+        logger.info(f"🔄 Starting enrich_search_results with {len(search_results)} keys")
+        logger.info(f"🔄 Search results structure: {list(search_results.keys())}")
 
         try:
             # 데이터 구조 확인 및 정규화
@@ -53,8 +56,10 @@ class ResultEnricher:
             return valid_results
 
         except Exception as e:
-            logger.error(f"Result enrichment failed: {e}")
-            logger.error(f"Search results structure: {list(search_results.keys()) if isinstance(search_results, dict) else type(search_results)}")
+            import traceback
+            logger.error(f"❌ Result enrichment failed: {e}")
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            logger.error(f"❌ Search results structure: {list(search_results.keys()) if isinstance(search_results, dict) else type(search_results)}")
             return []
 
     async def _enrich_single_result(self, item: Dict[str, Any], include_chunk_meta: bool, include_media_meta: bool) -> Optional[SearchResult]:
@@ -136,6 +141,7 @@ class ResultEnricher:
 
     def calculate_search_statistics(self, search_results: Dict[str, Any]) -> Dict[str, Any]:
         """검색 결과 통계 계산"""
+        logger.info(f"🔄 Calculating search statistics for: {list(search_results.keys())}")
         try:
             # 데이터 구조 확인 및 정규화
             if "hits" in search_results and "hits" in search_results["hits"]:

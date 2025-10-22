@@ -53,6 +53,15 @@
     position: relative;
 }
 
+.progress-fill.completed {
+    background: #10b981;
+    animation: none;
+}
+
+.progress-fill.completed::after {
+    animation: none;
+}
+
 .progress-fill::after {
     content: '';
     position: absolute;
@@ -167,6 +176,11 @@
     animation: pulse 1.5s infinite;
 }
 
+/* 히스토리 복원 모드에서만 로딩 단계 숨김 */
+.search-process-container.history-restore .search-step.loading {
+    display: none !important;
+}
+
 /* 완료된 상태들은 애니메이션 제거 */
 .search-step.success,
 .search-step.info,
@@ -242,6 +256,12 @@
     vertical-align: baseline;
     position: relative;
     top: 1px;
+}
+
+/* 히스토리 복원 모드에서만 스피너 숨김 */
+.search-process-container.history-restore .search-step.loading .step-title::before {
+    display: none !important;
+    animation: none !important;
 }
 
 /* 쿼리 확장 분석 상세 스타일 */

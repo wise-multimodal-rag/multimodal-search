@@ -28,6 +28,8 @@ class HistoryManager {
     }
     
     addToSearchHistory(query, originalText = '', isFileOnly = false, searchResult = null) {
+        console.log('🔍 Adding to search history:', { query, originalText, isFileOnly, hasSearchResult: !!searchResult });
+        
         // 모달리티 타입 결정
         const modality = this.getSearchModality(query, isFileOnly);
         
@@ -59,9 +61,11 @@ class HistoryManager {
         
         // 저장
         this.saveSearchHistoryData(historyData);
+        console.log('✅ Search history saved, total items:', historyData.length);
         
         // UI 업데이트
         this.updateSearchHistoryUI();
+        console.log('✅ Search history UI updated');
     }
     
     getSearchModality(query, isFileOnly) {
@@ -234,10 +238,13 @@ class HistoryManager {
         }
         
         // 검색 진행 상황 컨테이너 초기화 (숨기지 않고)
-        console.log('Initializing search process container');
+        console.log('Initializing search process container for history restore');
         streamingController.searchSteps.innerHTML = '';
         streamingController.currentStep = 0;
         streamingController.searchProcessData = [...searchProcessData]; // 데이터 복사
+        
+        // 히스토리 복원 모드 클래스 추가
+        streamingController.searchProcessContainer.classList.add('history-restore');
         
         // 컨테이너 표시
         streamingController.searchProcessContainer.style.display = 'block';
@@ -248,7 +255,7 @@ class HistoryManager {
             setTimeout(() => {
                 const { step, message, data, timestamp } = stepData;
                 
-                // 단계별 처리 (handleStepResult의 로직을 재사용)
+                // 단계별 처리 (handleStepResult의 로직을 재사용) - CSS로 loading 단계가 숨겨짐
                 switch (step) {
                     case 'start':
                         streamingController.addStep('검색 시작', message, data, 'info', timestamp);
@@ -316,6 +323,9 @@ class HistoryManager {
                 // 마지막 단계 완료 후 접기
                 if (index === searchProcessData.length - 1) {
                     setTimeout(() => {
+                        // 완료된 검색이므로 currentStep을 totalSteps로 설정하여 8/8 표시
+                        streamingController.currentStep = streamingController.totalSteps;
+                        streamingController.updateProgress();
                         streamingController.makeCollapsible();
                     }, 500);
                 }
@@ -324,8 +334,15 @@ class HistoryManager {
     }
     
     updateSearchHistoryWithResults(searchResult) {
+        console.log('📊 Updating search history with results:', { 
+            total_hits: searchResult?.total_hits, 
+            took_ms: searchResult?.took_ms,
+            results_count: searchResult?.results?.length 
+        });
+        
         // localStorage에서 히스토리 데이터 가져오기
         let historyData = this.getSearchHistoryData();
+        console.log('📋 Current history data length:', historyData.length);
         
         if (historyData.length > 0) {
             // 가장 최근 항목에 검색 결과 추가
@@ -337,11 +354,17 @@ class HistoryManager {
                 searchProcess: searchResult.searchProcess || null // 진행 과정 데이터 저장
             };
             
+            console.log('✅ Updated latest history entry with results');
+            
             // 저장
             this.saveSearchHistoryData(historyData);
+            console.log('✅ Search history with results saved');
             
             // UI 업데이트
             this.updateSearchHistoryUI();
+            console.log('✅ Search history UI updated with results');
+        } else {
+            console.log('❌ No history data found to update with results');
         }
     }
     

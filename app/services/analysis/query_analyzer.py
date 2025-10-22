@@ -14,46 +14,77 @@ class QueryAnalyzer:
     async def analyze_query_intent(
         self, 
         query: str, 
-        available_element_types: List[str]
+        available_element_types: List[str],
+        input_modalities: Optional[List[str]] = None
     ) -> Optional[Dict[str, Any]]:
         """LLM을 사용하여 쿼리 의도 분석"""
         try:
-            result = await self.llm_client.analyze_query_intent(query, available_element_types)
+            result = await self.llm_client.analyze_query_intent(query, available_element_types, input_modalities)
             if result:
                 return result
             else:
                 logger.warning("LLM query analysis returned None, using fallback strategy")
-                return self._fallback_query_analysis(query, available_element_types)
+                return self._fallback_query_analysis(query, available_element_types, input_modalities)
         except Exception as e:
             logger.error(f"Query intent analysis failed: {e}, using fallback strategy")
-            return self._fallback_query_analysis(query, available_element_types)
+            return self._fallback_query_analysis(query, available_element_types, input_modalities)
 
     def _fallback_query_analysis(
         self, 
         query: str, 
-        available_element_types: List[str]
+        available_element_types: List[str],
+        input_modalities: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """간단한 휴리스틱을 사용한 폴백 쿼리 분석"""
+        # Define modality-specific element types
+        modality_element_mapping = {
+            "text": ["paragraph", "summary"],
+            "image": ["caption", "origin"]
+        }
+        
+        # Filter available_element_types based on input modalities
+        if input_modalities:
+            relevant_types = set()
+            for modality in input_modalities:
+                if modality in modality_element_mapping:
+                    relevant_types.update(modality_element_mapping[modality])
+            # Only keep element types that are both relevant and available
+            available_element_types = [t for t in available_element_types if t in relevant_types]
+        
         query_lower = query.lower()
         selected_types = []
 
-        # 키워드 기반 휴리스틱
-        if any(word in query_lower for word in ["요약", "summary", "정리"]):
-            selected_types.extend(["summary", "paragraph"])
-        if any(word in query_lower for word in ["표", "table", "데이터", "data"]):
-            selected_types.append("table")
-        if any(word in query_lower for word in ["이미지", "image", "사진", "그림"]):
-            selected_types.extend(["origin", "cropped", "detected_object", "chart", "diagram"])
-        if any(word in query_lower for word in ["비디오", "video", "영상", "동영상"]):
-            selected_types.extend(["clip", "segment", "keyframe", "thumbnail"])
-        if any(word in query_lower for word in ["음성", "audio", "소리", "오디오"]):
-            selected_types.extend(["speech", "music", "sound_effect"])
-        if any(word in query_lower for word in ["텍스트", "text", "문서", "document"]):
-            selected_types.extend(["paragraph", "title", "ocr"])
+        # 키워드 기반 휴리스틱 (모달리티 고려)
+        if input_modalities and "text" in input_modalities:
+            # 텍스트 모달리티 전용 키워드
+            if any(word in query_lower for word in ["요약", "summary", "정리"]):
+                selected_types.extend(["summary", "paragraph"])
+            elif any(word in query_lower for word in ["텍스트", "text", "문서", "document", "내용"]):
+                selected_types.extend(["paragraph", "summary"])
+            else:
+                # 기본적으로 paragraph 우선
+                selected_types.append("paragraph")
+        
+        if input_modalities and "image" in input_modalities:
+            # 이미지 모달리티 전용 키워드
+            if any(word in query_lower for word in ["이미지", "image", "사진", "그림", "시각"]):
+                selected_types.extend(["origin", "caption"])
+            elif any(word in query_lower for word in ["설명", "캡션", "caption"]):
+                selected_types.extend(["caption", "origin"])
+            else:
+                # 기본적으로 origin 우선
+                selected_types.extend(["origin", "caption"])
 
-        # 특정 타입이 식별되지 않으면 합리적인 기본값 사용
+        # 특정 타입이 식별되지 않으면 모달리티별 기본값 사용
         if not selected_types:
-            selected_types = ["paragraph", "title", "summary", "origin", "chart"]
+            if input_modalities:
+                if "text" in input_modalities:
+                    selected_types.extend(["paragraph", "summary"])
+                if "image" in input_modalities:
+                    selected_types.extend(["origin", "caption"])
+            else:
+                # 모달리티 정보가 없으면 모든 가능한 타입 사용
+                selected_types = ["paragraph", "summary", "origin", "caption"]
 
         # available_element_types에 있는 것만 필터링하고 중복 제거
         selected_types = [t for t in selected_types if t in available_element_types]

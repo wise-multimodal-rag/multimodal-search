@@ -25,6 +25,9 @@ class StreamingSearchController {
         // 검색 과정 데이터 초기화
         this.searchProcessData = [];
         
+        // 히스토리 복원 모드 클래스 제거 (실시간 검색 시작)
+        this.searchProcessContainer.classList.remove('history-restore');
+        
         // 검색 과정 컨테이너 표시
         this.searchProcessContainer.style.display = 'block';
         this.searchSteps.innerHTML = '';
@@ -38,18 +41,19 @@ class StreamingSearchController {
                 body: formData
             });
             
+            
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            let streamEnded = false;
             
-            while (true) {
+            while (true && !streamEnded) {
                 const { done, value } = await reader.read();
                 
                 if (done) {
-                    console.log('Streaming completed');
                     break;
                 }
                 
@@ -61,13 +65,25 @@ class StreamingSearchController {
                         try {
                             const data = line.slice(6); // 'data: ' 제거
                             if (data.trim()) {
-                                console.log('📡 Raw streaming data received:', data.substring(0, 100) + '...');
+                                // 스트림 종료 신호 확인
+                                if (data.trim() === '[DONE]') {
+                                    streamEnded = true;
+                                    break;
+                                }
+                                
                                 const stepResult = JSON.parse(data);
-                                console.log('✅ Parsed step result:', stepResult.step, stepResult.message);
-                                this.handleStepResult(stepResult);
+                                
+                                // COMPLETED 단계 처리 및 스트림 종료
+                                if (stepResult.step === 'completed') {
+                                    this.handleStepResult(stepResult);
+                                    streamEnded = true;
+                                    break;
+                                } else {
+                                    this.handleStepResult(stepResult);
+                                }
                             }
                         } catch (error) {
-                            console.error('❌ Failed to parse streaming data:', error, line);
+                            console.error('Failed to parse streaming data:', error);
                         }
                     }
                 }
@@ -77,6 +93,7 @@ class StreamingSearchController {
             console.error('Streaming search failed:', error);
             this.showError(`스트리밍 검색 실패: ${error.message}`);
         } finally {
+            console.log('🔚 Streaming finally block - setting isStreaming to false');
             this.isStreaming = false;
         }
     }
@@ -170,7 +187,6 @@ class StreamingSearchController {
                 
             case 'completed':
                 this.addStep('검색 완료', message, data, 'success', timestamp);
-                // currentStep은 이미 result_enriched에서 8로 설정됨
                 this.renderFinalResults(data);
                 break;
                 
@@ -506,17 +522,27 @@ class StreamingSearchController {
         
         // 특징 추출 데이터
         if (data.extraction_success) {
-            const successCount = Object.values(data.extraction_success).filter(val => val === true).length;
+            const successCount = Object.values(data.extraction_success).filter(val => val === "success").length;
             content += `<div class="data-item"><strong>특징 추출 성공:</strong> ${successCount}/4 모달리티</div>`;
             
-            Object.entries(data.extraction_success).forEach(([modality, success]) => {
+            // 이모지 설명 추가
+            content += `
+                <div class="extraction-legend" style="margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px; font-size: 0.85em;">
+                    <strong>상태 표시:</strong> 
+                    <span title="특징 추출 성공">✅ 성공</span> · 
+                    <span title="데이터 없어서 진행하지 않음">➖ 데이터 없음</span> · 
+                    <span title="데이터는 있었지만 처리 실패">⚠️ 처리 실패</span>
+                </div>
+            `;
+            
+            Object.entries(data.extraction_success).forEach(([modality, status]) => {
                 let icon;
-                if (success === true) {
+                if (status === "success") {
                     icon = '✅'; // 성공
-                } else if (success === false) {
-                    icon = '❌'; // 실패 (데이터는 있었지만 처리 실패)
+                } else if (status === "failed") {
+                    icon = '⚠️'; // 실패 (데이터는 있었지만 처리 실패)
                 } else {
-                    icon = '⊘'; // 데이터 없음 (null, undefined 등)
+                    icon = '➖'; // 데이터 없음/진행 안 함
                 }
                 content += `<div class="data-item">${icon} ${modality.toUpperCase()}</div>`;
             });
@@ -668,17 +694,100 @@ class StreamingSearchController {
             `;
         }
         
+        // 결과 보강 데이터
+        if (data.enriched_count !== undefined) {
+            content += `
+                <div class="data-section">
+                    <h4>결과 보강 상세 정보</h4>
+                    <div class="search-summary">
+                        <div class="search-stat"><strong>보강된 결과:</strong> ${data.enriched_count}개</div>
+                        ${data.chunk_meta_added !== undefined ? `<div class="search-stat"><strong>청크 메타 추가:</strong> ${data.chunk_meta_added}개</div>` : ''}
+                        ${data.media_meta_added !== undefined ? `<div class="search-stat"><strong>미디어 메타 추가:</strong> ${data.media_meta_added}개</div>` : ''}
+                    </div>
+                </div>
+            `;
+            
+            // Element types 분포 표시
+            if (data.element_types_distribution) {
+                content += `
+                    <div class="data-section">
+                        <h5>Element Type 분포</h5>
+                        <div class="element-types">
+                            ${Object.entries(data.element_types_distribution).map(([type, count]) => 
+                                `<span class="element-type-tag">${type}: ${count}개</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // 보강 옵션 표시
+            if (data.enrichment_options) {
+                content += `
+                    <div class="data-section">
+                        <h5>보강 옵션</h5>
+                        <div class="data-item"><strong>청크 메타데이터:</strong> ${data.enrichment_options.chunk_metadata}</div>
+                        <div class="data-item"><strong>미디어 메타데이터:</strong> ${data.enrichment_options.media_metadata}</div>
+                    </div>
+                `;
+            }
+        }
+        
         // 검색 실행 데이터
         if (data.total_hits !== undefined) {
             content += `
-                <div class="search-summary">
-                    <div class="search-stat"><strong>총 히트:</strong> ${data.total_hits}개</div>
-                    <div class="search-stat"><strong>최고 점수:</strong> ${data.max_score?.toFixed(2) || 0}</div>
-                    <div class="search-stat"><strong>반환 결과:</strong> ${data.result_count}개</div>
-                    <div class="search-stat"><strong>검색 시간:</strong> ${Math.round(data.took_ms)}ms</div>
-                    ${data.queries_executed ? `<div class="search-stat"><strong>실행된 쿼리:</strong> ${data.queries_executed}개</div>` : ''}
+                <div class="data-section">
+                    <h4>검색 실행 결과</h4>
+                    <div class="search-summary">
+                        <div class="search-stat"><strong>총 히트:</strong> ${data.total_hits}개</div>
+                        <div class="search-stat"><strong>최고 점수:</strong> ${data.max_score?.toFixed(2) || 0}</div>
+                        <div class="search-stat"><strong>반환 결과:</strong> ${data.result_count}개</div>
+                        <div class="search-stat"><strong>검색 시간:</strong> ${Math.round(data.took_ms)}ms</div>
+                        ${data.queries_executed ? `<div class="search-stat"><strong>실행된 쿼리:</strong> ${data.queries_executed}개</div>` : ''}
+                    </div>
                 </div>
             `;
+            
+            // 실행된 쿼리 상세 정보
+            if (data.executed_queries && data.executed_queries.length > 0) {
+                content += `
+                    <div class="data-section">
+                        <h5>실행된 쿼리 목록</h5>
+                        <div class="executed-queries">
+                            ${data.executed_queries.map(queryInfo => `
+                                <div class="query-item" style="margin-bottom: 8px; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+                                    <div class="query-header" style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                        <strong>쿼리 ${queryInfo.index}</strong>
+                                        <span style="font-size: 0.85em; color: #666;">가중치: ${queryInfo.weight.toFixed(2)}</span>
+                                    </div>
+                                    <div class="query-text" style="font-family: monospace; background: white; padding: 4px 8px; border-radius: 2px; border: 1px solid #ddd;">
+                                        "${queryInfo.query}"
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // OpenSearch 쿼리 정보
+            if (data.opensearch_query) {
+                const osQuery = data.opensearch_query;
+                content += `
+                    <div class="data-section">
+                        <h5>OpenSearch 쿼리 구성</h5>
+                        <div class="opensearch-info">
+                            <div class="data-item"><strong>인덱스:</strong> ${osQuery.index_used}</div>
+                            <div class="data-item"><strong>쿼리 타입:</strong> ${osQuery.query_type}</div>
+                            <div class="data-item"><strong>검색 필드:</strong> ${osQuery.search_fields.join(', ')}</div>
+                            <div class="data-item"><strong>Element Types:</strong> ${osQuery.element_types_filter.join(', ')}</div>
+                            <div class="data-item"><strong>벡터 검색:</strong> ${osQuery.has_vector_search ? '활성화' : '비활성화'}</div>
+                            ${osQuery.has_vector_search ? `<div class="data-item"><strong>벡터 모달리티:</strong> ${osQuery.vector_modalities.join(', ')}</div>` : ''}
+                            <div class="data-item"><strong>Fuzziness:</strong> ${osQuery.fuzziness}</div>
+                        </div>
+                    </div>
+                `;
+            }
         }
         
         // 최종 결과 데이터
@@ -696,18 +805,22 @@ class StreamingSearchController {
     }
     
     renderFinalResults(data) {
-        console.log('renderFinalResults called with data:', data);
+        const searchResultsContent = document.getElementById('searchResultsContent');
+        const searchResultsHeader = document.getElementById('searchResultsHeader');
+        const searchResultsContainer = document.querySelector('.search-results-container');
         
-        if (data.results) {
-            console.log('Results found:', data.results.length, 'items');
-            
+        if (data && data.results) {
             // 검색 진행 상황 컨테이너를 접을 수 있도록 수정
             this.makeCollapsible();
             
             // 검색 결과 컨테이너 표시
-            const searchResultsContainer = document.querySelector('.search-results-container');
             if (searchResultsContainer) {
                 searchResultsContainer.style.display = 'block';
+            }
+            
+            // 검색 결과 헤더 표시
+            if (searchResultsHeader) {
+                searchResultsHeader.style.display = 'block';
             }
             
             // 기존 검색 결과 영역에도 결과 표시
@@ -722,12 +835,10 @@ class StreamingSearchController {
                 element_types_used: data.query_analysis?.selected_element_types || []
             };
             
-            console.log('Calling displaySearchResults with:', searchResult);
-            
             // 먼저 직접 렌더링 시도
             this.directRenderResults(data.results);
             
-            // 그 다음 기존 컨트롤러도 호출 (중복 방지를 위해)
+            // 그 다음 기존 컨트롤러도 호출
             if (window.searchController) {
                 try {
                     window.searchController.displaySearchResults(searchResult);
@@ -738,28 +849,64 @@ class StreamingSearchController {
             
             // 검색 히스토리 업데이트 (진행 과정 포함)
             if (window.historyManager) {
-                console.log('Updating history with process data:', this.searchProcessData.length, 'steps');
                 const searchResultWithProcess = {
                     ...searchResult,
-                    searchProcess: this.searchProcessData // 진행 과정 데이터 추가
+                    searchProcess: this.searchProcessData
                 };
-                console.log('searchResultWithProcess:', searchResultWithProcess);
                 window.historyManager.updateSearchHistoryWithResults(searchResultWithProcess);
             }
-        } else {
-            console.log('No results found in data:', data);
         }
     }
     
+    sanitizeElementForDisplay(element) {
+        // element 객체를 복사하여 embedding 관련 필드 제거/요약
+        const sanitized = { ...element };
+        
+        // embedding 필드들을 찾아서 요약 처리
+        for (const [key, value] of Object.entries(sanitized)) {
+            if (typeof key === 'string' && key.toLowerCase().includes('embedding')) {
+                if (Array.isArray(value)) {
+                    // 배열인 경우: 길이와 첫 몇 개 값만 표시
+                    sanitized[key] = {
+                        __type: 'embedding_array',
+                        length: value.length,
+                        first_3_values: value.slice(0, 3),
+                        sample_values: `[${value.slice(0, 3).map(v => typeof v === 'number' ? v.toFixed(6) : v).join(', ')}...]`
+                    };
+                } else if (typeof value === 'object' && value !== null) {
+                    // 객체인 경우: 구조 정보만 표시
+                    sanitized[key] = {
+                        __type: 'embedding_object',
+                        keys: Object.keys(value),
+                        summary: 'embedding data (hidden for readability)'
+                    };
+                }
+            }
+        }
+        
+        return sanitized;
+    }
+    
     directRenderResults(results) {
-        console.log('Direct rendering results:', results);
+        // DOM 요소 찾기
+        let searchResultsContent = document.getElementById('searchResultsContent');
+        let searchResultsHeader = document.getElementById('searchResultsHeader');
         
-        // 검색 결과 컨테이너 찾기
-        const searchResultsContent = document.getElementById('searchResultsContent');
-        const searchResultsHeader = document.getElementById('searchResultsHeader');
+        // DOM이 아직 준비되지 않았을 경우 재시도
+        if (!searchResultsContent || !searchResultsHeader) {
+            setTimeout(() => {
+                searchResultsContent = document.getElementById('searchResultsContent');
+                searchResultsHeader = document.getElementById('searchResultsHeader');
+                this._performDirectRender(results, searchResultsContent, searchResultsHeader);
+            }, 100);
+            return;
+        }
         
+        this._performDirectRender(results, searchResultsContent, searchResultsHeader);
+    }
+    
+    _performDirectRender(results, searchResultsContent, searchResultsHeader) {
         if (!searchResultsContent) {
-            console.error('searchResultsContent not found');
             return;
         }
         
@@ -815,32 +962,35 @@ class StreamingSearchController {
                     hasDetailedMeta = true;
                 }
                 
-                // 상세 메타데이터 토글 버튼 및 내용
-                let detailedMetaSection = '';
-                if (hasDetailedMeta) {
-                    const resultId = `stream-result-${index}`;
-                    detailedMetaSection = `
-                        <div class="metadata-toggle">
-                            ${result.chunk_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'chunk')">
-                                <span>📄</span> 청크 상세정보
-                            </button>` : ''}
-                            ${result.media_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'media')">
-                                <span>🎬</span> 미디어 상세정보
-                            </button>` : ''}
-                        </div>
-                        ${result.chunk_meta ? `<div id="${resultId}-chunk" class="metadata-content">
-                            <pre>${JSON.stringify(result.chunk_meta, null, 2)}</pre>
-                        </div>` : ''}
-                        ${result.media_meta ? `<div id="${resultId}-media" class="metadata-content">
-                            <pre>${JSON.stringify(result.media_meta, null, 2)}</pre>
-                        </div>` : ''}
-                    `;
-                }
+                // 상세 메타데이터 토글 버튼 및 내용 (Element는 항상 표시)
+                const resultId = `stream-result-${index}`;
+                let detailedMetaSection = `
+                    <div class="metadata-toggle">
+                        <button class="metadata-button" onclick="toggleMetadata('${resultId}', 'element')">
+                            <span>🔍</span> Element 상세정보
+                        </button>
+                        ${result.chunk_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'chunk')">
+                            <span>📄</span> 청크 상세정보
+                        </button>` : ''}
+                        ${result.media_meta ? `<button class="metadata-button" onclick="toggleMetadata('${resultId}', 'media')">
+                            <span>🎬</span> 미디어 상세정보
+                        </button>` : ''}
+                    </div>
+                    <div id="${resultId}-element" class="metadata-content">
+                        <pre>${JSON.stringify(this.sanitizeElementForDisplay(element), null, 2)}</pre>
+                    </div>
+                    ${result.chunk_meta ? `<div id="${resultId}-chunk" class="metadata-content">
+                        <pre>${JSON.stringify(result.chunk_meta, null, 2)}</pre>
+                    </div>` : ''}
+                    ${result.media_meta ? `<div id="${resultId}-media" class="metadata-content">
+                        <pre>${JSON.stringify(result.media_meta, null, 2)}</pre>
+                    </div>` : ''}
+                `;
                 
                 // 점수 표시
-                let scoreDisplay = `<span class="score-tag hybrid" data-tooltip="Hybrid 점수: OpenSearch의 BM25 텍스트 검색과 벡터 유사도 검색을 결합한 하이브리드 점수입니다. 높을수록 쿼리와 더 관련이 높습니다.">Hybrid: ${hybridScore}</span>`;
+                let scoreDisplay = `<span class="score-tag hybrid" data-tooltip="Hybrid 점수: OpenSearch 원본 점수에 쿼리별 가중치(첫 번째 쿼리 1.0, 두 번째 0.9, 세 번째 0.8...)를 적용하여 계산된 최종 점수입니다. 확장된 쿼리의 우선순위에 따라 가중치가 달라집니다.">Hybrid: ${hybridScore}</span>`;
                 if (originalScore) {
-                    scoreDisplay += `<span class="score-tag opensearch" data-tooltip="OpenSearch 원본 점수: BM25 텍스트 유사도와 벡터 코사인 유사도를 결합한 하이브리드 검색 점수입니다. 높을수록 쿼리와 더 관련이 높습니다.">OpenSearch: ${originalScore}</span>`;
+                    scoreDisplay += `<span class="score-tag opensearch" data-tooltip="OpenSearch 원본 점수: 추가 처리 전 OpenSearch에서 직접 반환한 원본 relevance 점수입니다. Hybrid 점수와 비교하여 점수 변화를 확인할 수 있습니다.">OpenSearch: ${originalScore}</span>`;
                 }
                 
                 resultsHtml += `
@@ -867,6 +1017,12 @@ class StreamingSearchController {
         }
         
         searchResultsContent.innerHTML = resultsHtml;
+        
+        // 검색 결과 컨테이너 표시
+        const searchResultsContainer = document.querySelector('.search-results-container');
+        if (searchResultsContainer) {
+            searchResultsContainer.style.display = 'block';
+        }
         
         // 검색 결과가 최상단에 위치하므로 페이지 상단으로 부드럽게 스크롤
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -911,6 +1067,11 @@ class StreamingSearchController {
         
         this.progressFill.style.width = `${progress}%`;
         
+        // 검색 완료 시 진행바에 completed 클래스 추가
+        if (this.currentStep >= this.totalSteps) {
+            this.progressFill.classList.add('completed');
+        }
+        
         console.log('Progress update:', this.currentStep, '/', this.totalSteps);
         
         if (this.progressText) {
@@ -939,6 +1100,12 @@ class StreamingSearchController {
         this.stopStreaming();
         this.currentStep = 0;
         this.searchProcessData = [];
+        
+        // 진행바 completed 클래스 제거
+        if (this.progressFill) {
+            this.progressFill.classList.remove('completed');
+        }
+        
         this.updateProgress();
         
         if (this.searchSteps) {
@@ -954,6 +1121,17 @@ class StreamingSearchController {
         // 진행 과정만 초기화 (결과는 유지)
         this.searchProcessData = [];
         this.currentStep = 0;
+        
+        // 히스토리 복원 모드 클래스 제거
+        if (this.searchProcessContainer) {
+            this.searchProcessContainer.classList.remove('history-restore');
+        }
+        
+        // 진행바 completed 클래스 제거
+        if (this.progressFill) {
+            this.progressFill.classList.remove('completed');
+        }
+        
         this.updateProgress();
         
         if (this.searchSteps) {

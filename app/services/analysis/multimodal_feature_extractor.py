@@ -36,7 +36,9 @@ class MultimodalFeatureExtractor:
         try:
             # 각 모달리티별로 특징 추출
             if "text" in modalities_data:
-                text_features = await self._extract_text_features(modalities_data["text"], element_types)
+                # summary element_type의 경우 원본 텍스트로 충분하므로 특징 추출 건너뛰기
+                # text_features = await self._extract_text_features(modalities_data["text"], element_types)
+                text_features = None  # 원본 텍스트 쿼리를 직접 사용
 
             if "image" in modalities_data:
                 image_features = await self._extract_image_features(modalities_data["image"], element_types)
