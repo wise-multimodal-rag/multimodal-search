@@ -201,7 +201,7 @@ class LLMClient:
             {"role": "user", "content": f"검색 쿼리: {query}"}
         ]
 
-        response = await self.complete(messages, temperature=0.3, max_tokens=3000, force_json=True)
+        response = await self.complete(messages, temperature=0.3, max_tokens=1000, force_json=True)
 
         if response:
             try:
@@ -278,103 +278,65 @@ class LLMClient:
             if search_scope:
                 context_info += f"검색 범위: {search_scope}\n"
 
-        system_message = f"""당신은 검색 쿼리 확장 전문가입니다. 주어진 쿼리의 특성을 분석하여 필요한 기법만 선택적으로 적용해 더 효과적인 검색 쿼리들을 생성하세요.
+        system_message = f"""검색 쿼리를 분석하여 필요한 경우에만 확장하세요. 원본 쿼리의 의도를 최대한 보존하면서 검색 성능을 개선하는 것이 목표입니다.
 
 {context_info}
 
-다음 기법들 중 쿼리에 적합한 것만 선택하여 적용하세요:
+적용 가능한 기법:
 
-1. **Query Decomposition (쿼리 분해)** - 복잡한 복합 쿼리에만 적용:
-   ✅ 적용 조건: 2개 이상의 독립적 개념이 AND/OR로 연결된 경우
-   ✅ 예시: "파이썬 머신러닝과 데이터 시각화" → "파이썬 머신러닝" + "데이터 시각화"
-   ❌ 불필요한 경우: 단일 개념, 단순한 키워드 검색
-   - 복합적인 쿼리를 논리적 구성 요소로 분해
-   - 각 하위 개념을 독립적으로 검색 가능한 단위로 변환
+1. **Query Rewriting (쿼리 재작성)** - 기본적으로 적용:
+   - 동의어, 유의어로 재작성
+   - 예시: "AI" → "인공지능", "방법" → "how to"
+
+2. **Query Decomposition (쿼리 분해)** - 복합 쿼리일 때만:
+   - 2개 이상의 독립적 개념이 명확히 구분되는 경우에만 적용
+   - 예시: "파이썬과 자바스크립트 차이점" → "파이썬" + "자바스크립트"
+
+3. **Semantic Expansion (의미적 확장)** - 매우 제한적으로 적용:
+   ⚠️ **다음 경우에만 적용**:
+   - 쿼리가 너무 추상적이어서 구체적인 검색이 어려운 경우
+   - 사용자가 명시적으로 "관련된", "비슷한", "유사한" 등의 확장을 요청한 경우
+   - 도메인 전문 용어가 필요한 매우 기술적인 쿼리인 경우
    
-   **의존성 판단**: 분해된 쿼리들이 순차적으로 실행되어야 하는지 결정
-   - has_dependency = true: "최신 파이썬 라이브러리와 그 사용법" (1차에서 라이브러리 식별 → 2차에서 해당 라이브러리 사용법)
-   - has_dependency = false: "머신러닝과 데이터 시각화" (각각 독립적으로 검색 가능)
+   ❌ **적용하지 말아야 할 경우**:
+   - 구체적인 제품명, 브랜드명, 고유명사가 포함된 쿼리
+   - 이미 충분히 구체적인 쿼리
+   - 정확한 매칭이 중요한 쿼리
 
-2. **Query Rewriting (쿼리 재작성)** - 대부분의 쿼리에 유용:
-   ✅ 적용 조건: 동의어, 표현 변경으로 검색 품질 향상 가능
-   ✅ 예시: "AI" → "인공지능", "튜토리얼" → "가이드", "방법" → "how to"
-   - 원본 쿼리를 다양한 표현 방식으로 재작성
-   - 동의어, 유의어, 관련 용어 활용
-   - 질문형 → 키워드형, 구어체 → 표준어 등 형식 변환
+**원칙**: 의심스러우면 Semantic Expansion을 사용하지 마세요. Query Rewriting만으로도 충분한 경우가 대부분입니다.
 
-3. **Semantic Expansion (의미적 확장)** - 검색 범위 확대가 필요할 때:
-   ✅ 적용 조건: 관련 개념, 상하위 개념으로 검색 범위 확장이 도움되는 경우
-   ✅ 예시: "파이썬" → "pandas numpy matplotlib", "데이터 분석" → "통계 분석 시각화"
-   ❌ 불필요한 경우: 매우 구체적인 검색, 정확한 매칭이 중요한 경우
-   - 쿼리의 의미적 맥락을 확장
-   - 상위/하위 개념, 연관 개념 추가
-   - 도메인 특화 용어 및 전문 용어 포함
-
-**중요**: 각 기법의 적용 여부를 먼저 판단하고, 필요한 기법만 사용하세요. 모든 기법을 사용할 필요는 없습니다.
-
-JSON 형식으로만 응답하세요:
+간소화된 JSON 형식으로만 응답하세요:
 {{
     "original_query": "원본 쿼리",
-    "query_analysis": {{
-        "intent": "검색 의도 분석",
-        "complexity": "simple|moderate|complex",
-        "domain": "추정 도메인",
-        "query_type": "factual|procedural|navigational|transactional",
-        "requires_decomposition": false,
-        "requires_rewriting": true,
-        "requires_expansion": true
-    }},
-    "applied_techniques": ["rewriting", "semantic_expansion"],
-    "has_dependency": false,
-    "dependency_reason": "분해된 쿼리들이 독립적으로 실행 가능",
-    "decomposition": {{
-        "applied": false,
-        "reason": "단일 개념으로 분해 불필요",
-        "main_concepts": [],
-        "sub_queries": []
-    }},
-    "rewritten_queries": [
-        {{
-            "query": "재작성된 쿼리1",
-            "type": "synonym|paraphrase|format_change|register_change",
-            "rationale": "재작성 이유"
-        }}
-    ],
-    "semantic_expansions": [
-        {{
-            "query": "의미적으로 확장된 쿼리1",
-            "expansion_type": "hypernym|hyponym|related_concept|domain_specific",
-            "added_concepts": ["추가된 개념1", "추가된 개념2"]
-        }}
-    ],
     "final_queries": [
         {{
-            "query": "최종 확장 쿼리1",
-            "priority": 1,
-            "search_strategy": "hybrid|semantic|keyword|multimodal",
-            "confidence": 0.95,
-            "source_technique": "rewriting|expansion|decomposition|original"
+            "query": "확장된 쿼리1",
+            "priority": 1
+        }},
+        {{
+            "query": "확장된 쿼리2", 
+            "priority": 2
         }}
     ],
-    "search_suggestions": {{
-        "boolean_query": "Boolean 검색 쿼리",
-        "filters": ["추천 필터1", "추천 필터2"],
-        "query_operators": ["AND", "OR", "NEAR", "WILDCARD"]
-    }}
+    "has_dependency": false,
+    "dependency_reason": "분해된 쿼리들이 독립적으로 실행 가능",
+    "applied_techniques": ["rewriting", "decomposition"],
+    "expansion_summary": "Query rewriting and decomposition applied (2 variants generated)"
 }}
 
-참고: 
-- decomposition.applied가 false면 sub_queries는 빈 배열
-- rewritten_queries는 적용된 경우에만 항목 포함
-- semantic_expansions는 적용된 경우에만 항목 포함
-- applied_techniques에는 실제 사용된 기법만 나열"""
+참고:
+- 원본 쿼리는 항상 priority 1로 final_queries에 포함
+- 확장 쿼리는 최대 2-3개까지만 생성
+- priority가 낮을수록 우선순위가 높음
+- applied_techniques: ["rewriting", "decomposition", "semantic_expansion"] 중 사용된 것만
+- has_dependency가 true면 순차 검색, false면 병렬 검색"""
 
         messages = [
             {"role": "system", "content": system_message},
             {"role": "user", "content": f"다음 쿼리를 확장해주세요: {query}"}
         ]
 
-        response = await self.complete(messages, temperature=0.7, max_tokens=4000, force_json=True)
+        response = await self.complete(messages, temperature=0.3, max_tokens=2000, force_json=True)
 
         if response:
             try:
@@ -406,10 +368,18 @@ JSON 형식으로만 응답하세요:
                 if not result["final_queries"]:
                     result["final_queries"] = [{
                         "query": query,
-                        "priority": 1,
-                        "search_strategy": "hybrid",
-                        "confidence": 0.8
+                        "priority": 1
                     }]
+
+                # 기본값 설정
+                if "has_dependency" not in result:
+                    result["has_dependency"] = False
+                if "dependency_reason" not in result:
+                    result["dependency_reason"] = "쿼리들이 독립적으로 실행 가능"
+                if "applied_techniques" not in result:
+                    result["applied_techniques"] = ["original"]
+                if "expansion_summary" not in result:
+                    result["expansion_summary"] = f"원본 쿼리 사용 ({len(result['final_queries'])} variants)"
 
                 # priority로 정렬
                 result["final_queries"] = sorted(

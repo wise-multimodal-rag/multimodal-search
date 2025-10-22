@@ -185,7 +185,12 @@ class SearchService:
 
         # 확장 정보를 쿼리 분석에 추가
         if expansion_result:
-            query_analysis["expansion_analysis"] = expansion_result.get("query_analysis", {})
+            query_analysis["expansion_analysis"] = {
+                "applied_techniques": expansion_result.get("applied_techniques", []),
+                "expansion_summary": expansion_result.get("expansion_summary", ""),
+                "has_dependency": expansion_result.get("has_dependency", False),
+                "dependency_reason": expansion_result.get("dependency_reason", "")
+            }
             query_analysis["expansion_used"] = len(expanded_queries) > 1
 
         return query_analysis
