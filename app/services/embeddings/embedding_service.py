@@ -13,16 +13,17 @@ class EmbeddingService:
         self.embedding_client = embedding_client or EmbeddingClient()
         
         # Define element_type to modality mapping for embedding selection
-        self.text_element_types = [
-            "paragraph", "title", "summary", "stt", "caption", 
-            "scene", "ocr", "table", "translation"
-        ]
-        self.image_element_types = [
-            "origin", "cropped", "detected_object", "chart", 
-            "diagram", "keyframe", "thumbnail"
-        ]
-        self.video_element_types = ["clip", "segment"]
-        self.audio_element_types = ["speech", "music", "sound_effect", "ambient"]
+        # Currently active types only
+        self.text_element_types = ["paragraph", "summary", "caption"]
+        self.image_element_types = ["origin"]
+        
+        # Temporarily disabled element types (for future use)
+        # Text: "title", "stt", "scene", "ocr", "table", "translation"
+        # Image: "cropped", "detected_object", "chart", "diagram", "keyframe", "thumbnail"
+        # Video: "clip", "segment"
+        # Audio: "speech", "music", "sound_effect", "ambient"
+        self.video_element_types = []  # All disabled
+        self.audio_element_types = []  # All disabled
 
     async def generate_multimodal_embeddings(
             self,

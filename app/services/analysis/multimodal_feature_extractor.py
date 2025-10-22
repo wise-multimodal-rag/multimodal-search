@@ -70,44 +70,34 @@ class MultimodalFeatureExtractor:
         text_data: Dict[str, Any], 
         element_types: List[str]
     ) -> Optional[TextFeatures]:
-        """텍스트 모달리티에서 특징 추출"""
+        """텍스트 모달리티에서 특징 추출 - element_type별로 개별 처리"""
         try:
             text_query = text_data["query"]
             
-            keywords = None
-            entities = None
-            summary = None
-            classification = None
-
-            # 키워드 추출 (모든 타입에 유용)
-            keywords_result = await self.feature_extraction_client.extract_keywords(text_query)
-            if keywords_result and "keywords" in keywords_result:
-                keywords = keywords_result["keywords"]  # Extract the keywords list
-
-            # 엔티티 추출 (구조화된 콘텐츠용)
-            if any(t in element_types for t in ["paragraph", "title", "summary", "ocr", "stt", "caption"]):
-                entities_result = await self.feature_extraction_client.extract_entities(text_query)
-                if entities_result and "entities" in entities_result:
-                    entities = entities_result["entities"]  # Extract the entities list
-
-            # 긴 쿼리의 경우 요약 생성
-            if len(text_query) > 100:
+            # element_type별로 개별 feature 추출
+            paragraph_text = None
+            summary_text = None
+            
+            # paragraph: OpenSearch에서 검색용이므로 별도 임베딩 불필요 (원본 text 임베딩 사용)
+            # if "paragraph" in element_types:
+            #     paragraph_text = text_query
+            
+            # summary: 텍스트 요약 추출
+            if "summary" in element_types:
                 summary_result = await self.feature_extraction_client.extract_text_summary(text_query)
                 if summary_result and "summary" in summary_result:
-                    summary = summary_result["summary"]  # Extract the summary string
-
-            # 텍스트 분류
-            classification_result = await self.feature_extraction_client.classify_text(text_query)
-            if classification_result:
-                classification = classification_result  # Keep the full classification result
-
-            # 최소 하나의 feature가 추출된 경우만 TextFeatures 반환
-            if any([keywords, entities, summary, classification]):
+                    summary_text = summary_result["summary"]
+            
+            # caption은 이미지 모달리티에서 처리하므로 여기서 제외
+            # 비활성화된 타입: "title", "stt", "scene", "ocr", "table", "translation"
+            
+            # 추출된 feature가 있는 경우만 반환
+            if summary_text:
                 return TextFeatures(
-                    keywords=keywords,
-                    entities=entities,
-                    summary=summary,
-                    classification=classification
+                    keywords=None,  # TODO: 추후 키워드 추출 기능 추가 예정
+                    entities=None,  # TODO: 추후 엔티티 추출 기능 추가 예정
+                    summary=summary_text,
+                    classification=None  # TODO: 추후 텍스트 분류 기능 추가 예정
                 )
             return None
 
@@ -120,39 +110,42 @@ class MultimodalFeatureExtractor:
         image_data: Dict[str, Any], 
         element_types: List[str]
     ) -> Optional[ImageFeatures]:
-        """이미지 모달리티에서 특징 추출"""
+        """이미지 모달리티에서 특징 추출 - element_type별로 개별 처리"""
         try:
-            # 이미지 관련 element_types가 선택된 경우에만 분석 수행
-            if not any(t in element_types for t in
-                       ["caption", "origin", "cropped", "detected_object", "chart", "diagram"]):
+            # 이미지 관련 element_types가 선택된 경우에만 분석 수행 (현재 활성: caption, origin)
+            if not any(t in element_types for t in ["caption", "origin"]):
+                # 비활성화된 타입: "cropped", "detected_object", "chart", "diagram"
                 return None
 
             if "base64_data" not in image_data:
                 return None
 
             base64_image = image_data["base64_data"]
-            caption = None
-            objects = None
-
-            # 이미지 캡션 생성
             import base64
             image_bytes = base64.b64decode(base64_image)
-            caption_result = await self.embedding_client.generate_image_caption(image_bytes)
-
-            if caption_result and "caption" in caption_result:
-                caption = caption_result["caption"]
-
-            # 객체 탐지 (detected_object가 선택된 경우)
-            if "detected_object" in element_types:
-                detection_result = await self.embedding_client.detect_objects(image_bytes)
-                if detection_result and "objects" in detection_result:
-                    objects = detection_result["objects"]
-
-            # 최소 하나의 feature가 추출된 경우만 ImageFeatures 반환
-            if any([caption, objects]):
+            
+            # element_type별로 개별 feature 추출
+            caption_text = None
+            origin_data = None
+            
+            # caption: 이미지 캡션 생성
+            if "caption" in element_types:
+                caption_result = await self.embedding_client.generate_image_caption(image_bytes)
+                if caption_result and "caption" in caption_result:
+                    caption_text = caption_result["caption"]
+            
+            # origin: OpenSearch에서 검색용이므로 별도 임베딩 불필요 (원본 image 임베딩 사용)
+            # if "origin" in element_types:
+            #     origin_data = base64_image  # 원본 base64 데이터
+            
+            # 비활성화된 기능들:
+            # 객체 탐지 (detected_object), 잘린 이미지 (cropped), 차트 (chart), 다이어그램 (diagram)
+            
+            # 추출된 feature가 있는 경우만 반환
+            if caption_text:
                 return ImageFeatures(
-                    caption=caption,
-                    objects=objects
+                    caption=caption_text,
+                    objects=None  # origin은 원본 image와 동일하므로 중복 제거
                 )
             return None
 
@@ -167,9 +160,11 @@ class MultimodalFeatureExtractor:
     ) -> Optional[VideoFeatures]:
         """비디오 모달리티에서 특징 추출"""
         try:
-            # 비디오 관련 element_types가 선택된 경우에만 LLM 분석 수행
-            if not any(t in element_types for t in ["scene", "clip", "segment", "keyframe", "thumbnail"]):
-                return None
+            # 비디오 관련 element_types 모두 비활성화됨
+            # 비활성화된 타입: "scene", "clip", "segment", "keyframe", "thumbnail"
+            return None
+            # if not any(t in element_types for t in ["scene", "clip", "segment", "keyframe", "thumbnail"]):
+            #     return None
 
             if "base64_data" not in video_data:
                 return None
@@ -224,9 +219,11 @@ class MultimodalFeatureExtractor:
     ) -> Optional[AudioFeatures]:
         """오디오 모달리티에서 특징 추출"""
         try:
-            # 오디오 관련 element_types가 선택된 경우에만 LLM 분석 수행
-            if not any(t in element_types for t in ["speech", "stt", "music", "sound_effect", "ambient"]):
-                return None
+            # 오디오 관련 element_types 모두 비활성화됨
+            # 비활성화된 타입: "speech", "stt", "music", "sound_effect", "ambient"
+            return None
+            # if not any(t in element_types for t in ["speech", "stt", "music", "sound_effect", "ambient"]):
+            #     return None
 
             if "base64_data" not in audio_data:
                 return None
