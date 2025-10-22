@@ -874,36 +874,67 @@ class SearchService:
             }
             
             # Step 7: 최종 결과
-            logger.info("🔄 Calculating final statistics...")
             total_time = time.time() - start_time
             final_stats = self.result_enricher.calculate_search_statistics(search_results)
-            logger.info(f"✅ Final statistics calculated: {final_stats}")
+            # 안전한 결과 직렬화
+            results_data = []
+            for i, result in enumerate(enriched_results):
+                try:
+                    if hasattr(result, 'model_dump'):
+                        serialized = result.model_dump()
+                    elif hasattr(result, 'dict'):
+                        serialized = result.dict()
+                    elif isinstance(result, dict):
+                        serialized = result
+                    else:
+                        serialized = str(result)
+                    results_data.append(serialized)
+                except Exception as e:
+                    logger.error(f"Failed to serialize result {i}: {e}")
+                    results_data.append({"error": f"Serialization failed: {str(e)}"})
             
-            logger.info("🎉 Preparing final completed step...")
-            results_data = [result.model_dump() if hasattr(result, 'model_dump') else result for result in enriched_results]
-            logger.info(f"📊 Final results prepared: {len(results_data)} items")
-            
-            completed_data = {
-                "results": results_data,
-                "search_stats": final_stats,
-                "total_time_ms": total_time * 1000,
-                "processing_steps": 8,
-                "query_analysis": query_analysis,
-                "expanded_queries": expanded_queries
-            }
-            
-            yield {
-                "step": "completed",
-                "message": f"검색이 완료되었습니다 ({total_time:.2f}초)",
-                "timestamp": time.time(),
-                "data": completed_data
-            }
-            logger.info("🎉 COMPLETED step sent successfully!")
+            try:
+                completed_data = {
+                    "results": results_data,
+                    "search_stats": final_stats,
+                    "total_time_ms": total_time * 1000,
+                    "processing_steps": 8,
+                    "query_analysis": query_analysis,
+                    "expanded_queries": expanded_queries
+                }
+                
+                yield {
+                    "step": "completed",
+                    "message": f"검색이 완료되었습니다 ({total_time:.2f}초)",
+                    "timestamp": time.time(),
+                    "data": completed_data
+                }
+                
+                # 프론트엔드가 completed 이벤트를 처리할 시간을 확보하기 위한 짧은 지연
+                import asyncio
+                await asyncio.sleep(0.1)
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to create completed data: {e}")
+                # 최소한의 완료 메시지라도 전송
+                yield {
+                    "step": "completed",
+                    "message": f"검색이 완료되었습니다 ({total_time:.2f}초)",
+                    "timestamp": time.time(),
+                    "data": {
+                        "results": [],
+                        "search_stats": {"total_results": 0},
+                        "total_time_ms": total_time * 1000,
+                        "processing_steps": 8,
+                        "error": f"Data serialization failed: {str(e)}"
+                    }
+                }
             
         except Exception as e:
             import traceback
             logger.error(f"❌ Streaming search failed: {e}")
             logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            
             yield {
                 "step": "error",
                 "error": str(e),

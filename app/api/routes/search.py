@@ -229,8 +229,10 @@ async def search_multimodal_stream(
             ):
                 # SSE 형식으로 데이터 전송 - flush를 위해 즉시 전송
                 data_str = f"data: {json.dumps(step_result, ensure_ascii=False, default=str)}\n\n"
-                logger.info(f"🚀 Sending SSE data: {step_result.get('step', 'unknown')}")
                 yield data_str
+            
+            # 스트림 완료 신호
+            yield "data: [DONE]\n\n"
                 
         except Exception as e:
             logger.error(f"Streaming search failed: {e}")
@@ -243,7 +245,7 @@ async def search_multimodal_stream(
     
     return StreamingResponse(
         generate_search_stream(),
-        media_type="text/plain",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",

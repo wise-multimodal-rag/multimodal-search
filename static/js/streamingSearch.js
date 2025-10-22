@@ -38,7 +38,6 @@ class StreamingSearchController {
                 body: formData
             });
             
-            console.log('🔗 Stream response received:', response.status, response.statusText);
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -46,41 +45,43 @@ class StreamingSearchController {
             
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            let streamEnded = false;
             
-            while (true) {
+            while (true && !streamEnded) {
                 const { done, value } = await reader.read();
                 
                 if (done) {
-                    console.log('🏁 Streaming completed - reader finished');
-                    console.log('🏁 Final streaming status - isStreaming:', this.isStreaming);
                     break;
                 }
                 
                 const chunk = decoder.decode(value);
                 const lines = chunk.split('\n');
-                console.log('📨 Received chunk with', lines.length, 'lines');
                 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
                         try {
                             const data = line.slice(6); // 'data: ' 제거
                             if (data.trim()) {
-                                console.log('📡 Raw streaming data received:', data.substring(0, 100) + '...');
-                                const stepResult = JSON.parse(data);
-                                console.log('✅ Parsed step result:', stepResult.step, stepResult.message);
-                                
-                                // COMPLETED 단계는 특별히 로그
-                                if (stepResult.step === 'completed') {
-                                    console.log('🎉 COMPLETED step received!', stepResult);
+                                // 스트림 종료 신호 확인
+                                if (data.trim() === '[DONE]') {
+                                    streamEnded = true;
+                                    break;
                                 }
                                 
-                                this.handleStepResult(stepResult);
+                                const stepResult = JSON.parse(data);
+                                
+                                // COMPLETED 단계 처리 및 스트림 종료
+                                if (stepResult.step === 'completed') {
+                                    this.handleStepResult(stepResult);
+                                    streamEnded = true;
+                                    break;
+                                } else {
+                                    this.handleStepResult(stepResult);
+                                }
                             }
                         } catch (error) {
-                            console.error('❌ Failed to parse streaming data:', error, line);
+                            console.error('Failed to parse streaming data:', error);
                         }
-                    } else if (line.trim()) {
-                        console.log('📝 Non-data line received:', line);
                     }
                 }
             }
@@ -183,10 +184,6 @@ class StreamingSearchController {
                 
             case 'completed':
                 this.addStep('검색 완료', message, data, 'success', timestamp);
-                // currentStep은 이미 result_enriched에서 8로 설정됨
-                console.log('🎉 COMPLETED step received, calling renderFinalResults with data:', data);
-                console.log('🎉 Data keys:', Object.keys(data || {}));
-                console.log('🎉 Results exist?', !!data?.results);
                 this.renderFinalResults(data);
                 break;
                 
@@ -805,22 +802,22 @@ class StreamingSearchController {
     }
     
     renderFinalResults(data) {
-        console.log('renderFinalResults called with data:', data);
-        console.log('data type:', typeof data);
-        console.log('data.results exists?', !!data.results);
-        console.log('data.results type:', typeof data.results);
-        console.log('data.results is array?', Array.isArray(data.results));
+        const searchResultsContent = document.getElementById('searchResultsContent');
+        const searchResultsHeader = document.getElementById('searchResultsHeader');
+        const searchResultsContainer = document.querySelector('.search-results-container');
         
         if (data && data.results) {
-            console.log('Results found:', data.results.length, 'items');
-            
             // 검색 진행 상황 컨테이너를 접을 수 있도록 수정
             this.makeCollapsible();
             
             // 검색 결과 컨테이너 표시
-            const searchResultsContainer = document.querySelector('.search-results-container');
             if (searchResultsContainer) {
                 searchResultsContainer.style.display = 'block';
+            }
+            
+            // 검색 결과 헤더 표시
+            if (searchResultsHeader) {
+                searchResultsHeader.style.display = 'block';
             }
             
             // 기존 검색 결과 영역에도 결과 표시
@@ -835,12 +832,10 @@ class StreamingSearchController {
                 element_types_used: data.query_analysis?.selected_element_types || []
             };
             
-            console.log('Calling displaySearchResults with:', searchResult);
-            
             // 먼저 직접 렌더링 시도
             this.directRenderResults(data.results);
             
-            // 그 다음 기존 컨트롤러도 호출 (중복 방지를 위해)
+            // 그 다음 기존 컨트롤러도 호출
             if (window.searchController) {
                 try {
                     window.searchController.displaySearchResults(searchResult);
@@ -851,18 +846,12 @@ class StreamingSearchController {
             
             // 검색 히스토리 업데이트 (진행 과정 포함)
             if (window.historyManager) {
-                console.log('Updating history with process data:', this.searchProcessData.length, 'steps');
                 const searchResultWithProcess = {
                     ...searchResult,
-                    searchProcess: this.searchProcessData // 진행 과정 데이터 추가
+                    searchProcess: this.searchProcessData
                 };
-                console.log('searchResultWithProcess:', searchResultWithProcess);
                 window.historyManager.updateSearchHistoryWithResults(searchResultWithProcess);
             }
-        } else {
-            console.log('❌ No results found in data:', data);
-            console.log('❌ data is:', typeof data, data);
-            console.log('❌ data.results is:', typeof data?.results, data?.results);
         }
     }
     
@@ -896,18 +885,25 @@ class StreamingSearchController {
     }
     
     directRenderResults(results) {
-        console.log('Direct rendering results:', results);
-        console.log('Results type:', typeof results, 'Array?', Array.isArray(results), 'Length:', results?.length);
+        // DOM 요소 찾기
+        let searchResultsContent = document.getElementById('searchResultsContent');
+        let searchResultsHeader = document.getElementById('searchResultsHeader');
         
-        // 검색 결과 컨테이너 찾기
-        const searchResultsContent = document.getElementById('searchResultsContent');
-        const searchResultsHeader = document.getElementById('searchResultsHeader');
+        // DOM이 아직 준비되지 않았을 경우 재시도
+        if (!searchResultsContent || !searchResultsHeader) {
+            setTimeout(() => {
+                searchResultsContent = document.getElementById('searchResultsContent');
+                searchResultsHeader = document.getElementById('searchResultsHeader');
+                this._performDirectRender(results, searchResultsContent, searchResultsHeader);
+            }, 100);
+            return;
+        }
         
-        console.log('searchResultsContent found:', !!searchResultsContent);
-        console.log('searchResultsHeader found:', !!searchResultsHeader);
-        
+        this._performDirectRender(results, searchResultsContent, searchResultsHeader);
+    }
+    
+    _performDirectRender(results, searchResultsContent, searchResultsHeader) {
         if (!searchResultsContent) {
-            console.error('searchResultsContent not found');
             return;
         }
         
@@ -1018,6 +1014,12 @@ class StreamingSearchController {
         }
         
         searchResultsContent.innerHTML = resultsHtml;
+        
+        // 검색 결과 컨테이너 표시
+        const searchResultsContainer = document.querySelector('.search-results-container');
+        if (searchResultsContainer) {
+            searchResultsContainer.style.display = 'block';
+        }
         
         // 검색 결과가 최상단에 위치하므로 페이지 상단으로 부드럽게 스크롤
         window.scrollTo({ top: 0, behavior: 'smooth' });
