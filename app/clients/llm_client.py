@@ -111,15 +111,31 @@ class LLMClient:
     async def analyze_query_intent(
             self,
             query: str,
-            available_element_types: List[str]
+            available_element_types: List[str],
+            input_modalities: Optional[List[str]] = None
     ) -> Optional[Dict[str, Any]]:
-        """Analyze query intent to determine relevant element types"""
+        """Analyze query intent to determine relevant element types based on input modalities"""
+        # Define modality-specific element types
+        modality_element_mapping = {
+            "text": ["paragraph", "summary"],
+            "image": ["caption", "origin"]
+        }
+        
+        # Filter available_element_types based on input modalities
+        if input_modalities:
+            relevant_types = set()
+            for modality in input_modalities:
+                if modality in modality_element_mapping:
+                    relevant_types.update(modality_element_mapping[modality])
+            # Only keep element types that are both relevant and available
+            available_element_types = [t for t in available_element_types if t in relevant_types]
+        
         element_types_desc = {
             # Currently active types
-            "paragraph": "일반 문단 - 문서의 본문 내용",
-            "summary": "AI 요약 - 자동 생성된 요약문", 
-            "caption": "이미지 설명 - AI가 생성한 이미지 캡션",
-            "origin": "원본 이미지 - 최초 업로드된 이미지"
+            "paragraph": "일반 문단 - 문서의 본문 내용 (텍스트 전용)",
+            "summary": "AI 요약 - 자동 생성된 요약문 (텍스트 전용)", 
+            "caption": "이미지 설명 - AI가 생성한 이미지 캡션 (이미지 전용)",
+            "origin": "원본 이미지 - 최초 업로드된 이미지 (이미지 전용)"
             
             # Temporarily disabled element types (for future use)
             # Text 모달리티:
@@ -152,15 +168,26 @@ class LLMClient:
             for etype in available_element_types
         ])
 
+        # Build modality context message
+        modality_context = ""
+        if input_modalities:
+            modality_context = f"""
+입력 모달리티: {', '.join(input_modalities)}
+- 텍스트 입력시: paragraph, summary 타입만 사용 가능
+- 이미지 입력시: caption, origin 타입만 사용 가능
+"""
+        
         system_message = f"""검색 쿼리를 분석하여 관련성이 높은 element_type들을 선택하세요.
-현재 활성화된 타입만 사용 가능하고, 꼭 필요한 element_type만 선택하세요.
-
+현재 활성화된 타입만 사용 가능하고, 입력 모달리티에 맞는 타입만 선택하세요.
+{modality_context}
 사용 가능한 타입:
 {element_list}
 
 중요한 제약사항:
-- summary: 최소 60자 이상의 텍스트에서만 의미있는 요약을 생성할 수 있습니다. 60자 이하의 쿼리의 경우 summary를 선택하면 안됩니다. 선택할 경우, 전체적인 검색에 부정적인 영향을 미칠 수 있습니다.
-- 되도록 origin과 paragraph 타입을 우선 선택하세요.
+- summary: 최소 60자 이상의 텍스트에서만 의미있는 요약을 생성할 수 있습니다. 60자 이하의 쿼리의 경우 summary를 선택하면 안됩니다.
+- 텍스트만 입력된 경우: paragraph와 summary 중에서만 선택
+- 이미지가 포함된 경우: caption과 origin 중에서만 선택
+- 모달리티별 전용 타입을 우선 선택하세요.
 
 쿼리 의도에 맞는 1-3개 타입을 선택하고, JSON으로만 답변하세요:
 {{

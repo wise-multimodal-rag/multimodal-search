@@ -93,7 +93,7 @@ class SearchService:
             )
 
             # Step 2: 쿼리 확장 및 의도 분석 (복잡한 로직이므로 함수 분리)
-            query_analysis, expanded_queries = await self._expand_and_analyze_query(text_query)
+            query_analysis, expanded_queries = await self._expand_and_analyze_query(text_query, modalities_data)
 
             # Step 3: 멀티모달 특징 추출
             extracted_features = await self.feature_extractor.extract_features(modalities_data,
@@ -125,13 +125,30 @@ class SearchService:
             logger.error(f"Multimodal search failed: {e}")
             raise
 
-    async def _expand_and_analyze_query(self, text_query):
+    def _extract_input_modalities(self, modalities_data):
+        """Extract input modalities from modalities_data"""
+        input_modalities = []
+        
+        if modalities_data.get("text"):
+            input_modalities.append("text")
+        if modalities_data.get("images"):
+            input_modalities.append("image")
+        if modalities_data.get("videos"):
+            input_modalities.append("video")
+        if modalities_data.get("audios"):
+            input_modalities.append("audio")
+            
+        return input_modalities
+
+    async def _expand_and_analyze_query(self, text_query, modalities_data=None):
         """Step 2: 쿼리 확장 및 의도 분석"""
+        input_modalities = self._extract_input_modalities(modalities_data) if modalities_data else None
+        
         if text_query:
             # 쿼리 확장
             expanded_queries, expansion_result = await self._expand_query(text_query)
-            # 의도 분석
-            query_analysis = await self._analyze_query_intent(expanded_queries, expansion_result)
+            # 의도 분석 (입력 모달리티 고려)
+            query_analysis = await self._analyze_query_intent(expanded_queries, expansion_result, input_modalities)
         else:
             query_analysis = self.query_analyzer.create_default_query_analysis(self.available_element_types)
             expanded_queries = ["multimodal search"]
@@ -153,12 +170,12 @@ class SearchService:
             return [text_query], None
 
 
-    async def _analyze_query_intent(self, expanded_queries, expansion_result):
+    async def _analyze_query_intent(self, expanded_queries, expansion_result, input_modalities=None):
         """의도 분석 수행"""
         primary_query = expanded_queries[0] if expanded_queries else "multimodal search"
 
         query_analysis = await self.query_analyzer.analyze_query_intent(
-            primary_query, self.available_element_types)
+            primary_query, self.available_element_types, input_modalities)
 
         if not query_analysis:
             logger.warning(f"Query analysis failed for: '{primary_query}'. Using default.")
@@ -587,7 +604,8 @@ class SearchService:
             }
             
             if text_query:
-                query_analysis = await self._analyze_query_intent(expanded_queries, expansion_result)
+                input_modalities = self._extract_input_modalities(modalities_data)
+                query_analysis = await self._analyze_query_intent(expanded_queries, expansion_result, input_modalities)
             else:
                 query_analysis = self.query_analyzer.create_default_query_analysis(self.available_element_types)
             
