@@ -51,7 +51,7 @@ class EmbeddingClient:
         """Get image embedding from binary data"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                files = {"image_file": ("image.jpg", image_data, "image/jpeg")}
+                files = {"image": ("image.jpg", image_data, "image/jpeg")}
                 response = await client.post(
                     f"{self.base_url}/embedding/image",
                     files=files,
