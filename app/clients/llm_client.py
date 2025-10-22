@@ -158,7 +158,10 @@ class LLMClient:
 사용 가능한 타입:
 {element_list}
 
-쿼리 의도에 맞는 2-5개 타입을 선택하고, JSON으로만 답변하세요:
+중요한 제약사항:
+- summary: 최소 50자 이상의 텍스트에서만 의미있는 요약을 생성할 수 있습니다. 짧은 쿼리의 경우 summary를 선택하지 마세요!
+
+쿼리 의도에 맞는 1-3개 타입을 선택하고, JSON으로만 답변하세요:
 {{
     "selected_element_types": ["type1", "type2", "type3"],
     "reasoning": "선택 이유",
