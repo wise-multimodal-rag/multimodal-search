@@ -17,7 +17,7 @@ class LLMClient:
     async def complete(
             self,
             messages: List[Dict[str, str]],
-            temperature: float = 0.7,
+            temperature: float = 0.3,
             max_tokens: Optional[int] = None,
             force_json: bool = False
     ) -> Optional[str]:
@@ -184,7 +184,6 @@ class LLMClient:
 {element_list}
 
 중요한 제약사항:
-- summary: 최소 60자 이상의 텍스트에서만 의미있는 요약을 생성할 수 있습니다. 60자 이하의 쿼리의 경우 summary를 선택하면 안됩니다.
 - 텍스트만 입력된 경우: paragraph와 summary 중에서만 선택
 - 이미지가 포함된 경우: caption과 origin 중에서만 선택
 - 모달리티별 전용 타입을 우선 선택하세요.
@@ -201,7 +200,7 @@ class LLMClient:
             {"role": "user", "content": f"검색 쿼리: {query}"}
         ]
 
-        response = await self.complete(messages, temperature=0.3, max_tokens=1000, force_json=True)
+        response = await self.complete(messages, temperature=0.2, max_tokens=2000, force_json=True)
 
         if response:
             try:
@@ -336,7 +335,7 @@ class LLMClient:
             {"role": "user", "content": f"다음 쿼리를 확장해주세요: {query}"}
         ]
 
-        response = await self.complete(messages, temperature=0.3, max_tokens=2000, force_json=True)
+        response = await self.complete(messages, temperature=0.2, max_tokens=2000, force_json=True)
 
         if response:
             try:

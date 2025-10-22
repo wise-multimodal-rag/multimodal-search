@@ -25,6 +25,9 @@ class StreamingSearchController {
         // 검색 과정 데이터 초기화
         this.searchProcessData = [];
         
+        // 히스토리 복원 모드 클래스 제거 (실시간 검색 시작)
+        this.searchProcessContainer.classList.remove('history-restore');
+        
         // 검색 과정 컨테이너 표시
         this.searchProcessContainer.style.display = 'block';
         this.searchSteps.innerHTML = '';
@@ -1118,6 +1121,11 @@ class StreamingSearchController {
         // 진행 과정만 초기화 (결과는 유지)
         this.searchProcessData = [];
         this.currentStep = 0;
+        
+        // 히스토리 복원 모드 클래스 제거
+        if (this.searchProcessContainer) {
+            this.searchProcessContainer.classList.remove('history-restore');
+        }
         
         // 진행바 completed 클래스 제거
         if (this.progressFill) {
