@@ -879,45 +879,103 @@ class SearchService:
             }
             
             # Step 7: 최종 결과
+            logger.info("🔄 Starting final result processing...")
             total_time = time.time() - start_time
-            final_stats = self.result_enricher.calculate_search_statistics(search_results)
+            
+            try:
+                final_stats = self.result_enricher.calculate_search_statistics(search_results)
+                logger.info("✅ Search statistics calculated")
+            except Exception as e:
+                logger.error(f"❌ Failed to calculate search statistics: {e}")
+                final_stats = {}
+            
             # 안전한 결과 직렬화
+            logger.info(f"🔄 Starting serialization of {len(enriched_results)} results...")
             results_data = []
             for i, result in enumerate(enriched_results):
                 try:
+                    logger.debug(f"🔄 Serializing result {i}: type={type(result)}")
+                    
                     if hasattr(result, 'model_dump'):
                         serialized = result.model_dump()
+                        # 직렬화된 데이터 크기 확인
+                        import json
+                        size_check = len(json.dumps(serialized, default=str))
+                        logger.debug(f"✅ Result {i} serialized: {size_check} bytes")
                     elif hasattr(result, 'dict'):
                         serialized = result.dict()
                     elif isinstance(result, dict):
                         serialized = result
                     else:
                         serialized = str(result)
+                    
                     results_data.append(serialized)
+                    logger.info(f"✅ Serialized result {i} successfully")
+                    
                 except Exception as e:
-                    logger.error(f"Failed to serialize result {i}: {e}")
-                    results_data.append({"error": f"Serialization failed: {str(e)}"})
+                    logger.error(f"❌ Failed to serialize result {i}: {type(e).__name__}: {e}")
+                    import traceback
+                    logger.error(f"❌ Serialization traceback: {traceback.format_exc()}")
+                    results_data.append({"error": f"Serialization failed: {str(e)}", "result_index": i})
+            
+            logger.info(f"✅ Serialization completed: {len(results_data)} results ready")
             
             try:
-                completed_data = {
+                logger.info("🔄 Creating completed data...")
+                
+                # 데이터 크기 체크를 위한 임시 생성
+                temp_completed_data = {
                     "results": results_data,
-                    "search_stats": final_stats,
+                    "search_stats": {
+                        "total_hits": final_stats.get("total_hits", 0),
+                        "max_score": final_stats.get("max_score", 0.0),
+                        "result_count": len(results_data)
+                    },
                     "total_time_ms": total_time * 1000,
                     "processing_steps": 8,
-                    "query_analysis": query_analysis,
-                    "expanded_queries": expanded_queries
+                    "query_analysis": {
+                        "selected_element_types": query_analysis.get("selected_element_types", []),
+                        "confidence": query_analysis.get("confidence", 0.0)
+                    },
+                    "expanded_queries": [q.get("query", str(q)) if isinstance(q, dict) else str(q) for q in expanded_queries]
                 }
                 
+                # 전체 데이터 크기 확인
+                import json
+                temp_json = json.dumps(temp_completed_data, default=str)
+                data_size = len(temp_json)
+                logger.info(f"📊 Completed data size: {data_size} bytes ({data_size/1024/1024:.2f} MB)")
+                
+                # 크기가 너무 크면 간소화
+                if data_size > 5 * 1024 * 1024:  # 5MB 초과시
+                    logger.warning(f"⚠️ Data too large ({data_size/1024/1024:.2f} MB), simplifying...")
+                    completed_data = {
+                        "results": results_data[:5],  # 처음 5개만
+                        "search_stats": temp_completed_data["search_stats"],
+                        "total_time_ms": temp_completed_data["total_time_ms"],
+                        "processing_steps": 8,
+                        "message": f"결과가 너무 커서 {len(results_data)}개 중 5개만 표시합니다"
+                    }
+                else:
+                    completed_data = temp_completed_data
+                    
+                logger.info("✅ Completed data created successfully")
+                
+                logger.info("🔄 Yielding completed step...")
                 yield {
                     "step": "completed",
                     "message": f"검색이 완료되었습니다 ({total_time:.2f}초)",
                     "timestamp": time.time(),
                     "data": completed_data
                 }
+                logger.info("✅ Completed step yielded successfully")
                 
                 # 프론트엔드가 completed 이벤트를 처리할 시간을 확보하기 위한 짧은 지연
                 import asyncio
                 await asyncio.sleep(0.1)
+                
+                # 스트림 완료 확인 로그
+                logger.info("🏁 Stream processing completed - search_multimodal_stream ending")
                 
             except Exception as e:
                 logger.error(f"❌ Failed to create completed data: {e}")

@@ -227,9 +227,38 @@ async def search_multimodal_stream(
                 max_results=max_results,
                 files_were_provided=files_were_provided
             ):
-                # SSE 형식으로 데이터 전송 - flush를 위해 즉시 전송
-                data_str = f"data: {json.dumps(step_result, ensure_ascii=False, default=str)}\n\n"
-                yield data_str
+                # SSE 형식으로 데이터 전송 - 안전한 JSON 직렬화
+                try:
+                    json_data = json.dumps(step_result, ensure_ascii=False, default=str)
+                    data_size = len(json_data)
+                    
+                    # 크기 체크
+                    if data_size > 10 * 1024 * 1024:  # 10MB 초과
+                        logger.warning(f"⚠️ SSE data too large: {data_size/1024/1024:.2f} MB for step {step_result.get('step', 'unknown')}")
+                        # 간소화된 에러 메시지 전송
+                        error_data = {
+                            "step": step_result.get("step", "unknown"),
+                            "message": f"데이터가 너무 커서 전송할 수 없습니다 ({data_size/1024/1024:.2f} MB)",
+                            "timestamp": time.time(),
+                            "error": "data_too_large"
+                        }
+                        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+                    else:
+                        data_str = f"data: {json_data}\n\n"
+                        yield data_str
+                        logger.debug(f"✅ SSE data sent: {data_size} bytes for step {step_result.get('step', 'unknown')}")
+                        
+                except Exception as json_error:
+                    logger.error(f"❌ Failed to serialize step result: {json_error}")
+                    logger.error(f"❌ Step: {step_result.get('step', 'unknown')}")
+                    import traceback
+                    logger.error(f"❌ SSE serialization traceback: {traceback.format_exc()}")
+                    error_data = {
+                        "step": "serialization_error",
+                        "message": f"데이터 직렬화 실패: {str(json_error)}",
+                        "timestamp": time.time()
+                    }
+                    yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
             
             # 스트림 완료 신호
             yield "data: [DONE]\n\n"
