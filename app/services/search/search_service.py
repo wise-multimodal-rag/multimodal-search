@@ -790,7 +790,7 @@ class SearchService:
             opensearch_query_info = {
                 "index_used": "elements",
                 "query_type": "hybrid_search",
-                "search_fields": ["content^2", "description"],
+                "search_fields": ["content^2"],
                 "element_types_filter": query_analysis["selected_element_types"],
                 "has_vector_search": bool(embeddings),
                 "vector_modalities": list(embeddings.keys()) if embeddings else [],

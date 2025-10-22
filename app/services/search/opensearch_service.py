@@ -165,7 +165,7 @@ class OpenSearchService:
             bool_query["bool"]["must"].append({
                 "multi_match": {
                     "query": query,
-                    "fields": ["content^2", "description"],
+                    "fields": ["content^2"],
                     "type": "best_fields",
                     "fuzziness": "AUTO"
                 }
