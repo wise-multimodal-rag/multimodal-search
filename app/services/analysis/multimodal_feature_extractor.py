@@ -78,9 +78,9 @@ class MultimodalFeatureExtractor:
             paragraph_text = None
             summary_text = None
             
-            # paragraph: 원본 텍스트 그대로 반환
-            if "paragraph" in element_types:
-                paragraph_text = text_query
+            # paragraph: OpenSearch에서 검색용이므로 별도 임베딩 불필요 (원본 text 임베딩 사용)
+            # if "paragraph" in element_types:
+            #     paragraph_text = text_query
             
             # summary: 텍스트 요약 추출
             if "summary" in element_types:
@@ -92,7 +92,7 @@ class MultimodalFeatureExtractor:
             # 비활성화된 타입: "title", "stt", "scene", "ocr", "table", "translation"
             
             # 추출된 feature가 있는 경우만 반환
-            if paragraph_text or summary_text:
+            if summary_text:
                 return TextFeatures(
                     keywords=None,  # TODO: 추후 키워드 추출 기능 추가 예정
                     entities=None,  # TODO: 추후 엔티티 추출 기능 추가 예정
@@ -112,7 +112,7 @@ class MultimodalFeatureExtractor:
     ) -> Optional[ImageFeatures]:
         """이미지 모달리티에서 특징 추출 - element_type별로 개별 처리"""
         try:
-            # 이미지 관련 element_types가 선택된 곝우에만 분석 수행 (현재 활성: caption, origin)
+            # 이미지 관련 element_types가 선택된 경우에만 분석 수행 (현재 활성: caption, origin)
             if not any(t in element_types for t in ["caption", "origin"]):
                 # 비활성화된 타입: "cropped", "detected_object", "chart", "diagram"
                 return None
@@ -145,7 +145,7 @@ class MultimodalFeatureExtractor:
             if caption_text or origin_data:
                 return ImageFeatures(
                     caption=caption_text,
-                    objects={"origin": origin_data} if origin_data else None
+                    objects=[{"type": "origin", "data": origin_data}] if origin_data else None
                 )
             return None
 
