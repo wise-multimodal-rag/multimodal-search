@@ -12,9 +12,9 @@ from app.services.embeddings.embedding_service import EmbeddingService
 class OpenSearchService:
     def __init__(self, embedding_service: EmbeddingService = None):
         self.client: Optional[AsyncOpenSearch] = None
-        self.media_meta_index = "multimodal_rag_media"
-        self.chunk_meta_index = "multimodal_rag_chunk"
-        self.elements_index = "multimodal_rag_element"
+        self.media_meta_index = settings.opensearch_media_index
+        self.chunk_meta_index = settings.opensearch_chunk_index
+        self.elements_index = settings.opensearch_elements_index
 
         # Initialize helper components with dependency injection
         self.embedding_service = embedding_service or EmbeddingService()

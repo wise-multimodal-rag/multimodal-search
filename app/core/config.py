@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     opensearch_verify_certs: bool = Field(default=False, alias="OPENSEARCH_VERIFY_CERTS")
     opensearch_username: str = Field(default="admin", alias="OPENSEARCH_USERNAME")
     opensearch_password: str = Field(default="admin", alias="OPENSEARCH_PASSWORD")
+    
+    # OpenSearch Index Configuration
+    opensearch_media_index: str = Field(default="multimodal_rag_media", alias="OPENSEARCH_MEDIA_INDEX")
+    opensearch_chunk_index: str = Field(default="multimodal_rag_chunk", alias="OPENSEARCH_CHUNK_INDEX") 
+    opensearch_elements_index: str = Field(default="multimodal_rag_element", alias="OPENSEARCH_ELEMENTS_INDEX")
 
     # External API Configuration
     embedding_api_url: str = Field(default="http://localhost:8001", alias="EMBEDDING_API_URL")
