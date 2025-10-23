@@ -12,6 +12,7 @@ class StreamingSearchController {
         this.totalSteps = 8;
         this.isStreaming = false;
         this.searchProcessData = []; // 검색 진행 과정 데이터 저장
+        this.partialData = ''; // 부분적 스트리밍 데이터 누적용
     }
     
     async startStreamingSearch(formData) {
@@ -24,6 +25,7 @@ class StreamingSearchController {
         
         // 검색 과정 데이터 초기화
         this.searchProcessData = [];
+        this.partialData = ''; // 부분 데이터도 초기화
         
         // 히스토리 복원 모드 클래스 제거 (실시간 검색 시작)
         this.searchProcessContainer.classList.remove('history-restore');
@@ -58,7 +60,13 @@ class StreamingSearchController {
                 }
                 
                 const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
+                
+                // 부분 데이터와 새 청크를 결합
+                this.partialData += chunk;
+                const lines = this.partialData.split('\n');
+                
+                // 마지막 라인은 불완전할 수 있으므로 따로 보관
+                this.partialData = lines.pop() || '';
                 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
@@ -67,14 +75,42 @@ class StreamingSearchController {
                             if (data.trim()) {
                                 // 스트림 종료 신호 확인
                                 if (data.trim() === '[DONE]') {
+                                    console.log('🏁 Stream end signal received');
                                     streamEnded = true;
                                     break;
                                 }
                                 
-                                const stepResult = JSON.parse(data);
+                                // JSON 파싱 전 데이터 로깅 (첫 200자만)
+                                console.log('📥 Raw streaming data (first 200 chars):', data.substring(0, 200));
+                                
+                                // JSON 파싱 시도
+                                let stepResult;
+                                try {
+                                    stepResult = JSON.parse(data);
+                                } catch (parseError) {
+                                    console.error('❌ JSON Parse Error:', parseError);
+                                    console.error('📄 Problematic data length:', data.length);
+                                    console.error('📄 Data around error position:', data.substring(Math.max(0, 60190-100), 60190+100));
+                                    
+                                    // JSON 수정 시도 (마지막 incomplete 부분 제거)
+                                    const cleanedData = this.cleanIncompleteJson(data);
+                                    if (cleanedData !== data) {
+                                        console.log('🔧 Attempting to parse cleaned JSON...');
+                                        try {
+                                            stepResult = JSON.parse(cleanedData);
+                                            console.log('✅ Successfully parsed cleaned JSON');
+                                        } catch (cleanedError) {
+                                            console.error('❌ Cleaned JSON also failed:', cleanedError);
+                                            continue; // 이 라인 건너뛰기
+                                        }
+                                    } else {
+                                        continue; // 이 라인 건너뛰기
+                                    }
+                                }
                                 
                                 // COMPLETED 단계 처리 및 스트림 종료
                                 if (stepResult.step === 'completed') {
+                                    console.log('🎯 Handling completed step');
                                     this.handleStepResult(stepResult);
                                     streamEnded = true;
                                     break;
@@ -83,8 +119,26 @@ class StreamingSearchController {
                                 }
                             }
                         } catch (error) {
-                            console.error('Failed to parse streaming data:', error);
+                            console.error('❌ General streaming error:', error);
+                            console.error('📄 Line content:', line);
                         }
+                    }
+                }
+            }
+            
+            // 스트림 종료 시 남은 부분 데이터 처리
+            if (this.partialData.trim()) {
+                console.log('🧹 Processing remaining partial data:', this.partialData.substring(0, 100));
+                if (this.partialData.startsWith('data: ')) {
+                    try {
+                        const data = this.partialData.slice(6).trim();
+                        if (data && data !== '[DONE]') {
+                            const cleanedData = this.cleanIncompleteJson(data);
+                            const stepResult = JSON.parse(cleanedData);
+                            this.handleStepResult(stepResult);
+                        }
+                    } catch (error) {
+                        console.error('❌ Failed to process remaining data:', error);
                     }
                 }
             }
@@ -313,6 +367,61 @@ class StreamingSearchController {
         }
     }
     
+    // 긴 텍스트를 생략하여 표시하는 헬퍼 함수
+    truncateText(text, maxLength = 50) {
+        if (!text) return '';
+        const textStr = typeof text === 'object' ? JSON.stringify(text) : String(text);
+        return textStr.length > maxLength 
+            ? textStr.substring(0, maxLength) + '...' 
+            : textStr;
+    }
+
+    // 불완전한 JSON 데이터를 정리하는 함수
+    cleanIncompleteJson(jsonStr) {
+        try {
+            // 1. 마지막 쉼표 뒤에 불완전한 부분이 있는지 확인
+            let cleaned = jsonStr.trim();
+            
+            // 2. 열린 괄호나 중괄호가 닫히지 않은 경우 처리
+            const openBraces = (cleaned.match(/\{/g) || []).length;
+            const closeBraces = (cleaned.match(/\}/g) || []).length;
+            const openBrackets = (cleaned.match(/\[/g) || []).length;
+            const closeBrackets = (cleaned.match(/\]/g) || []).length;
+            
+            // 3. 마지막에 불완전한 속성이나 값이 있는 경우 제거
+            // 마지막 쉼표를 찾고 그 이후가 완전한 속성인지 확인
+            const lastCommaIndex = cleaned.lastIndexOf(',');
+            if (lastCommaIndex > 0) {
+                const afterComma = cleaned.substring(lastCommaIndex + 1).trim();
+                
+                // 쉼표 뒤에 완전하지 않은 속성이 있는 경우
+                if (afterComma && !afterComma.includes(':') && !afterComma.startsWith('"')) {
+                    cleaned = cleaned.substring(0, lastCommaIndex);
+                } else if (afterComma.includes(':')) {
+                    // 속성은 있지만 값이 불완전한 경우
+                    const colonIndex = afterComma.indexOf(':');
+                    const value = afterComma.substring(colonIndex + 1).trim();
+                    if (value && !value.endsWith('"') && !value.endsWith('}') && !value.endsWith(']') && !(/^[\d\.\-]+$/.test(value)) && !(/^(true|false|null)$/.test(value))) {
+                        cleaned = cleaned.substring(0, lastCommaIndex);
+                    }
+                }
+            }
+            
+            // 4. 필요한 경우 닫는 괄호 추가
+            for (let i = closeBraces; i < openBraces; i++) {
+                cleaned += '}';
+            }
+            for (let i = closeBrackets; i < openBrackets; i++) {
+                cleaned += ']';
+            }
+            
+            return cleaned;
+        } catch (error) {
+            console.error('Error cleaning JSON:', error);
+            return jsonStr;
+        }
+    }
+
     renderStepData(container, data, stepType) {
         if (!container || !data) return;
         
@@ -327,7 +436,13 @@ class StreamingSearchController {
         if (data.modalities) {
             content += `<div class="data-item"><strong>처리된 모달리티:</strong> ${data.modalities.join(', ')}</div>`;
             if (data.text_query) {
-                content += `<div class="data-item"><strong>텍스트 쿼리:</strong> "${data.text_query}"</div>`;
+                const truncatedQuery = this.truncateText(data.text_query, 60);
+                content += `<div class="data-item">
+                    <strong>텍스트 쿼리:</strong>
+                    <div class="text-query-display" title="${data.text_query}">
+                        "${truncatedQuery}"
+                    </div>
+                </div>`;
             }
         }
         
@@ -337,11 +452,14 @@ class StreamingSearchController {
                 <div class="data-section">
                     <h4>확장된 쿼리들 (${data.expanded_queries.length}개)</h4>
                     <div class="expanded-queries">
-                        ${data.expanded_queries.map((query, index) => 
-                            `<div class="expanded-query">
-                                <strong>Query ${index + 1}:</strong> ${typeof query === 'object' ? query.query || JSON.stringify(query) : query}
-                            </div>`
-                        ).join('')}
+                        ${data.expanded_queries.map((query, index) => {
+                            const queryText = typeof query === 'object' ? query.query || JSON.stringify(query) : query;
+                            const truncatedQuery = this.truncateText(queryText, 45);
+                            return `<div class="expanded-query">
+                                <div class="query-label"><strong>Query ${index + 1}:</strong></div>
+                                <div class="query-content" title="${queryText}">${truncatedQuery}</div>
+                            </div>`;
+                        }).join('')}
                     </div>
                 </div>
             `;
@@ -386,11 +504,14 @@ class StreamingSearchController {
                 content += `<div class="sub-section">
                     <h5>쿼리 분해 (${analysis.decomposition.length}개)</h5>
                     <div class="decomposition-list">
-                        ${analysis.decomposition.map((item, index) => 
-                            `<div class="decomposition-item">
-                                <strong>${index + 1}.</strong> ${typeof item === 'object' ? item.query || JSON.stringify(item) : item}
-                            </div>`
-                        ).join('')}
+                        ${analysis.decomposition.map((item, index) => {
+                            const queryText = typeof item === 'object' ? item.query || JSON.stringify(item) : item;
+                            const truncatedQuery = this.truncateText(queryText, 40);
+                            return `<div class="decomposition-item">
+                                <div class="query-label"><strong>${index + 1}.</strong></div>
+                                <div class="query-content" title="${queryText}">${truncatedQuery}</div>
+                            </div>`;
+                        }).join('')}
                     </div>
                 </div>`;
             }
@@ -400,11 +521,14 @@ class StreamingSearchController {
                 content += `<div class="sub-section">
                     <h5>재작성된 쿼리 (${analysis.rewritten_queries.length}개)</h5>
                     <div class="rewritten-list">
-                        ${analysis.rewritten_queries.map((item, index) => 
-                            `<div class="rewritten-item">
-                                <strong>${index + 1}.</strong> ${typeof item === 'object' ? item.query || JSON.stringify(item) : item}
-                            </div>`
-                        ).join('')}
+                        ${analysis.rewritten_queries.map((item, index) => {
+                            const queryText = typeof item === 'object' ? item.query || JSON.stringify(item) : item;
+                            const truncatedQuery = this.truncateText(queryText, 40);
+                            return `<div class="rewritten-item">
+                                <div class="query-label"><strong>${index + 1}.</strong></div>
+                                <div class="query-content" title="${queryText}">${truncatedQuery}</div>
+                            </div>`;
+                        }).join('')}
                     </div>
                 </div>`;
             }
@@ -414,11 +538,14 @@ class StreamingSearchController {
                 content += `<div class="sub-section">
                     <h5>의미적 확장 (${analysis.semantic_expansions.length}개)</h5>
                     <div class="semantic-list">
-                        ${analysis.semantic_expansions.map((item, index) => 
-                            `<div class="semantic-item">
-                                <strong>${index + 1}.</strong> ${typeof item === 'object' ? item.query || JSON.stringify(item) : item}
-                            </div>`
-                        ).join('')}
+                        ${analysis.semantic_expansions.map((item, index) => {
+                            const queryText = typeof item === 'object' ? item.query || JSON.stringify(item) : item;
+                            const truncatedQuery = this.truncateText(queryText, 40);
+                            return `<div class="semantic-item">
+                                <div class="query-label"><strong>${index + 1}.</strong></div>
+                                <div class="query-content" title="${queryText}">${truncatedQuery}</div>
+                            </div>`;
+                        }).join('')}
                     </div>
                 </div>`;
             }
@@ -438,14 +565,17 @@ class StreamingSearchController {
                         <div class="final-queries-list">
                             ${usedFinalQueries.map((item, index) => {
                                 if (typeof item === 'object' && item.query) {
+                                    const truncatedQuery = this.truncateText(item.query, 40);
                                     return `<div class="final-query-item">
-                                        <div class="query-text"><strong>${index + 1}.</strong> ${item.query}</div>
+                                        <div class="query-text" title="${item.query}"><strong>${index + 1}.</strong> ${truncatedQuery}</div>
                                         ${item.score !== undefined ? `<div class="query-score">점수: ${item.score.toFixed(2)}</div>` : ''}
                                         ${item.reason ? `<div class="query-reason">이유: ${item.reason}</div>` : ''}
                                     </div>`;
                                 } else {
+                                    const queryText = typeof item === 'object' ? JSON.stringify(item) : item;
+                                    const truncatedQuery = this.truncateText(queryText, 40);
                                     return `<div class="final-query-item">
-                                        <div class="query-text"><strong>${index + 1}.</strong> ${typeof item === 'object' ? JSON.stringify(item) : item}</div>
+                                        <div class="query-text" title="${queryText}"><strong>${index + 1}.</strong> ${truncatedQuery}</div>
                                     </div>`;
                                 }
                             }).join('')}
@@ -465,14 +595,17 @@ class StreamingSearchController {
                         <div class="unused-queries-list">
                             ${unusedFinalQueries.map((item, index) => {
                                 if (typeof item === 'object' && item.query) {
+                                    const truncatedQuery = this.truncateText(item.query, 40);
                                     return `<div class="unused-query-item">
-                                        <div class="query-text"><strong>${index + 1}.</strong> ${item.query}</div>
+                                        <div class="query-text" title="${item.query}"><strong>${index + 1}.</strong> ${truncatedQuery}</div>
                                         ${item.score !== undefined ? `<div class="query-score">점수: ${item.score.toFixed(2)}</div>` : ''}
                                         ${item.reason ? `<div class="query-reason">이유: ${item.reason}</div>` : ''}
                                     </div>`;
                                 } else {
+                                    const queryText = typeof item === 'object' ? JSON.stringify(item) : item;
+                                    const truncatedQuery = this.truncateText(queryText, 40);
                                     return `<div class="unused-query-item">
-                                        <div class="query-text"><strong>${index + 1}.</strong> ${typeof item === 'object' ? JSON.stringify(item) : item}</div>
+                                        <div class="query-text" title="${queryText}"><strong>${index + 1}.</strong> ${truncatedQuery}</div>
                                     </div>`;
                                 }
                             }).join('')}
@@ -486,11 +619,14 @@ class StreamingSearchController {
                 content += `<div class="sub-section">
                     <h5>검색 제안사항 (${analysis.search_suggestions.length}개)</h5>
                     <div class="suggestions-list">
-                        ${analysis.search_suggestions.map((suggestion, index) => 
-                            `<div class="suggestion-item">
-                                <strong>${index + 1}.</strong> ${typeof suggestion === 'object' ? suggestion.text || JSON.stringify(suggestion) : suggestion}
-                            </div>`
-                        ).join('')}
+                        ${analysis.search_suggestions.map((suggestion, index) => {
+                            const suggestionText = typeof suggestion === 'object' ? suggestion.text || JSON.stringify(suggestion) : suggestion;
+                            const truncatedSuggestion = this.truncateText(suggestionText, 40);
+                            return `<div class="suggestion-item">
+                                <div class="query-label"><strong>${index + 1}.</strong></div>
+                                <div class="query-content" title="${suggestionText}">${truncatedSuggestion}</div>
+                            </div>`;
+                        }).join('')}
                     </div>
                 </div>`;
             }
@@ -576,7 +712,7 @@ class StreamingSearchController {
                         <h5>${modalityName} 추출 특징</h5>`;
                     
                     Object.entries(actualFeatures).forEach(([key, value], index) => {
-                        // 모든 특징 데이터를 전체 표시 (토글 없음)
+                        // 특징 데이터를 생략하여 표시
                         let displayValue;
                         
                         if (Array.isArray(value)) {
@@ -587,10 +723,12 @@ class StreamingSearchController {
                             displayValue = String(value);
                         }
                         
+                        const truncatedValue = this.truncateText(displayValue, 60);
+                        
                         content += `<div class="data-item">
                             <strong>${key}:</strong>
-                            <div class="feature-value-full">
-                                <pre>${displayValue}</pre>
+                            <div class="feature-value-truncated" title="${displayValue}">
+                                ${truncatedValue}
                             </div>
                         </div>`;
                     });
@@ -754,17 +892,18 @@ class StreamingSearchController {
                     <div class="data-section">
                         <h5>실행된 쿼리 목록</h5>
                         <div class="executed-queries">
-                            ${data.executed_queries.map(queryInfo => `
-                                <div class="query-item" style="margin-bottom: 8px; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-                                    <div class="query-header" style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            ${data.executed_queries.map(queryInfo => {
+                                const truncatedQuery = this.truncateText(queryInfo.query, 40);
+                                return `<div class="executed-query-item">
+                                    <div class="executed-query-header">
                                         <strong>쿼리 ${queryInfo.index}</strong>
-                                        <span style="font-size: 0.85em; color: #666;">가중치: ${queryInfo.weight.toFixed(2)}</span>
+                                        <span class="query-weight">가중치: ${queryInfo.weight.toFixed(2)}</span>
                                     </div>
-                                    <div class="query-text" style="font-family: monospace; background: white; padding: 4px 8px; border-radius: 2px; border: 1px solid #ddd;">
-                                        "${queryInfo.query}"
+                                    <div class="executed-query-text" title="${queryInfo.query}">
+                                        "${truncatedQuery}"
                                     </div>
-                                </div>
-                            `).join('')}
+                                </div>`;
+                            }).join('')}
                         </div>
                     </div>
                 `;
@@ -929,6 +1068,51 @@ class StreamingSearchController {
                 const hybridScore = score.toFixed(3);
                 const originalScore = result.original_score ? result.original_score.toFixed(3) : null;
                 
+                // content에서 origins로 시작하는 경로 감지 (이미지 판단)
+                let imageUrl = null;
+                let imagePath = null;
+                
+                if (element.content) {
+                    // content에서 origins로 시작하는 경로 찾기
+                    try {
+                        let contentToCheck = element.content;
+                        
+                        // JSON 문자열인 경우 파싱 시도
+                        if (typeof element.content === 'string') {
+                            try {
+                                const parsed = JSON.parse(element.content);
+                                // 파싱된 객체에서 origins로 시작하는 값 찾기
+                                for (const value of Object.values(parsed)) {
+                                    if (typeof value === 'string' && value.startsWith('origins/')) {
+                                        imagePath = value;
+                                        break;
+                                    }
+                                }
+                            } catch (e) {
+                                // JSON이 아닌 경우 직접 확인
+                                if (element.content.startsWith('origins/')) {
+                                    imagePath = element.content;
+                                }
+                            }
+                        } else if (typeof element.content === 'object') {
+                            // 객체인 경우 origins로 시작하는 값 찾기
+                            for (const value of Object.values(element.content)) {
+                                if (typeof value === 'string' && value.startsWith('origins/')) {
+                                    imagePath = value;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // origins로 시작하는 경로가 있으면 프록시 URL 구성
+                        if (imagePath) {
+                            imageUrl = `http://internal.example.com/image/proxy/${imagePath}`;
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse content for image path:', e);
+                    }
+                }
+                
                 // 기본 메타데이터 정보
                 let basicMetaInfo = '';
                 let hasDetailedMeta = false;
@@ -1000,7 +1184,25 @@ class StreamingSearchController {
                             <div class="search-result-score">${scoreDisplay}</div>
                         </div>
                         <div class="search-result-content">
-                            ${element.content ? element.content.substring(0, 300) : 'No content'}${element.content && element.content.length > 300 ? '...' : ''}
+                            ${imageUrl ? `
+                                <div class="image-preview">
+                                    <img data-image-url="${imageUrl}" data-image-path="${imagePath}" alt="Image preview" class="result-image" 
+                                         style="display: none;"
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+                                         onload="this.style.display='block';">
+                                    <div class="image-loading" style="padding: 20px; background: #f8f9fa; border: 1px solid #e5e7eb; text-align: center; color: #666; border-radius: 8px;">
+                                        이미지 로딩 중...<br>
+                                        <small>경로: ${imagePath}</small>
+                                    </div>
+                                    <div class="image-error" style="display: none; padding: 20px; background: #f8f9fa; border: 1px dashed #ccc; text-align: center; color: #666; border-radius: 8px;">
+                                        이미지를 불러올 수 없습니다<br>
+                                        <small>경로: ${imagePath}</small>
+                                    </div>
+                                </div>
+                            ` : ''}
+                            <div class="content-text">
+                                ${element.content ? (typeof element.content === 'string' ? element.content.substring(0, 300) : JSON.stringify(element.content).substring(0, 300)) : 'No content'}${element.content && (typeof element.content === 'string' ? element.content.length > 300 : JSON.stringify(element.content).length > 300) ? '...' : ''}
+                            </div>
                         </div>
                         ${basicMetaInfo ? `<div class="search-result-meta">${basicMetaInfo}</div>` : ''}
                         ${detailedMetaSection}
@@ -1018,6 +1220,9 @@ class StreamingSearchController {
         
         searchResultsContent.innerHTML = resultsHtml;
         
+        // 이미지 로딩 처리
+        this.loadImages();
+        
         // 검색 결과 컨테이너 표시
         const searchResultsContainer = document.querySelector('.search-results-container');
         if (searchResultsContainer) {
@@ -1026,6 +1231,51 @@ class StreamingSearchController {
         
         // 검색 결과가 최상단에 위치하므로 페이지 상단으로 부드럽게 스크롤
         window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    
+    async loadImages() {
+        // API 키 가져오기 (앱 설정에서)
+        const apiKey = 'your-api-key-here'; // TODO: 실제 API 키로 변경 필요
+        
+        const imageElements = document.querySelectorAll('.result-image[data-image-url]');
+        
+        for (const img of imageElements) {
+            const imageUrl = img.getAttribute('data-image-url');
+            const imagePath = img.getAttribute('data-image-path');
+            const loadingDiv = img.nextElementSibling;
+            const errorDiv = loadingDiv.nextElementSibling;
+            
+            try {
+                // 이미지 프록시 API 호출 (헤더에 API 키 포함)
+                const response = await fetch(imageUrl, {
+                    method: 'GET',
+                    headers: {
+                        'X-API-Key': apiKey
+                    }
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const objectUrl = URL.createObjectURL(blob);
+                    
+                    img.src = objectUrl;
+                    loadingDiv.style.display = 'none';
+                    
+                    // 메모리 해제를 위해 이미지 로드 완료 후 URL 해제
+                    img.onload = () => {
+                        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+                    };
+                } else {
+                    console.warn(`Failed to load image: ${response.status} ${response.statusText}`);
+                    loadingDiv.style.display = 'none';
+                    errorDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Image loading error:', error);
+                loadingDiv.style.display = 'none';
+                errorDiv.style.display = 'block';
+            }
+        }
     }
     
     makeCollapsible() {
