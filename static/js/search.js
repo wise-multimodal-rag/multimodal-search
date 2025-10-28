@@ -11,7 +11,7 @@ class SearchController {
     
     async sendMessage() {
         const message = this.messageInput.value.trim();
-        const hasFiles = window.fileHandler && window.fileHandler.hasFiles();
+        const hasFiles = (window.hasFiles && window.hasFiles()) || (window.fileHandler && window.fileHandler.hasFiles());
         
         if (!message && !hasFiles) return;
 
@@ -48,8 +48,9 @@ class SearchController {
             }
             
             // Add files if selected
-            if (window.fileHandler) {
-                const selectedFiles = window.fileHandler.getSelectedFiles();
+            const selectedFiles = window.tempSelectedFiles || (window.fileHandler && window.fileHandler.getSelectedFiles()) || (window.getSelectedFiles && window.getSelectedFiles());
+            
+            if (selectedFiles) {
                 if (selectedFiles.image) {
                     formData.append('image', selectedFiles.image);
                 }
@@ -58,6 +59,9 @@ class SearchController {
                 }
                 if (selectedFiles.audio) {
                     formData.append('audio', selectedFiles.audio);
+                }
+                if (selectedFiles.text_file) {
+                    formData.append('text_file', selectedFiles.text_file);
                 }
             }
             
@@ -116,7 +120,7 @@ class SearchController {
     
     buildHistoryText(message, hasFiles) {
         if (message && hasFiles) {
-            const fileNames = window.fileHandler.getFileNames();
+            const fileNames = this.getFileNames();
             const fileCount = fileNames.length;
             if (fileCount === 1) {
                 return `${message} (+${fileNames[0]})`;
@@ -126,10 +130,40 @@ class SearchController {
         } else if (message) {
             return message;
         } else if (hasFiles) {
-            const fileNames = window.fileHandler.getFileNames();
+            const fileNames = this.getFileNames();
             return fileNames.join(', ');
         }
         return '';
+    }
+    
+    getFileNames() {
+        const selectedFiles = window.tempSelectedFiles || (window.fileHandler && window.fileHandler.getSelectedFiles()) || (window.getSelectedFiles && window.getSelectedFiles()) || {};
+        
+        return Object.entries(selectedFiles)
+            .filter(([type, file]) => file !== null)
+            .map(([type, file]) => {
+                const fileName = file.name;
+                if (fileName.length > 25) {
+                    const ext = fileName.split('.').pop();
+                    const name = fileName.substring(0, 20);
+                    return `${name}...${ext}`;
+                }
+                return fileName;
+            });
+    }
+
+    // 콘텐츠의 불필요한 들여쓰기를 제거하되 줄바꿈은 유지하는 함수
+    cleanContentIndentation(content) {
+        if (!content) return '';
+        
+        // 앞뒤 공백 제거
+        const trimmed = content.trim();
+        
+        // 각 줄의 앞쪽 공백을 제거하되 줄바꿈은 유지
+        const lines = trimmed.split('\n');
+        const cleanedLines = lines.map(line => line.trim());
+        
+        return cleanedLines.join('\n');
     }
     
     sanitizeElementForDisplay(element) {
@@ -244,7 +278,9 @@ class SearchController {
                             <div class="search-result-score">${scoreDisplay}</div>
                         </div>
                         <div class="search-result-content">
-                            ${element.content.substring(0, 300)}${element.content.length > 300 ? '...' : ''}
+                            <div class="content-text">
+                                ${element.content ? this.cleanContentIndentation(element.content) : 'No content'}
+                            </div>
                         </div>
                         ${basicMetaInfo ? `<div class="search-result-meta">${basicMetaInfo}</div>` : ''}
                         ${detailedMetaSection}
@@ -266,3 +302,13 @@ class SearchController {
 
 // 전역 인스턴스 생성
 window.searchController = new SearchController();
+
+// HTML에서 호출할 수 있도록 전역 함수 정의
+function sendMessage() {
+    if (window.searchController) {
+        window.searchController.sendMessage();
+    }
+}
+
+// window 객체에도 명시적으로 할당
+window.sendMessage = sendMessage;

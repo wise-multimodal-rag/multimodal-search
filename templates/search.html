@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multimodal Search</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔍</text></svg>">
-    <link rel="stylesheet" href="/static/css/search.css?v=27.0">
+    <link rel="stylesheet" href="/static/css/search.css?v=30.0">
     <link rel="stylesheet" href="/static/css/streaming.css?v=29.0">
 </head>
 <body>
@@ -29,18 +29,22 @@
                 <div class="input-section">
                     <input type="text" id="messageInput" placeholder="검색어를 입력하세요">
                     <div class="file-inputs">
+                        <input type="file" id="textFileInput" accept=".txt,.md,.csv,.json,.xml,.html,.pdf,text/*,application/pdf,application/json" style="display: none;">
                         <input type="file" id="imageInput" accept="image/*" style="display: none;">
-                        <input type="file" id="videoInput" accept="video/*" style="display: none;">
                         <input type="file" id="audioInput" accept="audio/*" style="display: none;">
+                        <input type="file" id="videoInput" accept="video/*" style="display: none;">
 
+                        <button type="button" class="file-btn" onclick="document.getElementById('textFileInput').click()">
+                            📄
+                        </button>
                         <button type="button" class="file-btn" onclick="document.getElementById('imageInput').click()">
                             📷
                         </button>
-                        <button type="button" class="file-btn" onclick="document.getElementById('videoInput').click()">
-                            🎥
-                        </button>
                         <button type="button" class="file-btn" onclick="document.getElementById('audioInput').click()">
                             🎵
+                        </button>
+                        <button type="button" class="file-btn" onclick="document.getElementById('videoInput').click()">
+                            🎥
                         </button>
                     </div>
                 </div>
@@ -80,11 +84,10 @@
 
             <div class="quick-search-examples">
                 <div class="example-buttons">
-                    <button class="example-btn" onclick="setSearchExample('AI 기술 동향과 미래 전망')">AI 기술 동향과 미래 전망</button>
-                    <button class="example-btn" onclick="setSearchExample('머신러닝 알고리즘과 응용 사례')">머신러닝 알고리즘과 응용 사례</button>
-                    <button class="example-btn" onclick="setSearchExample('데이터 분석 방법과 도구')">데이터 분석 방법과 도구</button>
-                    <button class="example-btn" onclick="setSearchExample('파이썬 프로그래밍 기초와 응용')">파이썬 프로그래밍 기초와 응용</button>
-                    <button class="example-btn" onclick="setSearchExample('웹 개발 프레임워크와 기술')">웹 개발 프레임워크와 기술</button>
+                    <button class="example-btn" onclick="setSearchExample('블루투스 설정 방법')">블루투스 설정 방법</button>
+                    <button class="example-btn" onclick="setSearchExample('삼성 갤럭시')">삼성 갤럭시</button>
+                    <button class="example-btn" onclick="setSearchExample('소니코리아 뉴에라')">소니코리아 뉴에라</button>
+                    <button class="example-btn" onclick="setSearchExample('스픽 영어 챌린지')">스픽 영어 챌린지</button>
                 </div>
             </div>
         </div>
@@ -121,7 +124,7 @@
                 <div class="search-progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
                 </div>
-                <div class="progress-text" id="progressText">0/8 단계 완료</div>
+                <div class="progress-text" id="progressText">0/7 단계 완료</div>
             </div>
             
             <div class="search-steps" id="searchSteps">
@@ -137,15 +140,19 @@
 <script src="/static/js/fileHandler.js"></script>
 <script src="/static/js/historyManager.js?v=33.0"></script>
 <script src="/static/js/uiController.js"></script>
-<script src="/static/js/streamingSearch.js?v=41.0"></script>
-<script src="/static/js/search.js?v=37.0"></script>
+<script src="/static/js/streamingSearch.js?v=51.0"></script>
+<script src="/static/js/search.js?v=47.0"></script>
 <script>
     // 앱 초기화
     document.addEventListener('DOMContentLoaded', function () {
-        console.log('DOMContentLoaded - Initializing controllers');
-        console.log('streamingSearchController available:', !!window.streamingSearchController);
-        console.log('historyManager available:', !!window.historyManager);
-        console.log('uiController available:', !!window.uiController);
+        // FileHandler가 없으면 강제로 초기화
+        if (!window.fileHandler) {
+            try {
+                window.fileHandler = new FileHandler();
+            } catch (error) {
+                console.error('FileHandler 초기화 실패:', error);
+            }
+        }
         
         if (window.uiController) {
             window.uiController.initialize();
@@ -154,14 +161,84 @@
             window.historyManager.initialize();
         }
         
-        // 모든 컨트롤러가 준비되었는지 확인
-        if (window.streamingSearchController && window.historyManager) {
-            console.log('All controllers ready');
-        } else {
-            console.warn('Some controllers not ready:', {
-                streaming: !!window.streamingSearchController,
-                history: !!window.historyManager
+        // textFileInput에 직접 이벤트 리스너 추가하고 파일 표시 로직도 구현
+        const testTextInput = document.getElementById('textFileInput');
+        const selectedFilesDiv = document.getElementById('selectedFiles');
+        
+        if (testTextInput && selectedFilesDiv) {
+            
+            // 선택된 파일들을 저장할 임시 객체
+            window.tempSelectedFiles = {
+                image: null,
+                video: null,
+                audio: null,
+                text_file: null
+            };
+            
+            testTextInput.addEventListener('change', function(e) {
+                if (e.target.files && e.target.files[0]) {
+                    const file = e.target.files[0];
+                    
+                    // 파일 저장
+                    window.tempSelectedFiles.text_file = file;
+                    
+                    // UI 업데이트
+                    updateFilePreview();
+                }
             });
+            
+            // 다른 파일 입력들에도 이벤트 리스너 추가
+            ['imageInput', 'audioInput', 'videoInput'].forEach(inputId => {
+                const input = document.getElementById(inputId);
+                if (input) {
+                    input.addEventListener('change', function(e) {
+                        if (e.target.files && e.target.files[0]) {
+                            const type = inputId.replace('Input', '');
+                            window.tempSelectedFiles[type] = e.target.files[0];
+                            updateFilePreview();
+                        }
+                    });
+                }
+            });
+            
+            function updateFilePreview() {
+                selectedFilesDiv.innerHTML = '';
+                
+                Object.entries(window.tempSelectedFiles).forEach(([type, file]) => {
+                    if (file) {
+                        const preview = document.createElement('div');
+                        preview.className = 'file-preview';
+                        
+                        const emoji = type === 'image' ? '📷' : type === 'video' ? '🎥' : type === 'audio' ? '🎵' : '📄';
+                        const size = (file.size / 1024 / 1024).toFixed(1);
+                        
+                        preview.innerHTML = `
+                            ${emoji} ${file.name} (${size}MB)
+                            <span class="remove-file" onclick="removeFile('${type}')">×</span>
+                        `;
+                        
+                        selectedFilesDiv.appendChild(preview);
+                    }
+                });
+            }
+            
+            // 전역 함수로 파일 제거 기능
+            window.removeFile = function(type) {
+                window.tempSelectedFiles[type] = null;
+                const input = document.getElementById(type === 'text_file' ? 'textFileInput' : type + 'Input');
+                if (input) input.value = '';
+                updateFilePreview();
+            };
+            
+            // 파일 존재 여부 확인 함수
+            window.hasFiles = function() {
+                return Object.values(window.tempSelectedFiles).some(file => file !== null);
+            };
+            
+            // 선택된 파일들 반환 함수
+            window.getSelectedFiles = function() {
+                return window.tempSelectedFiles;
+            };
         }
     });
 </script>

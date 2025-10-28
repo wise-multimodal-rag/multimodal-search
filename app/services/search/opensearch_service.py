@@ -23,13 +23,10 @@ class OpenSearchService:
         """Initialize OpenSearch client"""
         try:
             self.client = AsyncOpenSearch(
-                hosts=[{
-                    'host': settings.opensearch_host,
-                    'port': settings.opensearch_port
-                }],
-                http_auth=(
-                    settings.opensearch_username,
-                    settings.opensearch_password) if settings.opensearch_username else None,
+                hosts=[{"host": settings.opensearch_host, "port": settings.opensearch_port}],
+                http_auth=(settings.opensearch_username, settings.opensearch_password)
+                if settings.opensearch_username
+                else None,
                 use_ssl=settings.opensearch_use_ssl,
                 verify_certs=settings.opensearch_verify_certs,
                 ssl_assert_hostname=False,
@@ -53,7 +50,7 @@ class OpenSearchService:
             if not self.client:
                 return False
             health = await self.client.cluster.health()
-            return health['status'] in ['green', 'yellow']
+            return health["status"] in ["green", "yellow"]
         except Exception as e:
             logger.error(f"OpenSearch health check failed: {e}")
             return False
@@ -63,7 +60,7 @@ class OpenSearchService:
         indices = [
             (self.media_meta_index, get_media_meta_mapping()),
             (self.chunk_meta_index, get_chunk_meta_mapping()),
-            (self.elements_index, get_elements_mapping())
+            (self.elements_index, get_elements_mapping()),
         ]
 
         for index_name, mapping in indices:
@@ -87,34 +84,30 @@ class OpenSearchService:
         await self.client.indices.create(index=index_name, body=mapping)
 
     async def search_elements(
-            self,
-            query: str,
-            element_types: List[str],
-            embeddings: Optional[Dict[str, List[float]]] = None,
-            size: int = 10,
-            from_: int = 0,
-            filters: Optional[Dict[str, Any]] = None
+        self,
+        query: str,
+        element_types: List[str],
+        embeddings: Optional[Dict[str, List[float]]] = None,
+        size: int = 10,
+        from_: int = 0,
+        filters: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Search elements with unified query filtering by element_types"""
         try:
             # Select appropriate embedding for the query
             # For now, use text embedding as primary, can be enhanced later
-            selected_embedding = embeddings.get('text') if embeddings else None
-            
+            selected_embedding = embeddings.get("text") if embeddings else None
+
             # Build unified search query
-            search_query = self._build_search_query(query, element_types, {'text': selected_embedding} if selected_embedding else None, filters)
+            search_query = self._build_search_query(
+                query, element_types, {"text": selected_embedding} if selected_embedding else None, filters
+            )
 
             if not self.client:
                 raise RuntimeError("OpenSearch client not initialized")
-                
+
             response = await self.client.search(
-                index=self.elements_index,
-                body={
-                    "query": search_query,
-                    "size": size,
-                    "from": from_,
-                    "_source": True
-                }
+                index=self.elements_index, body={"query": search_query, "size": size, "from": from_, "_source": True}
             )
 
             # Log unified query results
@@ -129,84 +122,53 @@ class OpenSearchService:
                 result_item["score"] = hit.get("_score", 0.0)
                 result_item["original_score"] = hit.get("_original_score")
                 results.append(result_item)
-            
+
             return {
                 "results": results,
                 "total_hits": response["hits"]["total"]["value"],
                 "max_score": max_score,
-                "took_ms": response["took"]
+                "took_ms": response["took"],
             }
 
         except Exception as e:
             logger.error(f"Element search failed: {e}")
             raise
 
-
     def _build_search_query(
-            self,
-            query: str,
-            element_types: List[str],
-            embeddings: Optional[Dict[str, List[float]]],
-            filters: Optional[Dict[str, Any]]
+        self,
+        query: str,
+        element_types: List[str],
+        embeddings: Optional[Dict[str, List[float]]],
+        filters: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Build hybrid search query combining text and vector search"""
         # Base bool query
-        bool_query = {
-            "bool": {
-                "must": [],
-                "filter": [
-                    {"terms": {"element_type": element_types}}
-                ]
-            }
-        }
+        bool_query = {"bool": {"must": [], "filter": [{"terms": {"element_type": element_types}}]}}
 
         # Add text search
         if query.strip():
-            bool_query["bool"]["must"].append({
-                "multi_match": {
-                    "query": query,
-                    "fields": ["content^2"],
-                    "type": "best_fields",
-                    "fuzziness": "AUTO"
-                }
-            })
+            bool_query["bool"]["must"].append(
+                {"multi_match": {"query": query, "fields": ["content^2"], "type": "best_fields", "fuzziness": "AUTO"}}
+            )
 
         # Add vector search if embeddings provided
         if embeddings:
             knn_queries = []
             for modality, embedding_vector in embeddings.items():
                 if embedding_vector:
-                    knn_queries.append({
-                        "knn": {
-                            f"embeddings.{modality}": {
-                                "vector": embedding_vector,
-                                "k": 10
-                            }
-                        }
-                    })
+                    knn_queries.append({"knn": {f"embeddings.{modality}": {"vector": embedding_vector, "k": 10}}})
 
             # Combine text and vector queries
             if knn_queries:
                 if len(knn_queries) == 1:
                     # Single vector query
-                    search_query = {
-                        "bool": {
-                            "should": [
-                                bool_query,
-                                knn_queries[0]
-                            ],
-                            "minimum_should_match": 1
-                        }
-                    }
+                    search_query = {"bool": {"should": [bool_query, knn_queries[0]], "minimum_should_match": 1}}
                 else:
                     # Multiple vector queries
                     search_query = {
                         "bool": {
-                            "should": [
-                                bool_query,
-                                {"bool": {"should": knn_queries, "minimum_should_match": 1}}
-                            ],
-                            "minimum_should_match": 1
+                            "should": [bool_query, {"bool": {"should": knn_queries, "minimum_should_match": 1}}],
+                            "minimum_should_match": 1,
                         }
                     }
             else:
@@ -219,14 +181,10 @@ class OpenSearchService:
             for key, value in filters.items():
                 if isinstance(value, list):
                     # Use terms query for list values
-                    bool_query["bool"]["filter"].append({
-                        "terms": {key: value}
-                    })
+                    bool_query["bool"]["filter"].append({"terms": {key: value}})
                 else:
                     # Use term query for single values
-                    bool_query["bool"]["filter"].append({
-                        "term": {key: value}
-                    })
+                    bool_query["bool"]["filter"].append({"term": {key: value}})
 
         return search_query
 
@@ -235,10 +193,7 @@ class OpenSearchService:
         try:
             if not self.client:
                 return None
-            response = await self.client.get(
-                index=self.chunk_meta_index,
-                id=chunk_id
-            )
+            response = await self.client.get(index=self.chunk_meta_index, id=chunk_id)
             return response["_source"]
         except Exception as e:
             logger.warning(f"Chunk meta not found for {chunk_id}: {e}")
@@ -249,10 +204,7 @@ class OpenSearchService:
         try:
             if not self.client:
                 return None
-            response = await self.client.get(
-                index=self.media_meta_index,
-                id=media_id
-            )
+            response = await self.client.get(index=self.media_meta_index, id=media_id)
             return response["_source"]
         except Exception as e:
             logger.warning(f"Media meta not found for {media_id}: {e}")
