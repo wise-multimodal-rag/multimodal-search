@@ -479,38 +479,41 @@ class StreamingSearchController {
             }
         }
         
-        // 쿼리 확장 데이터
-        if (data.expanded_queries) {
-            content += `
-                <div class="data-section">
-                    <h4>확장된 쿼리들 (${data.expanded_queries.length}개)</h4>
+        // === 1. 쿼리 확장 섹션 ===
+        if (data.expanded_queries || data.expansion_used !== undefined) {
+            content += `<div class="data-section">
+                <h4>🔍 쿼리 확장</h4>`;
+            
+            if (data.expansion_used !== undefined) {
+                const expansionText = data.expansion_used ? 
+                    `성공 (${data.total_queries || 1}개 쿼리 생성)` : 
+                    '실패 (원본 쿼리만 사용)';
+                content += `<div class="data-item"><strong>확장 결과:</strong> ${expansionText}</div>`;
+            }
+            
+            if (data.expanded_queries && data.expanded_queries.length > 0) {
+                content += `<div class="data-item"><strong>확장된 쿼리 목록:</strong></div>
                     <div class="expanded-queries">
                         ${data.expanded_queries.map((query, index) => {
                             const queryText = typeof query === 'object' ? query.query || JSON.stringify(query) : query;
-                            const truncatedQuery = this.truncateText(queryText, 45);
+                            const truncatedQuery = this.truncateText(queryText, 50);
                             return `<div class="expanded-query">
-                                <div class="query-label"><strong>Query ${index + 1}:</strong></div>
+                                <div class="query-label"><strong>${index + 1}.</strong></div>
                                 <div class="query-content" title="${queryText}">${truncatedQuery}</div>
                             </div>`;
                         }).join('')}
-                    </div>
-                </div>
-            `;
+                    </div>`;
+            }
+            
+            content += `</div>`;
         }
         
-        if (data.expansion_used !== undefined) {
-            const expansionText = data.expansion_used ? 
-                `성공 (${data.total_queries || 1}개 쿼리 생성)` : 
-                '실패 (원본 쿼리만 사용)';
-            content += `<div class="data-item"><strong>쿼리 확장:</strong> ${expansionText}</div>`;
-        }
-        
-        // 확장 분석 상세 정보
+        // === 2. 쿼리 확장 상세 분석 섹션 ===
         if (data.expansion_analysis) {
             const analysis = data.expansion_analysis;
             
             content += `<div class="data-section">
-                <h4>쿼리 확장 분석 상세</h4>`;
+                <h4>쿼리 확장 상세 분석</h4>`;
             
             // 의존성 정보
             if (analysis.has_dependency !== undefined) {
@@ -667,26 +670,31 @@ class StreamingSearchController {
             content += `</div>`;
         }
         
-        // 쿼리 의도 분석 데이터
-        if (data.selected_element_types) {
-            content += `
-                <div class="data-section">
-                    <h4>선택된 Element Types (${data.selected_element_types.length}개)</h4>
+        // === 3. 쿼리 의도 분석 섹션 ===
+        if (data.selected_element_types || data.confidence !== undefined || data.reasoning) {
+            content += `<div class="data-section">
+                <h4>🎯 쿼리 의도 분석</h4>`;
+            
+            if (data.selected_element_types && data.selected_element_types.length > 0) {
+                content += `<div class="data-item">
+                    <strong>선택된 Element Types (${data.selected_element_types.length}개):</strong>
                     <div class="element-types">
                         ${data.selected_element_types.map(type => 
                             `<span class="element-type-tag">${type}</span>`
                         ).join('')}
                     </div>
-                </div>
-            `;
-        }
-        
-        if (data.confidence !== undefined) {
-            content += `<div class="data-item"><strong>신뢰도:</strong> ${(data.confidence * 100).toFixed(1)}%</div>`;
-        }
-        
-        if (data.reasoning) {
-            content += `<div class="data-item"><strong>추론:</strong> ${data.reasoning}</div>`;
+                </div>`;
+            }
+            
+            if (data.confidence !== undefined) {
+                content += `<div class="data-item"><strong>신뢰도:</strong> ${(data.confidence * 100).toFixed(1)}%</div>`;
+            }
+            
+            if (data.reasoning) {
+                content += `<div class="data-item"><strong>분석 근거:</strong> ${data.reasoning}</div>`;
+            }
+            
+            content += `</div>`;
         }
         
         // 특징 추출 데이터
