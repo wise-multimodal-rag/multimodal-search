@@ -444,6 +444,22 @@ class StreamingSearchController {
                     </div>
                 </div>`;
             }
+            
+            // 파일 정보 표시
+            if (data.file_info) {
+                content += `<div class="data-item"><strong>첨부 파일:</strong></div>`;
+                Object.entries(data.file_info).forEach(([fileType, fileData]) => {
+                    if (fileData && fileData.filename) {
+                        const emoji = fileType === 'image' ? '📷' : 
+                                     fileType === 'video' ? '🎥' : 
+                                     fileType === 'audio' ? '🎵' : '📄';
+                        const truncatedFilename = this.truncateText(fileData.filename, 40);
+                        content += `<div class="data-item file-info">
+                            ${emoji} <span title="${fileData.filename}">${truncatedFilename}</span>
+                        </div>`;
+                    }
+                });
+            }
         }
         
         // 쿼리 확장 데이터

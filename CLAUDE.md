@@ -1,6 +1,7 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Claude Code에게 한국어로 명령해도 thinking 및 실제 수행은 영어로 하고, 최종 요약만 한국어로 제공합니다.
 
 ## Project Overview
 
@@ -45,16 +46,6 @@ uv pip install -e .[dev]
 uv run -m isort app/
 uv run -m pyright app/
 uv run -m ruff check app/
-```
-
-### Docker
-```bash
-# Build and run with Docker Compose
-docker-compose up --build
-
-# Run specific services
-docker-compose up opensearch opensearch-dashboards
-docker-compose --profile dev up  # Include LiteLLM
 ```
 
 ## Architecture

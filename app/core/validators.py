@@ -21,6 +21,7 @@ class InputValidator:
     ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
     ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/avi', 'video/mov']
     ALLOWED_AUDIO_TYPES = ['audio/mp3', 'audio/wav', 'audio/ogg', 'audio/m4a']
+    ALLOWED_TEXT_TYPES = ['text/plain', 'text/markdown', 'text/csv', 'text/json', 'application/json', 'text/xml', 'application/xml', 'text/html', 'application/pdf']
     
     @classmethod
     def validate_text_query(cls, text: Optional[str]) -> Optional[str]:
@@ -233,6 +234,21 @@ class InputValidator:
                     'file_size': file_size
                 }
         
+        if 'text_file' in request_data:
+            text_data = request_data['text_file']
+            if isinstance(text_data, dict) and 'base64_data' in text_data and 'content_type' in text_data:
+                file_data, file_size = cls.validate_base64_file(
+                    text_data['base64_data'], 
+                    text_data['content_type'], 
+                    cls.ALLOWED_TEXT_TYPES
+                )
+                validated['text_file'] = {
+                    'base64_data': text_data['base64_data'],
+                    'content_type': text_data['content_type'],
+                    'file_size': file_size,
+                    'filename': text_data.get('filename', 'unknown.txt')
+                }
+        
         # 옵션 검증
         validated['include_chunk_meta'] = bool(request_data.get('include_chunk_meta', False))
         validated['include_media_meta'] = bool(request_data.get('include_media_meta', False))
@@ -242,13 +258,14 @@ class InputValidator:
             validated.get('text_query') or 
             'image' in validated or 
             'video' in validated or 
-            'audio' in validated
+            'audio' in validated or
+            'text_file' in validated
         )
         
         if not has_input:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="At least one input (text_query, image, video, or audio) is required"
+                detail="At least one input (text_query, image, video, audio, or text_file) is required"
             )
         
         return validated

@@ -76,6 +76,7 @@ class SearchService:
             image_file: Optional[UploadFile] = None,
             video_file: Optional[UploadFile] = None,
             audio_file: Optional[UploadFile] = None,
+            text_file: Optional[UploadFile] = None,
             include_chunk_meta: bool = True,
             include_media_meta: bool = True,
             max_results: int = 10
@@ -85,14 +86,14 @@ class SearchService:
 
         try:
             # 입력 검증
-            if not self.input_processor.validate_inputs(text_query, image_file, video_file, audio_file):
-                raise ValueError("최소 하나의 입력(텍스트, 이미지, 비디오, 오디오)이 필요합니다")
+            if not self.input_processor.validate_inputs(text_query, image_file, video_file, audio_file, text_file):
+                raise ValueError("최소 하나의 입력(텍스트, 이미지, 비디오, 오디오, 텍스트 파일)이 필요합니다")
 
-            input_types = self.input_processor.get_input_types(text_query, image_file, video_file, audio_file)
+            input_types = self.input_processor.get_input_types(text_query, image_file, video_file, audio_file, text_file)
 
             # Step 1: 멀티모달 입력 처리
             modalities_data = await self.input_processor.process_multimodal_inputs(
-                text_query, image_file, video_file, audio_file
+                text_query, image_file, video_file, audio_file, text_file
             )
 
             # Step 2: 쿼리 확장 및 의도 분석 (QueryAnalyzer 사용)
@@ -138,12 +139,14 @@ class SearchService:
 
         if modalities_data.get("text"):
             input_modalities.append("text")
-        if modalities_data.get("images"):
+        if modalities_data.get("image"):
             input_modalities.append("image")
-        if modalities_data.get("videos"):
+        if modalities_data.get("video"):
             input_modalities.append("video")
-        if modalities_data.get("audios"):
+        if modalities_data.get("audio"):
             input_modalities.append("audio")
+        if modalities_data.get("text_file"):
+            input_modalities.append("text_file")
 
         return input_modalities
 
@@ -243,6 +246,7 @@ class SearchService:
                         "content_type": file_data["content_type"]
                     }
 
+            logger.info(f"스트리밍 응답용 modalities_data 키들: {list(modalities_data.keys())}")
             yield {
                 "step": "input_processed",
                 "message": "입력 처리가 완료되었습니다",

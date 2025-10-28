@@ -13,9 +13,14 @@ class InputProcessor:
         text_query: Optional[str],
         image_file: Optional[UploadFile],
         video_file: Optional[UploadFile],
-        audio_file: Optional[UploadFile]
+        audio_file: Optional[UploadFile],
+        text_file: Optional[UploadFile] = None
     ) -> Dict[str, Any]:
         """멀티모달 입력을 base64로 인코딩하여 구조화된 데이터로 변환"""
+        logger.info(f"처리할 입력들: text_query={bool(text_query)}, image_file={bool(image_file)}, video_file={bool(video_file)}, audio_file={bool(audio_file)}, text_file={bool(text_file)}")
+        if text_file:
+            logger.info(f"텍스트 파일 정보: filename={text_file.filename}, content_type={text_file.content_type}")
+        
         modalities_data = {}
 
         # 텍스트 처리
@@ -43,6 +48,20 @@ class InputProcessor:
             if audio_data:
                 modalities_data["audio"] = audio_data
 
+        # 텍스트 파일 처리
+        if text_file:
+            logger.info(f"텍스트 파일 처리 시작: {text_file.filename}")
+            text_file_data = await self._process_text_file(text_file)
+            logger.info(f"텍스트 파일 처리 결과: {text_file_data is not None}")
+            if text_file_data:
+                modalities_data["text_file"] = text_file_data
+                logger.info(f"텍스트 파일이 modalities_data에 추가됨: {text_file_data.get('filename', 'unknown')}")
+            else:
+                logger.warning("텍스트 파일 처리 실패")
+        else:
+            logger.info("텍스트 파일이 전달되지 않음")
+
+        logger.info(f"최종 modalities_data 키들: {list(modalities_data.keys())}")
         return modalities_data
 
     async def process_multimodal_inputs_from_processed(
@@ -265,22 +284,68 @@ class InputProcessor:
             logger.error(f"Failed to process audio: {e}")
             return {"error": str(e), "type": "audio"}
 
+    async def _process_text_file(self, text_file: UploadFile) -> Dict[str, Any]:
+        """텍스트 파일을 처리하여 base64로 인코딩"""
+        try:
+            logger.info(f"_process_text_file 시작: {text_file.filename}, content_type: {text_file.content_type}")
+            
+            # 텍스트 파일 읽기
+            text_data = await text_file.read()
+            logger.info(f"텍스트 파일 읽기 완료: {len(text_data) if text_data else 0} bytes")
+            
+            # 데이터가 비어있는 경우 처리
+            if not text_data:
+                logger.warning(f"Text file {text_file.filename} is empty or already read")
+                return {"error": "File is empty or already processed", "type": "text_file"}
+            
+            # 텍스트 파일을 base64로 인코딩  
+            base64_text = base64.b64encode(text_data).decode('utf-8')
+            
+            # 텍스트 내용도 추출 (UTF-8로 디코딩 시도)
+            try:
+                text_content = text_data.decode('utf-8')
+            except UnicodeDecodeError:
+                # UTF-8 디코딩 실패시 다른 인코딩 시도
+                try:
+                    text_content = text_data.decode('latin-1')
+                except:
+                    text_content = "텍스트 디코딩 실패"
+            
+            result = {
+                "filename": text_file.filename,
+                "content_type": text_file.content_type or "text/plain",
+                "size": len(text_data),
+                "base64_data": base64_text,
+                "text_content": text_content[:10000],  # 처음 10KB만 저장
+                "type": "text_file"
+            }
+            
+            logger.info(f"_process_text_file 완료: {text_file.filename} ({len(text_data)} bytes)")
+            logger.info(f"반환할 result: {result.get('type', 'unknown')} type")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to process text file: {e}")
+            return {"error": str(e), "type": "text_file"}
+
     def validate_inputs(
         self,
         text_query: Optional[str],
         image_file: Optional[UploadFile],
         video_file: Optional[UploadFile],
-        audio_file: Optional[UploadFile]
+        audio_file: Optional[UploadFile],
+        text_file: Optional[UploadFile] = None
     ) -> bool:
         """입력 검증 - 최소 하나의 입력이 있는지 확인"""
-        return any([text_query, image_file, video_file, audio_file])
+        return any([text_query, image_file, video_file, audio_file, text_file])
 
     def get_input_types(
         self,
         text_query: Optional[str],
         image_file: Optional[UploadFile],
         video_file: Optional[UploadFile],
-        audio_file: Optional[UploadFile]
+        audio_file: Optional[UploadFile],
+        text_file: Optional[UploadFile] = None
     ) -> list[str]:
         """입력된 모달리티 타입들을 반환"""
         input_types = []
@@ -292,4 +357,6 @@ class InputProcessor:
             input_types.append("video")
         if audio_file:
             input_types.append("audio")
+        if text_file:
+            input_types.append("text_file")
         return input_types

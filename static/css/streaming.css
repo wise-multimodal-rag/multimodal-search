@@ -922,3 +922,14 @@
         color: #cbd5e0;
     }
 }
+
+/* 파일 정보 스타일 */
+.file-info {
+    margin-left: 20px;
+    color: #6b7280;
+    font-size: 0.9em;
+}
+
+.file-info span {
+    font-family: monospace;
+}

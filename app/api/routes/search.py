@@ -22,6 +22,7 @@ async def search_multimodal(
         image: Optional[UploadFile] = File(default=None, description="이미지 파일"),
         video: Optional[UploadFile] = File(default=None, description="비디오 파일"),
         audio: Optional[UploadFile] = File(default=None, description="오디오 파일"),
+        text_file: Optional[UploadFile] = File(default=None, description="텍스트 파일"),
         include_chunk_meta: bool = Form(default=True, description="Chunk 메타데이터 포함 여부"),
         include_media_meta: bool = Form(default=True, description="Media 메타데이터 포함 여부"),
         max_results: int = Form(default=10, ge=1, le=100, description="최대 결과 수"),
@@ -65,6 +66,15 @@ async def search_multimodal(
                 'filename': audio.filename
             }
         
+        if text_file:
+            import base64
+            text_content = await text_file.read()
+            request_data['text_file'] = {
+                'base64_data': base64.b64encode(text_content).decode('utf-8'),
+                'content_type': text_file.content_type or 'text/plain',
+                'filename': text_file.filename
+            }
+        
         # 통합 검증 실행
         try:
             validated_data = input_validator.validate_search_request(request_data)
@@ -73,7 +83,7 @@ async def search_multimodal(
             # Log request data without base64 content
             debug_data = {}
             for key, value in request_data.items():
-                if key in ['image', 'video', 'audio'] and isinstance(value, dict):
+                if key in ['image', 'video', 'audio', 'text_file'] and isinstance(value, dict):
                     debug_data[key] = {
                         'content_type': value.get('content_type'),
                         'filename': value.get('filename'),
@@ -100,6 +110,8 @@ async def search_multimodal(
             input_types.append("video")
         if audio:
             input_types.append("audio")
+        if text_file:
+            input_types.append("text_file")
 
 
         # 멀티모달 검색 수행
@@ -108,6 +120,7 @@ async def search_multimodal(
             image_file=image,
             video_file=video,
             audio_file=audio,
+            text_file=text_file,
             include_chunk_meta=include_chunk_meta,
             include_media_meta=include_media_meta,
             max_results=max_results
@@ -129,6 +142,7 @@ async def search_multimodal_stream(
         image: Optional[UploadFile] = File(default=None, description="이미지 파일"),
         video: Optional[UploadFile] = File(default=None, description="비디오 파일"),
         audio: Optional[UploadFile] = File(default=None, description="오디오 파일"),
+        text_file: Optional[UploadFile] = File(default=None, description="텍스트 파일"),
         include_chunk_meta: bool = Form(default=True, description="Chunk 메타데이터 포함 여부"),
         include_media_meta: bool = Form(default=True, description="Media 메타데이터 포함 여부"),
         max_results: int = Form(default=10, ge=1, le=100, description="최대 결과 수"),
@@ -206,6 +220,28 @@ async def search_multimodal_stream(
             file_processing_errors.append(error_msg)
             logger.error(f"❌ {error_msg}")
     
+    if text_file:
+        try:
+            logger.info(f"🔄 Reading text file immediately: {text_file.filename}")
+            text_content = await text_file.read()
+            logger.info(f"📊 Text file read result: {len(text_content) if text_content else 0} bytes")
+            
+            if text_content and len(text_content) > 0:
+                processed_files['text_file'] = {
+                    'data': text_content,
+                    'filename': text_file.filename or 'unknown.txt',
+                    'content_type': text_file.content_type or 'text/plain'
+                }
+                logger.info(f"✅ Text file processing successful: {len(text_content)} bytes")
+            else:
+                error_msg = f"텍스트 파일이 비어있습니다: {text_file.filename}"
+                file_processing_errors.append(error_msg)
+                logger.error(f"❌ {error_msg}")
+        except Exception as e:
+            error_msg = f"텍스트 파일 읽기 실패: {str(e)}"
+            file_processing_errors.append(error_msg)
+            logger.error(f"❌ {error_msg}")
+    
     logger.info(f"📋 Pre-processing complete: {len(processed_files)} files ready, {len(file_processing_errors)} errors")
     
     async def generate_search_stream():
@@ -216,7 +252,7 @@ async def search_multimodal_stream(
                     yield f"data: {json.dumps({'step': 'file_read_failed', 'message': error, 'timestamp': time.time()}, ensure_ascii=False)}\\n\\n"
             
             # 파일이 제공되었는지 확인 (실제 파일 업로드 시도가 있었는지)
-            files_were_provided = any([image, video, audio])
+            files_were_provided = any([image, video, audio, text_file])
             
             # 처리된 파일 데이터와 함께 스트리밍 검색 시작
             async for step_result in search_service.search_multimodal_stream(
