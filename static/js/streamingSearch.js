@@ -376,6 +376,20 @@ class StreamingSearchController {
             : textStr;
     }
 
+    // 콘텐츠의 불필요한 들여쓰기를 제거하되 줄바꿈은 유지하는 함수
+    cleanContentIndentation(content) {
+        if (!content) return '';
+        
+        // 앞뒤 공백 제거
+        const trimmed = content.trim();
+        
+        // 각 줄의 앞쪽 공백을 제거하되 줄바꿈은 유지
+        const lines = trimmed.split('\n');
+        const cleanedLines = lines.map(line => line.trim());
+        
+        return cleanedLines.join('\n');
+    }
+
     // 불완전한 JSON 데이터를 정리하는 함수
     cleanIncompleteJson(jsonStr) {
         try {
@@ -446,19 +460,31 @@ class StreamingSearchController {
             }
             
             // 파일 정보 표시
-            if (data.file_info) {
-                content += `<div class="data-item"><strong>첨부 파일:</strong></div>`;
+            if (data.file_info && Object.keys(data.file_info).length > 0) {
+                let hasValidFiles = false;
+                let fileList = '';
+                
                 Object.entries(data.file_info).forEach(([fileType, fileData]) => {
                     if (fileData && fileData.filename) {
+                        hasValidFiles = true;
                         const emoji = fileType === 'image' ? '📷' : 
                                      fileType === 'video' ? '🎥' : 
                                      fileType === 'audio' ? '🎵' : '📄';
                         const truncatedFilename = this.truncateText(fileData.filename, 40);
-                        content += `<div class="data-item file-info">
+                        fileList += `<div class="data-item file-info">
                             ${emoji} <span title="${fileData.filename}">${truncatedFilename}</span>
                         </div>`;
                     }
                 });
+                
+                if (hasValidFiles) {
+                    content += `<div class="data-item"><strong>첨부 파일:</strong></div>`;
+                    content += fileList;
+                } else {
+                    content += `<div class="data-item"><strong>첨부 파일:</strong> 없음</div>`;
+                }
+            } else {
+                content += `<div class="data-item"><strong>첨부 파일:</strong> 없음</div>`;
             }
         }
         
@@ -1217,7 +1243,7 @@ class StreamingSearchController {
                                 </div>
                             ` : ''}
                             <div class="content-text">
-                                ${element.content ? (typeof element.content === 'string' ? element.content.substring(0, 300) : JSON.stringify(element.content).substring(0, 300)) : 'No content'}${element.content && (typeof element.content === 'string' ? element.content.length > 300 : JSON.stringify(element.content).length > 300) ? '...' : ''}
+                                ${element.content ? (typeof element.content === 'string' ? this.cleanContentIndentation(element.content) : JSON.stringify(element.content, null, 2)) : 'No content'}
                             </div>
                         </div>
                         ${basicMetaInfo ? `<div class="search-result-meta">${basicMetaInfo}</div>` : ''}

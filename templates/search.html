@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multimodal Search</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔍</text></svg>">
-    <link rel="stylesheet" href="/static/css/search.css?v=27.0">
+    <link rel="stylesheet" href="/static/css/search.css?v=30.0">
     <link rel="stylesheet" href="/static/css/streaming.css?v=29.0">
 </head>
 <body>
@@ -29,22 +29,22 @@
                 <div class="input-section">
                     <input type="text" id="messageInput" placeholder="검색어를 입력하세요">
                     <div class="file-inputs">
-                        <input type="file" id="imageInput" accept="image/*" style="display: none;">
-                        <input type="file" id="videoInput" accept="video/*" style="display: none;">
-                        <input type="file" id="audioInput" accept="audio/*" style="display: none;">
                         <input type="file" id="textFileInput" accept=".txt,.md,.csv,.json,.xml,.html,.pdf,text/*,application/pdf,application/json" style="display: none;">
+                        <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                        <input type="file" id="audioInput" accept="audio/*" style="display: none;">
+                        <input type="file" id="videoInput" accept="video/*" style="display: none;">
 
+                        <button type="button" class="file-btn" onclick="document.getElementById('textFileInput').click()">
+                            📄
+                        </button>
                         <button type="button" class="file-btn" onclick="document.getElementById('imageInput').click()">
                             📷
-                        </button>
-                        <button type="button" class="file-btn" onclick="document.getElementById('videoInput').click()">
-                            🎥
                         </button>
                         <button type="button" class="file-btn" onclick="document.getElementById('audioInput').click()">
                             🎵
                         </button>
-                        <button type="button" class="file-btn" onclick="document.getElementById('textFileInput').click()">
-                            📄
+                        <button type="button" class="file-btn" onclick="document.getElementById('videoInput').click()">
+                            🎥
                         </button>
                     </div>
                 </div>
@@ -140,8 +140,8 @@
 <script src="/static/js/fileHandler.js"></script>
 <script src="/static/js/historyManager.js?v=33.0"></script>
 <script src="/static/js/uiController.js"></script>
-<script src="/static/js/streamingSearch.js?v=42.0"></script>
-<script src="/static/js/search.js?v=43.0"></script>
+<script src="/static/js/streamingSearch.js?v=48.0"></script>
+<script src="/static/js/search.js?v=47.0"></script>
 <script>
     // 앱 초기화
     document.addEventListener('DOMContentLoaded', function () {
@@ -188,7 +188,7 @@
             });
             
             // 다른 파일 입력들에도 이벤트 리스너 추가
-            ['imageInput', 'videoInput', 'audioInput'].forEach(inputId => {
+            ['imageInput', 'audioInput', 'videoInput'].forEach(inputId => {
                 const input = document.getElementById(inputId);
                 if (input) {
                     input.addEventListener('change', function(e) {

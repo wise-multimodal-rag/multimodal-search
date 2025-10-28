@@ -128,7 +128,7 @@ class QueryAnalyzer:
         try:
             result = await self.llm_client.expand_query(query, context)
             if result:
-                logger.info(f"Query expansion successful for: '{query[:50]}...'")
+                logger.debug(f"Query expansion successful for: '{query[:50]}...'")
                 return result
             else:
                 logger.warning("LLM query expansion returned None, using original query only")
@@ -163,7 +163,7 @@ class QueryAnalyzer:
             final_queries = expansion_result["final_queries"][:3]  # 상위 3개 사용
             expanded_queries = [q["query"] for q in final_queries]
 
-            logger.info(f"Query expanded: {len(final_queries)} variants generated")
+            logger.info(f"Query expansion completed: {len(final_queries)} variants → [{', '.join(expanded_queries)}]")
             return expanded_queries, expansion_result
         else:
             logger.warning(f"Query expansion failed, using original: '{text_query}'")

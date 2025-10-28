@@ -151,6 +151,20 @@ class SearchController {
                 return fileName;
             });
     }
+
+    // 콘텐츠의 불필요한 들여쓰기를 제거하되 줄바꿈은 유지하는 함수
+    cleanContentIndentation(content) {
+        if (!content) return '';
+        
+        // 앞뒤 공백 제거
+        const trimmed = content.trim();
+        
+        // 각 줄의 앞쪽 공백을 제거하되 줄바꿈은 유지
+        const lines = trimmed.split('\n');
+        const cleanedLines = lines.map(line => line.trim());
+        
+        return cleanedLines.join('\n');
+    }
     
     sanitizeElementForDisplay(element) {
         // element 객체를 복사하여 embedding 관련 필드 제거/요약
@@ -264,7 +278,9 @@ class SearchController {
                             <div class="search-result-score">${scoreDisplay}</div>
                         </div>
                         <div class="search-result-content">
-                            ${element.content.substring(0, 300)}${element.content.length > 300 ? '...' : ''}
+                            <div class="content-text">
+                                ${element.content ? this.cleanContentIndentation(element.content) : 'No content'}
+                            </div>
                         </div>
                         ${basicMetaInfo ? `<div class="search-result-meta">${basicMetaInfo}</div>` : ''}
                         ${detailedMetaSection}

@@ -386,7 +386,7 @@ class LLMClient:
                     key=lambda x: x.get("priority", 999)
                 )
 
-                logger.info(f"Query expansion generated {len(result['final_queries'])} expanded queries")
+                logger.debug(f"Query expansion generated {len(result['final_queries'])} expanded queries")
                 return result
 
             except json.JSONDecodeError as e:

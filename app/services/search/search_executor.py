@@ -31,12 +31,12 @@ class SearchExecutor:
         has_dependency = expansion_result.get("has_dependency", False) if expansion_result else False
         
         if has_dependency:
-            logger.info(f"Sequential search execution for {len(expanded_queries)} dependent queries")
+            logger.debug(f"Sequential search execution for {len(expanded_queries)} dependent queries")
             all_search_results = await self._execute_sequential_search(
                 expanded_queries, selected_element_types, embeddings, max_results, expansion_result
             )
         else:
-            logger.info(f"Parallel search execution for {len(expanded_queries)} independent queries")
+            logger.debug(f"Parallel search execution for {len(expanded_queries)} independent queries")
             all_search_results = await self._execute_parallel_search(
                 expanded_queries, selected_element_types, embeddings, max_results
             )
@@ -80,7 +80,7 @@ class SearchExecutor:
             # 이전 결과를 컨텍스트로 활용
             if i > 0 and accumulated_context:
                 enriched_query = self.query_analyzer.enrich_query_with_context(query, accumulated_context)
-                logger.info(f"Query {i+1} enriched with context: '{query}' → '{enriched_query}'")
+                logger.debug(f"Query {i+1} enriched with context: '{query}' → '{enriched_query}'")
             else:
                 enriched_query = query
                 
