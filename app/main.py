@@ -84,7 +84,8 @@ async def external_apis_health_check():
     """Check health of all external APIs."""
     import httpx
 
-    from app.core.dependencies import get_embedding_client, get_feature_extraction_client, get_llm_client
+    from app.core.dependencies import (get_embedding_client,
+                                       get_feature_extraction_client, get_llm_client)
 
     results = {}
 

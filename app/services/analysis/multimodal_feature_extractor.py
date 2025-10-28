@@ -5,7 +5,8 @@ from loguru import logger
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.feature_extraction_client import FeatureExtractionClient
 from app.clients.llm_client import LLMClient
-from app.models.features import AudioFeatures, ImageFeatures, MultimodalFeatures, TextFeatures, VideoFeatures
+from app.models.features import (AudioFeatures, ImageFeatures, MultimodalFeatures,
+                                 TextFeatures, VideoFeatures)
 
 
 class MultimodalFeatureExtractor:

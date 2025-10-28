@@ -4,7 +4,8 @@ from loguru import logger
 from opensearchpy import AsyncOpenSearch
 
 from app.core.config import settings
-from app.core.index_mappings import get_chunk_meta_mapping, get_elements_mapping, get_media_meta_mapping
+from app.core.index_mappings import (get_chunk_meta_mapping, get_elements_mapping,
+                                     get_media_meta_mapping)
 from app.services.embeddings.embedding_service import EmbeddingService
 
 
