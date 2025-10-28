@@ -7,13 +7,13 @@ from .analysis import MultimodalFeatureExtractor, QueryAnalyzer
 from .embeddings import EmbeddingService
 # Processing services
 from .processing import InputProcessor
-from .search import OpenSearchService, ResultEnricher, SearchService
+from .search import OpenSearchService, ResultEnricher, SearchExecutor, SearchService
 
 __all__ = [
     # Search
     "SearchService",
+    "SearchExecutor",
     "OpenSearchService",
- 
     "ResultEnricher",
     
     # Embeddings

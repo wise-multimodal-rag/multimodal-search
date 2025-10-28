@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
@@ -136,4 +136,151 @@ class QueryAnalyzer:
         except Exception as e:
             logger.error(f"Query expansion failed: {e}, using original query only")
             return None
+
+    async def process_query_analysis(
+        self, 
+        text_query: Optional[str], 
+        available_element_types: List[str],
+        input_modalities: Optional[List[str]] = None
+    ) -> Tuple[Dict[str, Any], List[str]]:
+        """쿼리 확장 및 의도 분석을 통합 처리"""
+        if text_query:
+            # 쿼리 확장
+            expanded_queries, expansion_result = await self._expand_query(text_query)
+            # 의도 분석 (입력 모달리티 고려)
+            query_analysis = await self._analyze_query_intent(expanded_queries, expansion_result, input_modalities, available_element_types)
+        else:
+            query_analysis = self.create_default_query_analysis(available_element_types)
+            expanded_queries = ["multimodal search"]
+
+        return query_analysis, expanded_queries
+
+    async def _expand_query(self, text_query: str) -> Tuple[List[str], Optional[Dict[str, Any]]]:
+        """쿼리 확장 수행"""
+        expansion_result = await self.expand_query(text_query)
+
+        if expansion_result and expansion_result.get("final_queries"):
+            final_queries = expansion_result["final_queries"][:3]  # 상위 3개 사용
+            expanded_queries = [q["query"] for q in final_queries]
+
+            logger.info(f"Query expanded: {len(final_queries)} variants generated")
+            return expanded_queries, expansion_result
+        else:
+            logger.warning(f"Query expansion failed, using original: '{text_query}'")
+            return [text_query], None
+
+    async def _analyze_query_intent(
+        self, 
+        expanded_queries: List[str], 
+        expansion_result: Optional[Dict[str, Any]],
+        input_modalities: Optional[List[str]],
+        available_element_types: List[str]
+    ) -> Dict[str, Any]:
+        """의도 분석 수행"""
+        primary_query = expanded_queries[0] if expanded_queries else "multimodal search"
+
+        query_analysis = await self.analyze_query_intent(
+            primary_query, available_element_types, input_modalities)
+
+        if not query_analysis:
+            logger.warning(f"Query analysis failed for: '{primary_query}'. Using default.")
+            query_analysis = self.create_default_query_analysis(
+                available_element_types, "Query analysis failed"
+            )
+
+        # 확장 정보를 쿼리 분석에 추가
+        if expansion_result:
+            query_analysis["expansion_analysis"] = {
+                "applied_techniques": expansion_result.get("applied_techniques", []),
+                "expansion_summary": expansion_result.get("expansion_summary", ""),
+                "has_dependency": expansion_result.get("has_dependency", False),
+                "dependency_reason": expansion_result.get("dependency_reason", "")
+            }
+            query_analysis["expansion_used"] = len(expanded_queries) > 1
+
+        return query_analysis
+
+    def enrich_query_with_context(self, query: str, context: Dict[str, Any]) -> str:
+        """이전 검색 결과 컨텍스트를 활용하여 쿼리 보강"""
+        if not context:
+            return query
+            
+        # 컨텍스트에서 핵심 키워드 추출
+        keywords = context.get("keywords", [])
+        entities = context.get("entities", [])
+        concepts = context.get("concepts", [])
+        
+        # 쿼리에 컨텍스트 정보 추가
+        enriched_parts = [query]
+        
+        if keywords:
+            # 상위 3개 키워드만 사용
+            top_keywords = keywords[:3]
+            enriched_parts.extend(top_keywords)
+            
+        if entities:
+            # 상위 2개 엔티티만 사용  
+            top_entities = entities[:2]
+            enriched_parts.extend(top_entities)
+            
+        if concepts:
+            # 상위 2개 개념만 사용
+            top_concepts = concepts[:2]
+            enriched_parts.extend(top_concepts)
+        
+        # 중복 제거 및 조합
+        unique_parts = list(dict.fromkeys(enriched_parts))
+        enriched_query = " ".join(unique_parts)
+        
+        # 너무 길어지면 원본 쿼리와 핵심 키워드만 사용
+        if len(enriched_query) > 200:
+            enriched_query = f"{query} {' '.join(keywords[:2])}"
+            
+        return enriched_query
+    
+    def extract_context_from_results(self, search_results: Dict[str, Any]) -> Dict[str, Any]:
+        """검색 결과에서 다음 쿼리를 위한 컨텍스트 추출"""
+        context = {
+            "keywords": [],
+            "entities": [],
+            "concepts": []
+        }
+        
+        if not search_results or not search_results.get("results"):
+            return context
+            
+        # 상위 5개 결과에서 컨텍스트 추출
+        top_results = search_results["results"][:5]
+        
+        for result in top_results:
+            # content에서 키워드 추출 (간단한 방식)
+            content = result.get("content", "")
+            if content:
+                # 공백으로 분리된 단어들 중 의미있는 것 추출
+                words = content.split()
+                meaningful_words = [
+                    word.strip(".,!?()[]{}\"'")
+                    for word in words 
+                    if len(word) > 2 and not word.isnumeric() and word.isalpha()
+                ]
+                context["keywords"].extend(meaningful_words[:3])
+            
+            # 메타데이터에서 추가 정보 추출
+            if "features" in result:
+                features = result["features"]
+                if isinstance(features, dict):
+                    # 키워드가 있다면 추가
+                    if "keywords" in features and isinstance(features["keywords"], list):
+                        context["keywords"].extend(features["keywords"][:3])
+                    
+                    # 엔티티가 있다면 추가
+                    if "entities" in features and isinstance(features["entities"], list):
+                        context["entities"].extend([e.get("text", e) if isinstance(e, dict) else e for e in features["entities"][:2]])
+        
+        # 중복 제거 및 빈도수 기반 정렬
+        context["keywords"] = list(dict.fromkeys(context["keywords"]))[:10]
+        context["entities"] = list(dict.fromkeys(context["entities"]))[:5]
+        context["concepts"] = list(dict.fromkeys(context["concepts"]))[:5]
+        
+        return context
 
