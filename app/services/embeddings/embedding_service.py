@@ -11,12 +11,12 @@ class EmbeddingService:
 
     def __init__(self, embedding_client: EmbeddingClient = None):
         self.embedding_client = embedding_client or EmbeddingClient()
-        
+
         # Define element_type to modality mapping for embedding selection
         # Currently active types only
         self.text_element_types = ["paragraph", "summary", "caption"]
         self.image_element_types = ["origin"]
-        
+
         # Temporarily disabled element types (for future use)
         # Text: "title", "stt", "scene", "ocr", "table", "translation"
         # Image: "cropped", "detected_object", "chart", "diagram", "keyframe", "thumbnail"
@@ -26,9 +26,7 @@ class EmbeddingService:
         self.audio_element_types = []  # All disabled
 
     async def generate_multimodal_embeddings(
-            self,
-            modalities_data: Dict[str, Any],
-            features: MultimodalFeatures = None
+        self, modalities_data: Dict[str, Any], features: MultimodalFeatures = None
     ) -> Dict[str, List[float]]:
         """모든 모달리티와 추출된 특징들에서 임베딩 생성"""
         embeddings = {}
@@ -75,8 +73,9 @@ class EmbeddingService:
             # 병렬 실행 및 결과 처리
             if embedding_tasks:
                 import asyncio
+
                 embedding_results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
-                
+
                 for i, result in enumerate(embedding_results):
                     task_name = task_names[i]
                     if isinstance(result, Exception):
@@ -93,7 +92,7 @@ class EmbeddingService:
                     logger.warning(f"Feature embedding generation failed: {e}")
 
             logger.info(f"Generated embeddings: {len(embeddings)} successful - {list(embeddings.keys())}")
-            
+
             return embeddings
 
         except Exception as e:
@@ -103,7 +102,7 @@ class EmbeddingService:
     async def _generate_feature_embeddings(self, features: MultimodalFeatures) -> Dict[str, List[float]]:
         """추출된 특징들에서 임베딩 생성 (병렬 처리 최적화)"""
         import asyncio
-        
+
         embedding_tasks = []
         task_keys = []
 
@@ -169,14 +168,14 @@ class EmbeddingService:
         # 모든 임베딩 태스크를 병렬로 실행
         if embedding_tasks:
             embedding_results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
-            
+
             feature_embeddings = {}
             for i, result in enumerate(embedding_results):
                 if isinstance(result, Exception):
                     logger.warning(f"Embedding generation failed for {task_keys[i]}: {result}")
                 elif result:
                     feature_embeddings[task_keys[i]] = result
-            
+
             return feature_embeddings
         else:
             return {}
@@ -231,4 +230,3 @@ class EmbeddingService:
             return " ".join(objects)
         except Exception:
             return ""
-

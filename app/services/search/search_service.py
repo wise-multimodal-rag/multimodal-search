@@ -5,8 +5,7 @@ from fastapi import UploadFile
 from loguru import logger
 
 from app.models.opensearch import SearchResponse
-from app.services.analysis.multimodal_feature_extractor import \
-    MultimodalFeatureExtractor
+from app.services.analysis.multimodal_feature_extractor import MultimodalFeatureExtractor
 from app.services.analysis.query_analyzer import QueryAnalyzer
 from app.services.embeddings.embedding_service import EmbeddingService
 from app.services.processing.input_processor import InputProcessor
@@ -19,14 +18,14 @@ class SearchService:
     """메인 검색 오케스트레이션 서비스"""
 
     def __init__(
-            self,
-            opensearch_service: OpenSearchService = None,
-            input_processor: InputProcessor = None,
-            feature_extractor: MultimodalFeatureExtractor = None,
-            query_analyzer: QueryAnalyzer = None,
-            embedding_service: EmbeddingService = None,
-            result_enricher: ResultEnricher = None,
-            search_executor: SearchExecutor = None
+        self,
+        opensearch_service: OpenSearchService = None,
+        input_processor: InputProcessor = None,
+        feature_extractor: MultimodalFeatureExtractor = None,
+        query_analyzer: QueryAnalyzer = None,
+        embedding_service: EmbeddingService = None,
+        result_enricher: ResultEnricher = None,
+        search_executor: SearchExecutor = None,
     ):
         # Define available element types for the system
         # Currently active types
@@ -34,20 +33,20 @@ class SearchService:
             "paragraph",  # 일반 문단 - 문서의 본문 내용
             "summary",  # AI 요약 - 자동 생성된 요약문
             "caption",  # 이미지 설명 - AI가 생성한 이미지 캡션
-            "origin"  # 원본 이미지 - 최초 업로드된 이미지
+            "origin",  # 원본 이미지 - 최초 업로드된 이미지
         ]
 
         # Temporarily disabled element types (for future use)
         # Text modality:
         # "title": "제목 - 문서/섹션 제목",
-        # "stt": "음성→텍스트 - 음성인식 결과", 
+        # "stt": "음성→텍스트 - 음성인식 결과",
         # "scene": "비디오 장면 설명 - 비디오 장면에 대한 텍스트 설명",
         # "ocr": "이미지→텍스트 - OCR로 추출한 텍스트",
         # "table": "표 데이터 - JSON 형태의 구조화된 표",
         # "translation": "번역 결과 - 다른 언어로 번역된 텍스트",
         # Image modality:
         # "cropped": "잘린 이미지 - 특정 영역을 추출한 이미지",
-        # "detected_object": "감지된 객체 - 객체 감지로 추출한 영역", 
+        # "detected_object": "감지된 객체 - 객체 감지로 추출한 영역",
         # "chart": "차트/그래프 - 데이터 시각화 이미지",
         # "diagram": "다이어그램 - 구조도, 플로우차트 등",
         # "keyframe": "키 프레임 - 비디오에서 추출한 대표 프레임 이미지",
@@ -71,15 +70,15 @@ class SearchService:
         self.search_executor = search_executor or SearchExecutor(self.opensearch_service, self.query_analyzer)
 
     async def search_multimodal(
-            self,
-            text_query: Optional[str] = None,
-            image_file: Optional[UploadFile] = None,
-            video_file: Optional[UploadFile] = None,
-            audio_file: Optional[UploadFile] = None,
-            text_file: Optional[UploadFile] = None,
-            include_chunk_meta: bool = True,
-            include_media_meta: bool = True,
-            max_results: int = 10
+        self,
+        text_query: Optional[str] = None,
+        image_file: Optional[UploadFile] = None,
+        video_file: Optional[UploadFile] = None,
+        audio_file: Optional[UploadFile] = None,
+        text_file: Optional[UploadFile] = None,
+        include_chunk_meta: bool = True,
+        include_media_meta: bool = True,
+        max_results: int = 10,
     ) -> SearchResponse:
         """멀티모달 검색 오케스트레이션"""
         start_time = self._get_current_time_ms()
@@ -98,22 +97,21 @@ class SearchService:
 
             # Step 2: 쿼리 확장 및 의도 분석 (QueryAnalyzer 사용)
             query_analysis, expanded_queries = await self.query_analyzer.process_query_analysis(
-                text_query, self.available_element_types,
-                self._extract_input_modalities(modalities_data) if modalities_data else None
+                text_query,
+                self.available_element_types,
+                self._extract_input_modalities(modalities_data) if modalities_data else None,
             )
 
             # Step 3: 멀티모달 특징 추출
-            extracted_features = await self.feature_extractor.extract_features(modalities_data,
-                                                                               query_analysis["selected_element_types"])
-
-            # Step 4: 임베딩 생성
-            embeddings = await self.embedding_service.generate_multimodal_embeddings(
-                modalities_data, extracted_features
+            extracted_features = await self.feature_extractor.extract_features(
+                modalities_data, query_analysis["selected_element_types"]
             )
 
+            # Step 4: 임베딩 생성
+            embeddings = await self.embedding_service.generate_multimodal_embeddings(modalities_data, extracted_features)
+
             # Step 5: 확장 쿼리 검색 실행 (SearchExecutor 사용)
-            expansion_result = query_analysis.get(
-                "expansion_analysis") if "expansion_analysis" in query_analysis else None
+            expansion_result = query_analysis.get("expansion_analysis") if "expansion_analysis" in query_analysis else None
             search_results = await self.search_executor.execute_expanded_search(
                 expanded_queries, query_analysis["selected_element_types"], embeddings, max_results, expansion_result
             )
@@ -125,8 +123,7 @@ class SearchService:
 
             # Step 7: 응답 생성
             return self._generate_search_response(
-                text_query, input_types, expanded_queries, query_analysis,
-                enriched_results, search_results, start_time
+                text_query, input_types, expanded_queries, query_analysis, enriched_results, search_results, start_time
             )
 
         except Exception as e:
@@ -150,8 +147,9 @@ class SearchService:
 
         return input_modalities
 
-    def _generate_search_response(self, text_query, input_types, expanded_queries, query_analysis,
-                                  enriched_results, search_results, start_time):
+    def _generate_search_response(
+        self, text_query, input_types, expanded_queries, query_analysis, enriched_results, search_results, start_time
+    ):
         """Step 7: 응답 생성"""
         end_time = self._get_current_time_ms()
         stats = self.result_enricher.calculate_search_statistics(search_results)
@@ -175,17 +173,17 @@ class SearchService:
             results=enriched_results,
             took_ms=end_time - start_time,
             element_types_used=query_analysis["selected_element_types"],
-            query_analysis=query_analysis
+            query_analysis=query_analysis,
         )
 
     async def search_multimodal_stream(
-            self,
-            text_query: Optional[str] = None,
-            processed_files: Optional[Dict[str, Dict[str, Any]]] = None,
-            include_chunk_meta: bool = True,
-            include_media_meta: bool = True,
-            max_results: int = 10,
-            files_were_provided: bool = False
+        self,
+        text_query: Optional[str] = None,
+        processed_files: Optional[Dict[str, Dict[str, Any]]] = None,
+        include_chunk_meta: bool = True,
+        include_media_meta: bool = True,
+        max_results: int = 10,
+        files_were_provided: bool = False,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """스트리밍 방식의 멀티모달 검색 오케스트레이션"""
         start_time = time.time()
@@ -205,15 +203,17 @@ class SearchService:
                 "data": {
                     "input_types": input_types,
                     "has_text": bool(text_query),
-                    "has_image": bool(processed_files and 'image' in processed_files),
-                    "has_video": bool(processed_files and 'video' in processed_files),
-                    "has_audio": bool(processed_files and 'audio' in processed_files)
-                }
+                    "has_image": bool(processed_files and "image" in processed_files),
+                    "has_video": bool(processed_files and "video" in processed_files),
+                    "has_audio": bool(processed_files and "audio" in processed_files),
+                },
             }
 
             # 입력 검증 - 파일 처리에 실패해도 텍스트 쿼리가 있으면 계속 진행
             if not text_query and (not processed_files or len(processed_files) == 0):
-                raise ValueError("파일 읽기에 실패했고 텍스트 쿼리도 없습니다. 텍스트 쿼리를 입력하거나 파일을 다시 업로드해주세요.")
+                raise ValueError(
+                    "파일 읽기에 실패했고 텍스트 쿼리도 없습니다. 텍스트 쿼리를 입력하거나 파일을 다시 업로드해주세요."
+                )
 
             # 파일이 제공되었지만 처리에 실패한 경우만 실패 메시지 표시
             if files_were_provided and (processed_files is None or len(processed_files) == 0):
@@ -223,15 +223,11 @@ class SearchService:
                         "step": "file_read_failed",
                         "message": "파일 처리에 실패했지만 텍스트 쿼리로 검색을 계속 진행합니다",
                         "timestamp": time.time(),
-                        "data": {"fallback_mode": "text_only"}
+                        "data": {"fallback_mode": "text_only"},
                     }
 
             # Step 1: 입력 처리
-            yield {
-                "step": "input_processing",
-                "message": "멀티모달 입력을 처리하고 있습니다...",
-                "timestamp": time.time()
-            }
+            yield {"step": "input_processing", "message": "멀티모달 입력을 처리하고 있습니다...", "timestamp": time.time()}
 
             modalities_data = await self.input_processor.process_multimodal_inputs_from_processed(
                 text_query, processed_files
@@ -241,29 +237,18 @@ class SearchService:
             file_info = {}
             if processed_files:
                 for file_type, file_data in processed_files.items():
-                    file_info[file_type] = {
-                        "filename": file_data["filename"],
-                        "content_type": file_data["content_type"]
-                    }
+                    file_info[file_type] = {"filename": file_data["filename"], "content_type": file_data["content_type"]}
 
             logger.info(f"스트리밍 응답용 modalities_data 키들: {list(modalities_data.keys())}")
             yield {
                 "step": "input_processed",
                 "message": "입력 처리가 완료되었습니다",
                 "timestamp": time.time(),
-                "data": {
-                    "modalities": list(modalities_data.keys()),
-                    "text_query": text_query,
-                    "file_info": file_info
-                }
+                "data": {"modalities": list(modalities_data.keys()), "text_query": text_query, "file_info": file_info},
             }
 
             # Step 2: 쿼리 확장 및 의도 분석
-            yield {
-                "step": "query_analysis",
-                "message": "쿼리를 분석하고 있습니다...",
-                "timestamp": time.time()
-            }
+            yield {"step": "query_analysis", "message": "쿼리를 분석하고 있습니다...", "timestamp": time.time()}
 
             input_modalities = self._extract_input_modalities(modalities_data) if modalities_data else None
             query_analysis, expanded_queries = await self.query_analyzer.process_query_analysis(
@@ -283,16 +268,12 @@ class SearchService:
                     "reasoning": query_analysis.get("reasoning", ""),
                     "confidence": query_analysis.get("confidence", 0.0),
                     "element_types_count": len(query_analysis["selected_element_types"]),
-                    "expansion_analysis": query_analysis.get("expansion_analysis")
-                }
+                    "expansion_analysis": query_analysis.get("expansion_analysis"),
+                },
             }
 
             # Step 3: 특징 추출
-            yield {
-                "step": "feature_extraction",
-                "message": "멀티모달 특징을 추출하고 있습니다...",
-                "timestamp": time.time()
-            }
+            yield {"step": "feature_extraction", "message": "멀티모달 특징을 추출하고 있습니다...", "timestamp": time.time()}
 
             extracted_features = await self.feature_extractor.extract_features(
                 modalities_data, query_analysis["selected_element_types"]
@@ -305,15 +286,18 @@ class SearchService:
             # 특징 추출 결과 데이터 준비 - 더 정확한 상태 구분
             feature_data = {
                 "extraction_success": {
-                    "text": "success" if (
-                                extracted_features.text is not None or (text_query and has_text_elements)) else (
-                        "no_data" if not text_query and not has_text_elements else "failed"),
-                    "image": "success" if extracted_features.image is not None else (
-                        "no_data" if not modalities_data.get('image') else "failed"),
-                    "video": "success" if extracted_features.video is not None else (
-                        "no_data" if not modalities_data.get('video') else "failed"),
-                    "audio": "success" if extracted_features.audio is not None else (
-                        "no_data" if not modalities_data.get('audio') else "failed")
+                    "text": "success"
+                    if (extracted_features.text is not None or (text_query and has_text_elements))
+                    else ("no_data" if not text_query and not has_text_elements else "failed"),
+                    "image": "success"
+                    if extracted_features.image is not None
+                    else ("no_data" if not modalities_data.get("image") else "failed"),
+                    "video": "success"
+                    if extracted_features.video is not None
+                    else ("no_data" if not modalities_data.get("video") else "failed"),
+                    "audio": "success"
+                    if extracted_features.audio is not None
+                    else ("no_data" if not modalities_data.get("audio") else "failed"),
                 }
             }
 
@@ -321,12 +305,10 @@ class SearchService:
             if extracted_features.text or (text_query and has_text_elements):
                 if extracted_features.text:
                     text_feature_data = {
-                        "keywords_count": len(
-                            extracted_features.text.keywords) if extracted_features.text.keywords else 0,
-                        "entities_count": len(
-                            extracted_features.text.entities) if extracted_features.text.entities else 0,
+                        "keywords_count": len(extracted_features.text.keywords) if extracted_features.text.keywords else 0,
+                        "entities_count": len(extracted_features.text.entities) if extracted_features.text.entities else 0,
                         "has_summary": bool(extracted_features.text.summary),
-                        "has_classification": bool(extracted_features.text.classification)
+                        "has_classification": bool(extracted_features.text.classification),
                     }
 
                     # 실제 특징 값들 추가 (안전한 직렬화)
@@ -338,21 +320,23 @@ class SearchService:
                         text_feature_data["summary"] = self._safely_serialize_feature(extracted_features.text.summary)
                     if extracted_features.text.classification:
                         text_feature_data["classification"] = self._safely_serialize_feature(
-                            extracted_features.text.classification)
-                    if hasattr(extracted_features.text, 'sentiment') and getattr(extracted_features.text, 'sentiment',
-                                                                                 None):
+                            extracted_features.text.classification
+                        )
+                    if hasattr(extracted_features.text, "sentiment") and getattr(extracted_features.text, "sentiment", None):
                         text_feature_data["sentiment"] = self._safely_serialize_feature(
-                            getattr(extracted_features.text, 'sentiment'))
-                    if hasattr(extracted_features.text, 'topics') and getattr(extracted_features.text, 'topics', None):
+                            getattr(extracted_features.text, "sentiment")
+                        )
+                    if hasattr(extracted_features.text, "topics") and getattr(extracted_features.text, "topics", None):
                         text_feature_data["topics"] = self._safely_serialize_feature(
-                            getattr(extracted_features.text, 'topics'))
+                            getattr(extracted_features.text, "topics")
+                        )
                 else:
                     # 텍스트 쿼리가 있고 텍스트 기반 element type이 있는 경우 (paragraph 등)
                     text_feature_data = {
                         "source": "원본 텍스트 쿼리",
                         "query": text_query,
                         "element_types": [t for t in query_analysis["selected_element_types"] if t in text_based_types],
-                        "note": "별도 특징 추출 없이 원본 텍스트가 임베딩 생성에 사용됨"
+                        "note": "별도 특징 추출 없이 원본 텍스트가 임베딩 생성에 사용됨",
                     }
 
                 feature_data["text_features"] = text_feature_data
@@ -360,7 +344,7 @@ class SearchService:
             if extracted_features.image:
                 image_feature_data = {
                     "has_caption": bool(extracted_features.image.caption),
-                    "objects_count": len(extracted_features.image.objects) if extracted_features.image.objects else 0
+                    "objects_count": len(extracted_features.image.objects) if extracted_features.image.objects else 0,
                 }
 
                 # 실제 특징 값들 추가 (안전한 직렬화)
@@ -368,16 +352,18 @@ class SearchService:
                     image_feature_data["caption"] = self._safely_serialize_feature(extracted_features.image.caption)
                 if extracted_features.image.objects:
                     image_feature_data["objects"] = self._safely_serialize_feature(extracted_features.image.objects)
-                if hasattr(extracted_features.image, 'tags') and getattr(extracted_features.image, 'tags', None):
-                    image_feature_data["tags"] = self._safely_serialize_feature(
-                        getattr(extracted_features.image, 'tags'))
-                if hasattr(extracted_features.image, 'colors') and getattr(extracted_features.image, 'colors', None):
+                if hasattr(extracted_features.image, "tags") and getattr(extracted_features.image, "tags", None):
+                    image_feature_data["tags"] = self._safely_serialize_feature(getattr(extracted_features.image, "tags"))
+                if hasattr(extracted_features.image, "colors") and getattr(extracted_features.image, "colors", None):
                     image_feature_data["colors"] = self._safely_serialize_feature(
-                        getattr(extracted_features.image, 'colors'))
-                if hasattr(extracted_features.image, 'scene_analysis') and getattr(extracted_features.image,
-                                                                                   'scene_analysis', None):
+                        getattr(extracted_features.image, "colors")
+                    )
+                if hasattr(extracted_features.image, "scene_analysis") and getattr(
+                    extracted_features.image, "scene_analysis", None
+                ):
                     image_feature_data["scene_analysis"] = self._safely_serialize_feature(
-                        getattr(extracted_features.image, 'scene_analysis'))
+                        getattr(extracted_features.image, "scene_analysis")
+                    )
 
                 feature_data["image_features"] = image_feature_data
 
@@ -385,27 +371,28 @@ class SearchService:
                 video_feature_data = {
                     "has_description": bool(extracted_features.video.description),
                     "scenes_count": len(extracted_features.video.scenes) if extracted_features.video.scenes else 0,
-                    "activities_count": len(
-                        extracted_features.video.activities) if extracted_features.video.activities else 0
+                    "activities_count": len(extracted_features.video.activities)
+                    if extracted_features.video.activities
+                    else 0,
                 }
 
                 # 실제 특징 값들 추가 (안전한 직렬화)
                 if extracted_features.video.description:
-                    video_feature_data["description"] = self._safely_serialize_feature(
-                        extracted_features.video.description)
+                    video_feature_data["description"] = self._safely_serialize_feature(extracted_features.video.description)
                 if extracted_features.video.scenes:
                     video_feature_data["scenes"] = self._safely_serialize_feature(extracted_features.video.scenes)
                 if extracted_features.video.activities:
-                    video_feature_data["activities"] = self._safely_serialize_feature(
-                        extracted_features.video.activities)
-                if hasattr(extracted_features.video, 'keyframes') and getattr(extracted_features.video, 'keyframes',
-                                                                              None):
+                    video_feature_data["activities"] = self._safely_serialize_feature(extracted_features.video.activities)
+                if hasattr(extracted_features.video, "keyframes") and getattr(extracted_features.video, "keyframes", None):
                     video_feature_data["keyframes"] = self._safely_serialize_feature(
-                        getattr(extracted_features.video, 'keyframes'))
-                if hasattr(extracted_features.video, 'motion_analysis') and getattr(extracted_features.video,
-                                                                                    'motion_analysis', None):
+                        getattr(extracted_features.video, "keyframes")
+                    )
+                if hasattr(extracted_features.video, "motion_analysis") and getattr(
+                    extracted_features.video, "motion_analysis", None
+                ):
                     video_feature_data["motion_analysis"] = self._safely_serialize_feature(
-                        getattr(extracted_features.video, 'motion_analysis'))
+                        getattr(extracted_features.video, "motion_analysis")
+                    )
 
                 feature_data["video_features"] = video_feature_data
 
@@ -413,27 +400,32 @@ class SearchService:
                 audio_feature_data = {
                     "has_transcription": bool(extracted_features.audio.transcription),
                     "sounds_count": len(extracted_features.audio.sounds) if extracted_features.audio.sounds else 0,
-                    "audio_type": extracted_features.audio.audio_type
+                    "audio_type": extracted_features.audio.audio_type,
                 }
 
                 # 실제 특징 값들 추가 (안전한 직렬화)
                 if extracted_features.audio.transcription:
                     audio_feature_data["transcription"] = self._safely_serialize_feature(
-                        extracted_features.audio.transcription)
+                        extracted_features.audio.transcription
+                    )
                 if extracted_features.audio.sounds:
                     audio_feature_data["sounds"] = self._safely_serialize_feature(extracted_features.audio.sounds)
-                if hasattr(extracted_features.audio, 'emotions') and getattr(extracted_features.audio, 'emotions',
-                                                                             None):
+                if hasattr(extracted_features.audio, "emotions") and getattr(extracted_features.audio, "emotions", None):
                     audio_feature_data["emotions"] = self._safely_serialize_feature(
-                        getattr(extracted_features.audio, 'emotions'))
-                if hasattr(extracted_features.audio, 'speaker_info') and getattr(extracted_features.audio,
-                                                                                 'speaker_info', None):
+                        getattr(extracted_features.audio, "emotions")
+                    )
+                if hasattr(extracted_features.audio, "speaker_info") and getattr(
+                    extracted_features.audio, "speaker_info", None
+                ):
                     audio_feature_data["speaker_info"] = self._safely_serialize_feature(
-                        getattr(extracted_features.audio, 'speaker_info'))
-                if hasattr(extracted_features.audio, 'acoustic_features') and getattr(extracted_features.audio,
-                                                                                      'acoustic_features', None):
+                        getattr(extracted_features.audio, "speaker_info")
+                    )
+                if hasattr(extracted_features.audio, "acoustic_features") and getattr(
+                    extracted_features.audio, "acoustic_features", None
+                ):
                     audio_feature_data["acoustic_features"] = self._safely_serialize_feature(
-                        getattr(extracted_features.audio, 'acoustic_features'))
+                        getattr(extracted_features.audio, "acoustic_features")
+                    )
 
                 feature_data["audio_features"] = audio_feature_data
 
@@ -441,19 +433,13 @@ class SearchService:
                 "step": "features_extracted",
                 "message": "특징 추출이 완료되었습니다",
                 "timestamp": time.time(),
-                "data": feature_data
+                "data": feature_data,
             }
 
             # Step 4: 임베딩 생성
-            yield {
-                "step": "embedding_generation",
-                "message": "임베딩을 생성하고 있습니다...",
-                "timestamp": time.time()
-            }
+            yield {"step": "embedding_generation", "message": "임베딩을 생성하고 있습니다...", "timestamp": time.time()}
 
-            embeddings = await self.embedding_service.generate_multimodal_embeddings(
-                modalities_data, extracted_features
-            )
+            embeddings = await self.embedding_service.generate_multimodal_embeddings(modalities_data, extracted_features)
 
             # 임베딩 통계 계산
             embedding_stats = {}
@@ -461,7 +447,7 @@ class SearchService:
                 if vector:
                     embedding_stats[modality] = {
                         "dimension": len(vector),
-                        "vector_norm": sum(x * x for x in vector) ** 0.5 if vector else 0.0
+                        "vector_norm": sum(x * x for x in vector) ** 0.5 if vector else 0.0,
                     }
 
             yield {
@@ -471,33 +457,27 @@ class SearchService:
                 "data": {
                     "embedding_types": list(embeddings.keys()),
                     "embedding_stats": embedding_stats,
-                    "total_embeddings": len(embeddings)
-                }
+                    "total_embeddings": len(embeddings),
+                },
             }
 
             # Step 5: 검색 실행
             yield {
                 "step": "search_execution",
                 "message": "OpenSearch에서 검색을 실행하고 있습니다...",
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
 
             expansion_result = query_analysis.get("expansion_analysis")
             search_results = await self.search_executor.execute_expanded_search(
-                expanded_queries, query_analysis["selected_element_types"],
-                embeddings, max_results, expansion_result
+                expanded_queries, query_analysis["selected_element_types"], embeddings, max_results, expansion_result
             )
 
             # 검색 실행 상세 통계
             executed_queries_info = []
             for i, query in enumerate(expanded_queries):
                 weight = 1.0 - (i * 0.1)
-                executed_queries_info.append({
-                    "index": i + 1,
-                    "query": query,
-                    "weight": weight,
-                    "priority": i + 1
-                })
+                executed_queries_info.append({"index": i + 1, "query": query, "weight": weight, "priority": i + 1})
 
             # OpenSearch 쿼리 정보 (예시 - 실제로는 더 복잡)
             opensearch_query_info = {
@@ -507,7 +487,7 @@ class SearchService:
                 "element_types_filter": query_analysis["selected_element_types"],
                 "has_vector_search": bool(embeddings),
                 "vector_modalities": list(embeddings.keys()) if embeddings else [],
-                "fuzziness": "AUTO"
+                "fuzziness": "AUTO",
             }
 
             search_stats = {
@@ -517,22 +497,18 @@ class SearchService:
                 "took_ms": search_results.get("took_ms", 0) if search_results else 0,
                 "queries_executed": len(expanded_queries),
                 "executed_queries": executed_queries_info,
-                "opensearch_query": opensearch_query_info
+                "opensearch_query": opensearch_query_info,
             }
 
             yield {
                 "step": "search_executed",
                 "message": "검색 실행이 완료되었습니다",
                 "timestamp": time.time(),
-                "data": search_stats
+                "data": search_stats,
             }
 
             # Step 6: 결과 enrichment
-            yield {
-                "step": "result_enrichment",
-                "message": "검색 결과를 보강하고 있습니다...",
-                "timestamp": time.time()
-            }
+            yield {"step": "result_enrichment", "message": "검색 결과를 보강하고 있습니다...", "timestamp": time.time()}
 
             logger.info("🔄 Starting result enrichment...")
             enriched_results = await self.result_enricher.enrich_search_results(
@@ -563,9 +539,9 @@ class SearchService:
                     "element_types_distribution": element_types_in_results,
                     "enrichment_options": {
                         "chunk_metadata": "포함됨" if include_chunk_meta else "제외됨",
-                        "media_metadata": "포함됨" if include_media_meta else "제외됨"
-                    }
-                }
+                        "media_metadata": "포함됨" if include_media_meta else "제외됨",
+                    },
+                },
             }
 
             # Step 7: 최종 결과
@@ -584,16 +560,17 @@ class SearchService:
             results_data = []
             total_bytes = 0
             failed_count = 0
-            
+
             for i, result in enumerate(enriched_results):
                 try:
-                    if hasattr(result, 'model_dump'):
+                    if hasattr(result, "model_dump"):
                         serialized = result.model_dump()
                         # 직렬화된 데이터 크기 확인
                         import json
+
                         size_check = len(json.dumps(serialized, default=str))
                         total_bytes += size_check
-                    elif hasattr(result, 'dict'):
+                    elif hasattr(result, "dict"):
                         serialized = result.dict()
                     elif isinstance(result, dict):
                         serialized = result
@@ -609,7 +586,9 @@ class SearchService:
 
             # 요약 로그
             if failed_count > 0:
-                logger.warning(f"✅ Serialization completed: {len(results_data) - failed_count}/{len(enriched_results)} successful, {failed_count} failed, {total_bytes:,} bytes total")
+                logger.warning(
+                    f"✅ Serialization completed: {len(results_data) - failed_count}/{len(enriched_results)} successful, {failed_count} failed, {total_bytes:,} bytes total"
+                )
             else:
                 logger.info(f"✅ Serialization completed: {len(results_data)} results, {total_bytes:,} bytes total")
 
@@ -622,20 +601,22 @@ class SearchService:
                     "search_stats": {
                         "total_hits": final_stats.get("total_hits", 0),
                         "max_score": final_stats.get("max_score", 0.0),
-                        "result_count": len(results_data)
+                        "result_count": len(results_data),
                     },
                     "total_time_ms": total_time * 1000,
                     "processing_steps": 7,
                     "query_analysis": {
                         "selected_element_types": query_analysis.get("selected_element_types", []),
-                        "confidence": query_analysis.get("confidence", 0.0)
+                        "confidence": query_analysis.get("confidence", 0.0),
                     },
-                    "expanded_queries": [q.get("query", str(q)) if isinstance(q, dict) else str(q) for q in
-                                         expanded_queries]
+                    "expanded_queries": [
+                        q.get("query", str(q)) if isinstance(q, dict) else str(q) for q in expanded_queries
+                    ],
                 }
 
                 # 전체 데이터 크기 확인
                 import json
+
                 temp_json = json.dumps(temp_completed_data, default=str)
                 data_size = len(temp_json)
                 logger.info(f"📊 Completed data size: {data_size} bytes ({data_size / 1024 / 1024:.2f} MB)")
@@ -648,7 +629,7 @@ class SearchService:
                         "search_stats": temp_completed_data["search_stats"],
                         "total_time_ms": temp_completed_data["total_time_ms"],
                         "processing_steps": 7,
-                        "message": f"결과가 너무 커서 {len(results_data)}개 중 5개만 표시합니다"
+                        "message": f"결과가 너무 커서 {len(results_data)}개 중 5개만 표시합니다",
                     }
                 else:
                     completed_data = temp_completed_data
@@ -660,12 +641,13 @@ class SearchService:
                     "step": "completed",
                     "message": f"검색이 완료되었습니다 ({total_time:.2f}초)",
                     "timestamp": time.time(),
-                    "data": completed_data
+                    "data": completed_data,
                 }
                 logger.info("✅ Completed step yielded successfully")
 
                 # 프론트엔드가 completed 이벤트를 처리할 시간을 확보하기 위한 짧은 지연
                 import asyncio
+
                 await asyncio.sleep(0.1)
 
                 # 스트림 완료 확인 로그
@@ -683,20 +665,17 @@ class SearchService:
                         "search_stats": {"total_results": 0},
                         "total_time_ms": total_time * 1000,
                         "processing_steps": 7,
-                        "error": f"Data serialization failed: {str(e)}"
-                    }
+                        "error": f"Data serialization failed: {str(e)}",
+                    },
                 }
 
         except Exception as e:
             import traceback
+
             logger.error(f"❌ Streaming search failed: {e}")
             logger.error(f"❌ Traceback: {traceback.format_exc()}")
 
-            yield {
-                "step": "error",
-                "error": str(e),
-                "timestamp": time.time()
-            }
+            yield {"step": "error", "error": str(e), "timestamp": time.time()}
 
     def _safely_serialize_feature(self, feature_value):
         """특징 값을 안전하게 직렬화 가능한 형태로 변환"""
@@ -704,7 +683,7 @@ class SearchService:
             return None
 
         # Pydantic 모델인 경우
-        if hasattr(feature_value, 'model_dump'):
+        if hasattr(feature_value, "model_dump"):
             return feature_value.model_dump()
 
         # 기본 JSON 직렬화 가능한 타입들
@@ -724,4 +703,5 @@ class SearchService:
     def _get_current_time_ms(self) -> int:
         """현재 시간을 밀리초로 반환"""
         import time
+
         return int(time.time() * 1000)

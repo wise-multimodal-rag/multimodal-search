@@ -6,9 +6,7 @@ from typing import Any, Dict
 def get_media_meta_mapping() -> Dict[str, Any]:
     """Get media_meta index mapping"""
     return {
-        "settings": {
-            "index": {"number_of_shards": 1, "number_of_replicas": 1}
-        },
+        "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 1}},
         "mappings": {
             "dynamic": "false",
             "properties": {
@@ -29,18 +27,16 @@ def get_media_meta_mapping() -> Dict[str, Any]:
                 "visibility": {"type": "keyword"},
                 "tags": {"type": "keyword"},
                 "created_at": {"type": "date"},
-                "updated_at": {"type": "date"}
-            }
-        }
+                "updated_at": {"type": "date"},
+            },
+        },
     }
 
 
 def get_chunk_meta_mapping() -> Dict[str, Any]:
     """Get chunk_meta index mapping"""
     return {
-        "settings": {
-            "index": {"number_of_shards": 2, "number_of_replicas": 1}
-        },
+        "settings": {"index": {"number_of_shards": 2, "number_of_replicas": 1}},
         "mappings": {
             "dynamic": "false",
             "properties": {
@@ -53,9 +49,9 @@ def get_chunk_meta_mapping() -> Dict[str, Any]:
                 "label": {"type": "text"},
                 "tags": {"type": "keyword"},
                 "created_at": {"type": "date"},
-                "updated_at": {"type": "date"}
-            }
-        }
+                "updated_at": {"type": "date"},
+            },
+        },
     }
 
 
@@ -63,20 +59,16 @@ def get_elements_mapping() -> Dict[str, Any]:
     """Get elements index mapping"""
     return {
         "settings": {
-            "index": {
-                "knn": True,
-                "number_of_shards": 3,
-                "number_of_replicas": 1
-            },
+            "index": {"knn": True, "number_of_shards": 3, "number_of_replicas": 1},
             "analysis": {
                 "analyzer": {
                     "ko_en": {
                         "type": "custom",
                         "tokenizer": "nori_tokenizer",
-                        "filter": ["lowercase", "nori_part_of_speech", "nori_number"]
+                        "filter": ["lowercase", "nori_part_of_speech", "nori_number"],
                     }
                 }
-            }
+            },
         },
         "mappings": {
             "dynamic": "false",
@@ -91,44 +83,38 @@ def get_elements_mapping() -> Dict[str, Any]:
                 "content": {
                     "type": "text",
                     "analyzer": "ko_en",
-                    "fields": {
-                        "exact": {"type": "keyword", "ignore_above": 2048}
-                    }
+                    "fields": {"exact": {"type": "keyword", "ignore_above": 2048}},
                 },
                 "embeddings": {
                     "properties": {
                         "text": {
                             "type": "knn_vector",
                             "dimension": 1152,
-                            "method": {"name": "hnsw", "space_type": "cosinesimil"}
+                            "method": {"name": "hnsw", "space_type": "cosinesimil"},
                         },
                         "image": {
                             "type": "knn_vector",
                             "dimension": 1152,
-                            "method": {"name": "hnsw", "space_type": "cosinesimil"}
+                            "method": {"name": "hnsw", "space_type": "cosinesimil"},
                         },
                         "video": {
                             "type": "knn_vector",
                             "dimension": 1152,
-                            "method": {"name": "hnsw", "space_type": "cosinesimil"}
+                            "method": {"name": "hnsw", "space_type": "cosinesimil"},
                         },
                         "audio": {
                             "type": "knn_vector",
                             "dimension": 1152,
-                            "method": {"name": "hnsw", "space_type": "cosinesimil"}
-                        }
+                            "method": {"name": "hnsw", "space_type": "cosinesimil"},
+                        },
                     }
                 },
-                "quality_scores": {
-                    "properties": {
-                        "combined_static": {"type": "rank_feature"}
-                    }
-                },
+                "quality_scores": {"properties": {"combined_static": {"type": "rank_feature"}}},
                 "element_seq": {"type": "integer"},
                 "language": {"type": "keyword"},
                 "tags": {"type": "keyword"},
                 "created_at": {"type": "date"},
-                "updated_at": {"type": "date"}
-            }
-        }
+                "updated_at": {"type": "date"},
+            },
+        },
     }

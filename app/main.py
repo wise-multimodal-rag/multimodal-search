@@ -17,13 +17,13 @@ from app.core.logging import setup_logging
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting multimodal search application")
-    
+
     # Initialize OpenSearch connection
     opensearch_service = get_opensearch_service()
     await opensearch_service.initialize()
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down multimodal search application")
     await opensearch_service.close()
@@ -48,6 +48,7 @@ templates = Jinja2Templates(directory="templates")
 # Include routers
 app.include_router(search.router, prefix="/api/v1", tags=["search"])
 
+
 # Global exception handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -56,7 +57,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     if hasattr(request, "body") and request.method in ["POST", "PUT", "PATCH"]:
         try:
             body = await request.body()
-            body_str = body.decode('utf-8')
+            body_str = body.decode("utf-8")
             # If body is too long (likely contains base64), just show size
             if len(body_str) > 1000:
                 logger.error(f"Request body size: {len(body_str)} bytes (truncated)")
@@ -64,10 +65,7 @@ async def global_exception_handler(request: Request, exc: Exception):
                 logger.error(f"Request body: {body_str}")
         except:
             logger.error("Could not read request body")
-    return JSONResponse(
-        status_code=500,
-        content={"detail": f"Internal server error: {str(exc)}"}
-    )
+    return JSONResponse(status_code=500, content={"detail": f"Internal server error: {str(exc)}"})
 
 
 @app.get("/")
@@ -86,11 +84,10 @@ async def external_apis_health_check():
     """Check health of all external APIs."""
     import httpx
 
-    from app.core.dependencies import (get_embedding_client,
-                                       get_feature_extraction_client, get_llm_client)
-    
+    from app.core.dependencies import get_embedding_client, get_feature_extraction_client, get_llm_client
+
     results = {}
-    
+
     # Check embedding API
     try:
         embedding_client = get_embedding_client()
@@ -98,23 +95,23 @@ async def external_apis_health_check():
             response = await client.get(f"{embedding_client.base_url}/health")
             results["embedding_api"] = {
                 "status": "healthy" if response.status_code == 200 else "unhealthy",
-                "response_time_ms": response.elapsed.total_seconds() * 1000 if response.elapsed else 0
+                "response_time_ms": response.elapsed.total_seconds() * 1000 if response.elapsed else 0,
             }
     except Exception as e:
         results["embedding_api"] = {"status": "unhealthy", "error": str(e)}
-    
+
     # Check feature extraction API
     try:
         feature_client = get_feature_extraction_client()
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(f"{feature_client.base_url}/health")
             results["feature_extraction_api"] = {
-                "status": "healthy" if response.status_code == 200 else "unhealthy", 
-                "response_time_ms": response.elapsed.total_seconds() * 1000 if response.elapsed else 0
+                "status": "healthy" if response.status_code == 200 else "unhealthy",
+                "response_time_ms": response.elapsed.total_seconds() * 1000 if response.elapsed else 0,
             }
     except Exception as e:
         results["feature_extraction_api"] = {"status": "unhealthy", "error": str(e)}
-    
+
     # Check LLM API
     try:
         llm_client = get_llm_client()
@@ -122,18 +119,15 @@ async def external_apis_health_check():
             response = await client.get(f"{llm_client.base_url}/health")
             results["llm_api"] = {
                 "status": "healthy" if response.status_code == 200 else "unhealthy",
-                "response_time_ms": response.elapsed.total_seconds() * 1000 if response.elapsed else 0
+                "response_time_ms": response.elapsed.total_seconds() * 1000 if response.elapsed else 0,
             }
     except Exception as e:
         results["llm_api"] = {"status": "unhealthy", "error": str(e)}
-    
+
     # Overall status
     all_healthy = all(result.get("status") == "healthy" for result in results.values())
-    
-    return {
-        "status": "healthy" if all_healthy else "degraded",
-        "external_apis": results
-    }
+
+    return {"status": "healthy" if all_healthy else "degraded", "external_apis": results}
 
 
 @app.get("/search")

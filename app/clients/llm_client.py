@@ -10,25 +10,21 @@ from app.core.security import security_manager
 class LLMClient:
     def __init__(self):
         self.base_url = settings.litellm_url
-        self.api_key = security_manager.get_api_key('LITELLM_API_KEY') or settings.litellm_api_key
+        self.api_key = security_manager.get_api_key("LITELLM_API_KEY") or settings.litellm_api_key
         self.model = settings.litellm_model
         self.timeout = 60.0
 
     async def complete(
-            self,
-            messages: List[Dict[str, str]],
-            temperature: float = 0.3,
-            max_tokens: Optional[int] = None,
-            force_json: bool = False
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.3,
+        max_tokens: Optional[int] = None,
+        force_json: bool = False,
     ) -> Optional[str]:
         """Get completion from LLM"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                payload = {
-                    "model": self.model,
-                    "messages": messages,
-                    "temperature": temperature
-                }
+                payload = {"model": self.model, "messages": messages, "temperature": temperature}
 
                 if max_tokens:
                     payload["max_tokens"] = max_tokens
@@ -36,11 +32,7 @@ class LLMClient:
                 # Gemini-specific settings - only force JSON when explicitly requested
                 if "gemini" in self.model.lower() and force_json:
                     payload["response_format"] = {"type": "json_object"}
-                    payload["extra_body"] = {
-                        "generationConfig": {
-                            "responseMimeType": "application/json"
-                        }
-                    }
+                    payload["extra_body"] = {"generationConfig": {"responseMimeType": "application/json"}}
 
                 headers = {}
                 if self.api_key and self.api_key != "your-api-key":
@@ -51,13 +43,11 @@ class LLMClient:
                         headers["Authorization"] = f"Bearer {self.api_key}"
 
                 # 간결한 요청 로깅
-                logger.debug(f"LLM request: model={payload.get('model')}, messages={len(payload.get('messages', []))}, temp={payload.get('temperature')}")
-
-                response = await client.post(
-                    f"{self.base_url}/v1/chat/completions",
-                    json=payload,
-                    headers=headers
+                logger.debug(
+                    f"LLM request: model={payload.get('model')}, messages={len(payload.get('messages', []))}, temp={payload.get('temperature')}"
                 )
+
+                response = await client.post(f"{self.base_url}/v1/chat/completions", json=payload, headers=headers)
                 response.raise_for_status()
 
                 result = response.json()
@@ -82,8 +72,7 @@ class LLMClient:
                             logger.warning(f"LLM returned empty content, finish_reason: {finish_reason}")
                             return None
                         else:
-                            logger.error(
-                                f"Missing or null content in message: {message}, finish_reason: {finish_reason}")
+                            logger.error(f"Missing or null content in message: {message}, finish_reason: {finish_reason}")
                             return None
                     else:
                         logger.error(f"Missing message in choice: {choice}")
@@ -109,18 +98,12 @@ class LLMClient:
                 return None
 
     async def analyze_query_intent(
-            self,
-            query: str,
-            available_element_types: List[str],
-            input_modalities: Optional[List[str]] = None
+        self, query: str, available_element_types: List[str], input_modalities: Optional[List[str]] = None
     ) -> Optional[Dict[str, Any]]:
         """Analyze query intent to determine relevant element types based on input modalities"""
         # Define modality-specific element types
-        modality_element_mapping = {
-            "text": ["paragraph", "summary"],
-            "image": ["caption", "origin"]
-        }
-        
+        modality_element_mapping = {"text": ["paragraph", "summary"], "image": ["caption", "origin"]}
+
         # Filter available_element_types based on input modalities
         if input_modalities:
             relevant_types = set()
@@ -129,25 +112,24 @@ class LLMClient:
                     relevant_types.update(modality_element_mapping[modality])
             # Only keep element types that are both relevant and available
             available_element_types = [t for t in available_element_types if t in relevant_types]
-        
+
         element_types_desc = {
             # Currently active types
             "paragraph": "일반 문단 - 문서의 본문 내용 (텍스트 전용)",
-            "summary": "AI 요약 - 자동 생성된 요약문 (텍스트 전용)", 
+            "summary": "AI 요약 - 자동 생성된 요약문 (텍스트 전용)",
             "caption": "이미지 설명 - AI가 생성한 이미지 캡션 (이미지 전용)",
-            "origin": "원본 이미지 - 최초 업로드된 이미지 (이미지 전용)"
-            
+            "origin": "원본 이미지 - 최초 업로드된 이미지 (이미지 전용)",
             # Temporarily disabled element types (for future use)
             # Text 모달리티:
             # "title": "제목 - 문서/섹션 제목",
-            # "stt": "음성→텍스트 - 음성인식 결과", 
+            # "stt": "음성→텍스트 - 음성인식 결과",
             # "scene": "비디오 장면 설명 - 비디오 장면에 대한 텍스트 설명",
             # "ocr": "이미지→텍스트 - OCR로 추출한 텍스트",
             # "table": "표 데이터 - JSON 형태의 구조화된 표",
             # "translation": "번역 결과 - 다른 언어로 번역된 텍스트",
             # Image 모달리티:
             # "cropped": "잘린 이미지 - 특정 영역을 추출한 이미지",
-            # "detected_object": "감지된 객체 - 객체 감지로 추출한 영역", 
+            # "detected_object": "감지된 객체 - 객체 감지로 추출한 영역",
             # "chart": "차트/그래프 - 데이터 시각화 이미지",
             # "diagram": "다이어그램 - 구조도, 플로우차트 등",
             # "keyframe": "키 프레임 - 비디오에서 추출한 대표 프레임 이미지",
@@ -163,20 +145,19 @@ class LLMClient:
         }
 
         # element_types_desc를 사용하여 정확한 선택 가능하도록 함
-        element_list = "\n".join([
-            f"- {etype}: {element_types_desc.get(etype, '기타 콘텐츠')}"
-            for etype in available_element_types
-        ])
+        element_list = "\n".join(
+            [f"- {etype}: {element_types_desc.get(etype, '기타 콘텐츠')}" for etype in available_element_types]
+        )
 
         # Build modality context message
         modality_context = ""
         if input_modalities:
             modality_context = f"""
-입력 모달리티: {', '.join(input_modalities)}
+입력 모달리티: {", ".join(input_modalities)}
 - 텍스트 입력시: paragraph, summary 타입만 사용 가능
 - 이미지 입력시: caption, origin 타입만 사용 가능
 """
-        
+
         system_message = f"""검색 쿼리를 분석하여 관련성이 높은 element_type들을 선택하세요.
 현재 활성화된 타입만 사용 가능하고, 입력 모달리티에 맞는 타입만 선택하세요.
 {modality_context}
@@ -195,10 +176,7 @@ class LLMClient:
     "confidence": 0.85
 }}"""
 
-        messages = [
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": f"검색 쿼리: {query}"}
-        ]
+        messages = [{"role": "system", "content": system_message}, {"role": "user", "content": f"검색 쿼리: {query}"}]
 
         response = await self.complete(messages, temperature=0.2, max_tokens=2000, force_json=True)
 
@@ -239,7 +217,7 @@ class LLMClient:
                 return {
                     "selected_element_types": valid_selected,
                     "reasoning": result.get("reasoning", "LLM analysis completed"),
-                    "confidence": min(1.0, max(0.0, result.get("confidence", 0.7)))
+                    "confidence": min(1.0, max(0.0, result.get("confidence", 0.7))),
                 }
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse LLM response as JSON: {e}")
@@ -251,17 +229,13 @@ class LLMClient:
 
         return None
 
-    async def expand_query(
-            self,
-            query: str,
-            context: Optional[Dict[str, Any]] = None
-    ) -> Optional[Dict[str, Any]]:
+    async def expand_query(self, query: str, context: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """Comprehensive query expansion using Query Decomposition, Query Rewriting, and Semantic Expansion
-        
+
         Args:
             query: Original user query
             context: Optional context information (search domain, user preferences, etc.)
-            
+
         Returns:
             Dictionary containing expanded queries and analysis
         """
@@ -332,7 +306,7 @@ class LLMClient:
 
         messages = [
             {"role": "system", "content": system_message},
-            {"role": "user", "content": f"다음 쿼리를 확장해주세요: {query}"}
+            {"role": "user", "content": f"다음 쿼리를 확장해주세요: {query}"},
         ]
 
         response = await self.complete(messages, temperature=0.2, max_tokens=2000, force_json=True)
@@ -362,13 +336,10 @@ class LLMClient:
                 # 결과 검증 및 기본값 설정
                 if not isinstance(result.get("final_queries"), list):
                     result["final_queries"] = []
-                
+
                 # 최소한 원본 쿼리라도 포함
                 if not result["final_queries"]:
-                    result["final_queries"] = [{
-                        "query": query,
-                        "priority": 1
-                    }]
+                    result["final_queries"] = [{"query": query, "priority": 1}]
 
                 # 기본값 설정
                 if "has_dependency" not in result:
@@ -381,10 +352,7 @@ class LLMClient:
                     result["expansion_summary"] = f"원본 쿼리 사용 ({len(result['final_queries'])} variants)"
 
                 # priority로 정렬
-                result["final_queries"] = sorted(
-                    result["final_queries"], 
-                    key=lambda x: x.get("priority", 999)
-                )
+                result["final_queries"] = sorted(result["final_queries"], key=lambda x: x.get("priority", 999))
 
                 logger.debug(f"Query expansion generated {len(result['final_queries'])} expanded queries")
                 return result

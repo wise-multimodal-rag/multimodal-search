@@ -15,16 +15,19 @@ class InterceptHandler(logging.Handler):
         message = record.getMessage()
 
         # Skip multipart parsing debug messages
-        if any(pattern in message for pattern in [
-            "Calling on_part_begin",
-            "Calling on_header_field",
-            "Calling on_header_value",
-            "Calling on_header_end",
-            "Calling on_headers_finished",
-            "Calling on_part_data",
-            "Calling on_part_end",
-            "Calling on_end with no data"
-        ]):
+        if any(
+            pattern in message
+            for pattern in [
+                "Calling on_part_begin",
+                "Calling on_header_field",
+                "Calling on_header_value",
+                "Calling on_header_end",
+                "Calling on_headers_finished",
+                "Calling on_part_data",
+                "Calling on_part_end",
+                "Calling on_end with no data",
+            ]
+        ):
             return
 
         # Get corresponding Loguru level if it exists

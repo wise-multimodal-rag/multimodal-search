@@ -5,28 +5,23 @@ from loguru import logger
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.feature_extraction_client import FeatureExtractionClient
 from app.clients.llm_client import LLMClient
-from app.models.features import (AudioFeatures, ImageFeatures, MultimodalFeatures,
-                                 TextFeatures, VideoFeatures)
+from app.models.features import AudioFeatures, ImageFeatures, MultimodalFeatures, TextFeatures, VideoFeatures
 
 
 class MultimodalFeatureExtractor:
     """멀티모달 특징 추출을 담당하는 서비스"""
-    
+
     def __init__(
         self,
         feature_extraction_client: FeatureExtractionClient = None,
         embedding_client: EmbeddingClient = None,
-        llm_client: LLMClient = None
+        llm_client: LLMClient = None,
     ):
         self.feature_extraction_client = feature_extraction_client or FeatureExtractionClient()
         self.embedding_client = embedding_client or EmbeddingClient()
         self.llm_client = llm_client or LLMClient()
 
-    async def extract_features(
-        self, 
-        modalities_data: Dict[str, Any], 
-        element_types: List[str]
-    ) -> MultimodalFeatures:
+    async def extract_features(self, modalities_data: Dict[str, Any], element_types: List[str]) -> MultimodalFeatures:
         """모든 모달리티에서 특징 추출"""
         text_features = None
         image_features = None
@@ -50,10 +45,7 @@ class MultimodalFeatureExtractor:
                 audio_features = await self._extract_audio_features(modalities_data["audio"], element_types)
 
             features = MultimodalFeatures(
-                text=text_features,
-                image=image_features,
-                video=video_features,
-                audio=audio_features
+                text=text_features, image=image_features, video=video_features, audio=audio_features
             )
 
             logger.debug(
@@ -67,39 +59,35 @@ class MultimodalFeatureExtractor:
             logger.error(f"Multimodal feature extraction failed: {e}")
             return MultimodalFeatures()
 
-    async def _extract_text_features(
-        self, 
-        text_data: Dict[str, Any], 
-        element_types: List[str]
-    ) -> Optional[TextFeatures]:
+    async def _extract_text_features(self, text_data: Dict[str, Any], element_types: List[str]) -> Optional[TextFeatures]:
         """텍스트 모달리티에서 특징 추출 - element_type별로 개별 처리"""
         try:
             text_query = text_data["query"]
-            
+
             # element_type별로 개별 feature 추출
             paragraph_text = None
             summary_text = None
-            
+
             # paragraph: OpenSearch에서 검색용이므로 별도 임베딩 불필요 (원본 text 임베딩 사용)
             # if "paragraph" in element_types:
             #     paragraph_text = text_query
-            
+
             # summary: 텍스트 요약 추출
             if "summary" in element_types:
                 summary_result = await self.feature_extraction_client.extract_text_summary(text_query)
                 if summary_result and "summary" in summary_result:
                     summary_text = summary_result["summary"]
-            
+
             # caption은 이미지 모달리티에서 처리하므로 여기서 제외
             # 비활성화된 타입: "title", "stt", "scene", "ocr", "table", "translation"
-            
+
             # 추출된 feature가 있는 경우만 반환
             if summary_text:
                 return TextFeatures(
                     keywords=None,  # TODO: 추후 키워드 추출 기능 추가 예정
                     entities=None,  # TODO: 추후 엔티티 추출 기능 추가 예정
                     summary=summary_text,
-                    classification=None  # TODO: 추후 텍스트 분류 기능 추가 예정
+                    classification=None,  # TODO: 추후 텍스트 분류 기능 추가 예정
                 )
             return None
 
@@ -107,11 +95,7 @@ class MultimodalFeatureExtractor:
             logger.error(f"Text feature extraction failed: {e}")
             return None
 
-    async def _extract_image_features(
-        self, 
-        image_data: Dict[str, Any], 
-        element_types: List[str]
-    ) -> Optional[ImageFeatures]:
+    async def _extract_image_features(self, image_data: Dict[str, Any], element_types: List[str]) -> Optional[ImageFeatures]:
         """이미지 모달리티에서 특징 추출 - element_type별로 개별 처리"""
         try:
             # 이미지 관련 element_types가 선택된 경우에만 분석 수행 (현재 활성: caption, origin)
@@ -124,30 +108,31 @@ class MultimodalFeatureExtractor:
 
             base64_image = image_data["base64_data"]
             import base64
+
             image_bytes = base64.b64decode(base64_image)
-            
+
             # element_type별로 개별 feature 추출
             caption_text = None
             origin_data = None
-            
+
             # caption: 이미지 캡션 생성
             if "caption" in element_types:
                 caption_result = await self.embedding_client.generate_image_caption(image_bytes)
                 if caption_result and "caption" in caption_result:
                     caption_text = caption_result["caption"]
-            
+
             # origin: OpenSearch에서 검색용이므로 별도 임베딩 불필요 (원본 image 임베딩 사용)
             # if "origin" in element_types:
             #     origin_data = base64_image  # 원본 base64 데이터
-            
+
             # 비활성화된 기능들:
             # 객체 탐지 (detected_object), 잘린 이미지 (cropped), 차트 (chart), 다이어그램 (diagram)
-            
+
             # 추출된 feature가 있는 경우만 반환
             if caption_text:
                 return ImageFeatures(
                     caption=caption_text,
-                    objects=None  # origin은 원본 image와 동일하므로 중복 제거
+                    objects=None,  # origin은 원본 image와 동일하므로 중복 제거
                 )
             return None
 
@@ -155,11 +140,7 @@ class MultimodalFeatureExtractor:
             logger.error(f"Image feature extraction failed: {e}")
             return None
 
-    async def _extract_video_features(
-        self, 
-        video_data: Dict[str, Any], 
-        element_types: List[str]
-    ) -> Optional[VideoFeatures]:
+    async def _extract_video_features(self, video_data: Dict[str, Any], element_types: List[str]) -> Optional[VideoFeatures]:
         """비디오 모달리티에서 특징 추출"""
         try:
             # 비디오 관련 element_types 모두 비활성화됨
@@ -173,7 +154,7 @@ class MultimodalFeatureExtractor:
 
             base64_video = video_data["base64_data"]
             content_type = video_data["content_type"]
-            
+
             keywords = None
             scenes = None
             objects = None
@@ -202,11 +183,7 @@ class MultimodalFeatureExtractor:
             # 최소 하나의 feature가 추출된 경우만 VideoFeatures 반환
             if any([keywords, scenes, objects, activities, description]):
                 return VideoFeatures(
-                    keywords=keywords,
-                    scenes=scenes,
-                    objects=objects,
-                    activities=activities,
-                    description=description
+                    keywords=keywords, scenes=scenes, objects=objects, activities=activities, description=description
                 )
             return None
 
@@ -214,11 +191,7 @@ class MultimodalFeatureExtractor:
             logger.error(f"Video feature extraction failed: {e}")
             return None
 
-    async def _extract_audio_features(
-        self, 
-        audio_data: Dict[str, Any], 
-        element_types: List[str]
-    ) -> Optional[AudioFeatures]:
+    async def _extract_audio_features(self, audio_data: Dict[str, Any], element_types: List[str]) -> Optional[AudioFeatures]:
         """오디오 모달리티에서 특징 추출"""
         try:
             # 오디오 관련 element_types 모두 비활성화됨
@@ -232,7 +205,7 @@ class MultimodalFeatureExtractor:
 
             base64_audio = audio_data["base64_data"]
             content_type = audio_data["content_type"]
-            
+
             keywords = None
             entities = None
             sounds = None
@@ -265,11 +238,7 @@ class MultimodalFeatureExtractor:
             # 최소 하나의 feature가 추출된 경우만 AudioFeatures 반환
             if any([keywords, entities, sounds, audio_type, transcription]):
                 return AudioFeatures(
-                    keywords=keywords,
-                    entities=entities,
-                    sounds=sounds,
-                    audio_type=audio_type,
-                    transcription=transcription
+                    keywords=keywords, entities=entities, sounds=sounds, audio_type=audio_type, transcription=transcription
                 )
             return None
 
@@ -295,19 +264,15 @@ class MultimodalFeatureExtractor:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": VIDEO_ANALYSIS_PROMPT},
-                        {
-                            "type": "video_url",
-                            "video_url": {
-                                "url": f"data:{content_type};base64,{base64_video}"
-                            }
-                        }
-                    ]
+                        {"type": "video_url", "video_url": {"url": f"data:{content_type};base64,{base64_video}"}},
+                    ],
                 }
             ]
 
             response = await self.llm_client.complete(messages, temperature=0.3, max_tokens=1000)
             if response:
                 import json
+
                 try:
                     return json.loads(response.strip())
                 except json.JSONDecodeError:
@@ -336,19 +301,15 @@ class MultimodalFeatureExtractor:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": AUDIO_ANALYSIS_PROMPT},
-                        {
-                            "type": "audio_url",
-                            "audio_url": {
-                                "url": f"data:{content_type};base64,{base64_audio}"
-                            }
-                        }
-                    ]
+                        {"type": "audio_url", "audio_url": {"url": f"data:{content_type};base64,{base64_audio}"}},
+                    ],
                 }
             ]
 
             response = await self.llm_client.complete(messages, temperature=0.3, max_tokens=1000)
             if response:
                 import json
+
                 try:
                     return json.loads(response.strip())
                 except json.JSONDecodeError:

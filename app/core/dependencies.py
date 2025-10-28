@@ -3,9 +3,16 @@ from functools import lru_cache
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.feature_extraction_client import FeatureExtractionClient
 from app.clients.llm_client import LLMClient
-from app.services import (EmbeddingService, InputProcessor, MultimodalFeatureExtractor,
-                          OpenSearchService, QueryAnalyzer, ResultEnricher,
-                          SearchService, SearchExecutor)
+from app.services import (
+    EmbeddingService,
+    InputProcessor,
+    MultimodalFeatureExtractor,
+    OpenSearchService,
+    QueryAnalyzer,
+    ResultEnricher,
+    SearchExecutor,
+    SearchService,
+)
 
 
 @lru_cache()
@@ -41,10 +48,7 @@ def get_input_processor() -> InputProcessor:
 @lru_cache()
 def get_multimodal_feature_extractor() -> MultimodalFeatureExtractor:
     """Get singleton instance of MultimodalFeatureExtractor"""
-    return MultimodalFeatureExtractor(
-        feature_extraction_client=get_feature_extraction_client(),
-        llm_client=get_llm_client()
-    )
+    return MultimodalFeatureExtractor(feature_extraction_client=get_feature_extraction_client(), llm_client=get_llm_client())
 
 
 @lru_cache()
@@ -68,10 +72,7 @@ def get_result_enricher() -> ResultEnricher:
 @lru_cache()
 def get_search_executor() -> SearchExecutor:
     """Get singleton instance of SearchExecutor"""
-    return SearchExecutor(
-        opensearch_service=get_opensearch_service(),
-        query_analyzer=get_query_analyzer()
-    )
+    return SearchExecutor(opensearch_service=get_opensearch_service(), query_analyzer=get_query_analyzer())
 
 
 @lru_cache()
@@ -84,5 +85,5 @@ def get_search_service() -> SearchService:
         query_analyzer=get_query_analyzer(),
         embedding_service=get_embedding_service(),
         result_enricher=get_result_enricher(),
-        search_executor=get_search_executor()
+        search_executor=get_search_executor(),
     )
