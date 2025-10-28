@@ -9,7 +9,7 @@ class StreamingSearchController {
         this.progressFill = document.getElementById('progressFill');
         this.progressText = document.getElementById('progressText');
         this.currentStep = 0;
-        this.totalSteps = 8;
+        this.totalSteps = 7;
         this.isStreaming = false;
         this.searchProcessData = []; // 검색 진행 과정 데이터 저장
         this.partialData = ''; // 부분적 스트리밍 데이터 누적용
@@ -185,22 +185,13 @@ class StreamingSearchController {
                 this.currentStep = 2;
                 break;
                 
-            case 'query_expansion':
-                this.addStep('쿼리 확장 중', message, null, 'loading', timestamp);
+            case 'query_analysis':
+                this.addStep('쿼리 분석 중', message, null, 'loading', timestamp);
                 break;
                 
-            case 'query_expanded':
-                this.updateLastLoadingStep('쿼리 확장 완료', message, data, 'success', timestamp);
+            case 'query_analyzed':
+                this.updateLastLoadingStep('쿼리 분석 완료', message, data, 'success', timestamp);
                 this.currentStep = 3;
-                break;
-                
-            case 'intent_analysis':
-                this.addStep('쿼리 의도 분석 중', message, null, 'loading', timestamp);
-                break;
-                
-            case 'intent_analyzed':
-                this.updateLastLoadingStep('쿼리 의도 분석 완료', message, data, 'success', timestamp);
-                this.currentStep = 4;
                 break;
                 
             case 'feature_extraction':
@@ -209,7 +200,7 @@ class StreamingSearchController {
                 
             case 'features_extracted':
                 this.updateLastLoadingStep('특징 추출 완료', message, data, 'success', timestamp);
-                this.currentStep = 5;
+                this.currentStep = 4;
                 break;
                 
             case 'embedding_generation':
@@ -218,7 +209,7 @@ class StreamingSearchController {
                 
             case 'embeddings_generated':
                 this.updateLastLoadingStep('임베딩 생성 완료', message, data, 'success', timestamp);
-                this.currentStep = 6;
+                this.currentStep = 5;
                 break;
                 
             case 'search_execution':
@@ -227,7 +218,7 @@ class StreamingSearchController {
                 
             case 'search_executed':
                 this.updateLastLoadingStep('검색 실행 완료', message, data, 'success', timestamp);
-                this.currentStep = 7;
+                this.currentStep = 6;
                 break;
                 
             case 'result_enrichment':
@@ -236,7 +227,7 @@ class StreamingSearchController {
                 
             case 'result_enriched':
                 this.updateLastLoadingStep('결과 보강 완료', message, data, 'success', timestamp);
-                this.currentStep = 8;
+                this.currentStep = 7;
                 break;
                 
             case 'completed':

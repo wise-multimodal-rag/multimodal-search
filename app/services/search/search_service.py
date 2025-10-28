@@ -625,7 +625,7 @@ class SearchService:
                         "result_count": len(results_data)
                     },
                     "total_time_ms": total_time * 1000,
-                    "processing_steps": 8,
+                    "processing_steps": 7,
                     "query_analysis": {
                         "selected_element_types": query_analysis.get("selected_element_types", []),
                         "confidence": query_analysis.get("confidence", 0.0)
@@ -647,7 +647,7 @@ class SearchService:
                         "results": results_data[:5],  # 처음 5개만
                         "search_stats": temp_completed_data["search_stats"],
                         "total_time_ms": temp_completed_data["total_time_ms"],
-                        "processing_steps": 8,
+                        "processing_steps": 7,
                         "message": f"결과가 너무 커서 {len(results_data)}개 중 5개만 표시합니다"
                     }
                 else:
@@ -682,7 +682,7 @@ class SearchService:
                         "results": [],
                         "search_stats": {"total_results": 0},
                         "total_time_ms": total_time * 1000,
-                        "processing_steps": 8,
+                        "processing_steps": 7,
                         "error": f"Data serialization failed: {str(e)}"
                     }
                 }
