@@ -109,10 +109,12 @@ class FileHandler {
     updateFileButtonState() {
         Object.entries(this.selectedFiles).forEach(([type, file]) => {
             const button = document.querySelector(`[onclick*="${type}Input"]`);
-            if (file) {
-                button.classList.add('selected');
-            } else {
-                button.classList.remove('selected');
+            if (button) {
+                if (file) {
+                    button.classList.add('selected');
+                } else {
+                    button.classList.remove('selected');
+                }
             }
         });
     }
