@@ -23,10 +23,13 @@ class Settings(BaseSettings):
     feature_extraction_api_url: str = Field(default="http://localhost:8002", alias="FEATURE_EXTRACTION_API_URL")
     multimodal_api_key: str = Field(default="your-api-key-here", alias="MULTIMODAL_API_KEY")
 
-    # LiteLLM Configuration
+    # LiteLLM Configuration - Query Analysis & Processing
     litellm_url: str = Field(default="http://localhost:4000", alias="LITELLM_URL")
     litellm_api_key: str = Field(default="your-api-key", alias="LITELLM_API_KEY")
     litellm_model: str = Field(default="gpt-3.5-turbo", alias="LITELLM_MODEL")
+    
+    # LiteLLM Configuration - Generation
+    litellm_generation_model: str = Field(default="claude-3-5-sonnet-20241022", alias="LITELLM_GENERATION_MODEL")
 
     # Application Configuration
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")

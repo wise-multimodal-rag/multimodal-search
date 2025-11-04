@@ -6,6 +6,7 @@ from app.clients.llm_client import LLMClient
 from app.services import (EmbeddingService, InputProcessor, MultimodalFeatureExtractor,
                           OpenSearchService, QueryAnalyzer, ResultEnricher,
                           SearchExecutor, SearchService)
+from app.services.generation import AnswerGenerationService
 
 
 @lru_cache()
@@ -80,3 +81,9 @@ def get_search_service() -> SearchService:
         result_enricher=get_result_enricher(),
         search_executor=get_search_executor(),
     )
+
+
+@lru_cache()
+def get_answer_generation_service() -> AnswerGenerationService:
+    """Get singleton instance of AnswerGenerationService"""
+    return AnswerGenerationService(llm_client=get_llm_client())

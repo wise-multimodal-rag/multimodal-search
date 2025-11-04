@@ -12,6 +12,7 @@ class LLMClient:
         self.base_url = settings.litellm_url
         self.api_key = security_manager.get_api_key("LITELLM_API_KEY") or settings.litellm_api_key
         self.model = settings.litellm_model
+        self.generation_model = settings.litellm_generation_model
         self.timeout = 60.0
 
     async def complete(
@@ -20,17 +21,19 @@ class LLMClient:
         temperature: float = 0.3,
         max_tokens: Optional[int] = None,
         force_json: bool = False,
+        use_generation_model: bool = False,
     ) -> Optional[str]:
         """Get completion from LLM"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                payload = {"model": self.model, "messages": messages, "temperature": temperature}
+                model = self.generation_model if use_generation_model else self.model
+                payload = {"model": model, "messages": messages, "temperature": temperature}
 
                 if max_tokens:
                     payload["max_tokens"] = max_tokens
 
                 # Gemini-specific settings - only force JSON when explicitly requested
-                if "gemini" in self.model.lower() and force_json:
+                if "gemini" in model.lower() and force_json:
                     payload["response_format"] = {"type": "json_object"}
                     payload["extra_body"] = {"generationConfig": {"responseMimeType": "application/json"}}
 

@@ -322,6 +322,7 @@ async def search_multimodal_stream(
     )
 
 
+
 @router.get("/demo", response_class=HTMLResponse)
 async def search_demo_interface(request: Request):
     """Multimodal search demo interface"""
