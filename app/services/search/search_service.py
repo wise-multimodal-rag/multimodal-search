@@ -79,7 +79,7 @@ class SearchService:
         text_file: Optional[UploadFile] = None,
         include_chunk_meta: bool = True,
         include_media_meta: bool = True,
-        max_results: int = 10,
+        max_results: int = 5,
     ) -> SearchResponse:
         """멀티모달 검색 오케스트레이션"""
         start_time = self._get_current_time_ms()
@@ -183,7 +183,7 @@ class SearchService:
         processed_files: Optional[Dict[str, Dict[str, Any]]] = None,
         include_chunk_meta: bool = True,
         include_media_meta: bool = True,
-        max_results: int = 10,
+        max_results: int = 5,
         files_were_provided: bool = False,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """스트리밍 방식의 멀티모달 검색 오케스트레이션"""

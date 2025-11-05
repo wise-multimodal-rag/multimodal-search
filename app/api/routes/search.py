@@ -7,10 +7,11 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from app.core.dependencies import get_search_service
+from app.core.dependencies import get_answer_generation_service, get_search_service
 from app.core.validators import input_validator
 from app.models.opensearch import SearchResponse
 from app.services import SearchService
+from app.services.generation import AnswerGenerationService
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -25,7 +26,7 @@ async def search_multimodal(
     text_file: Optional[UploadFile] = File(default=None, description="텍스트 파일"),
     include_chunk_meta: bool = Form(default=True, description="Chunk 메타데이터 포함 여부"),
     include_media_meta: bool = Form(default=True, description="Media 메타데이터 포함 여부"),
-    max_results: int = Form(default=10, ge=1, le=100, description="최대 결과 수"),
+    max_results: int = Form(default=5, ge=1, le=100, description="최대 결과 수"),
     search_service: SearchService = Depends(get_search_service),
 ):
     """진정한 멀티모달 검색 엔드포인트 - 텍스트, 이미지, 비디오, 오디오 조합 입력"""
@@ -148,10 +149,15 @@ async def search_multimodal_stream(
     text_file: Optional[UploadFile] = File(default=None, description="텍스트 파일"),
     include_chunk_meta: bool = Form(default=True, description="Chunk 메타데이터 포함 여부"),
     include_media_meta: bool = Form(default=True, description="Media 메타데이터 포함 여부"),
-    max_results: int = Form(default=10, ge=1, le=100, description="최대 결과 수"),
+    max_results: int = Form(default=5, ge=1, le=100, description="최대 결과 수"),
+    generate_answer: bool = Form(default=False, description="AI 답변도 함께 생성"),
+    temperature: float = Form(default=0.7, ge=0.0, le=2.0, description="답변 생성 온도"),
+    max_retries: int = Form(default=2, ge=0, le=5, description="답변 재생성 최대 횟수"),
     search_service: SearchService = Depends(get_search_service),
+    generation_service: AnswerGenerationService = Depends(get_answer_generation_service),
 ):
     """실시간 스트리밍 방식의 멀티모달 검색 엔드포인트"""
+    logger.info(f"🚀 Stream API called with generate_answer={generate_answer}, temperature={temperature}, max_retries={max_retries}")
     # 요청 받자마자 즉시 파일들을 읽어서 메모리에 보관
     processed_files = {}
     file_processing_errors = []
@@ -257,6 +263,9 @@ async def search_multimodal_stream(
             # 파일이 제공되었는지 확인 (실제 파일 업로드 시도가 있었는지)
             files_were_provided = any([image, video, audio, text_file])
 
+            # 검색 결과를 저장할 변수
+            search_results = None
+            
             # 처리된 파일 데이터와 함께 스트리밍 검색 시작
             async for step_result in search_service.search_multimodal_stream(
                 text_query=text_query,
@@ -266,6 +275,10 @@ async def search_multimodal_stream(
                 max_results=max_results,
                 files_were_provided=files_were_provided,
             ):
+                # 검색 완료 단계에서 결과 저장
+                if step_result.get('step') == 'completed' and step_result.get('data'):
+                    search_results = step_result.get('data')
+                
                 # SSE 형식으로 데이터 전송 - 안전한 JSON 직렬화
                 try:
                     json_data = json.dumps(step_result, ensure_ascii=False, default=str)
@@ -299,6 +312,83 @@ async def search_multimodal_stream(
                         "step": "serialization_error",
                         "message": f"데이터 직렬화 실패: {str(json_error)}",
                         "timestamp": time.time(),
+                    }
+                    yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+            
+            # 답변 생성이 요청된 경우 추가 처리
+            logger.info(f"🔍 Answer generation check: generate_answer={generate_answer}, search_results exists={bool(search_results)}")
+            if generate_answer and search_results:
+                logger.info("🤖 Starting answer generation after search completion")
+                
+                try:
+                    # 검색 결과를 SearchResponse 형태로 변환
+                    from app.models.opensearch import SearchResponse
+                    search_response = SearchResponse(
+                        query=text_query or "",
+                        total_hits=len(search_results.get('results', [])),
+                        max_score=search_results.get('search_stats', {}).get('max_score', 0.0),
+                        results=search_results.get('results', []),
+                        took_ms=search_results.get('search_stats', {}).get('took_ms', 0),
+                        element_types_used=search_results.get('query_analysis', {}).get('selected_element_types', [])
+                    )
+                    
+                    # 답변 생성 시작 신호
+                    yield f"data: {json.dumps({'step': 'answer_generation_start', 'message': 'AI 답변 생성을 시작합니다', 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
+                    
+                    # 초안 생성 신호
+                    yield f"data: {json.dumps({'step': 'draft_generation', 'message': '검색 결과를 분석하여 답변 초안을 생성하고 있습니다', 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
+                    
+                    # 실제 답변 생성 (블로킹 호출)
+                    generation_result = await generation_service.generate_answer(
+                        query=text_query or "",
+                        search_results=search_response,
+                        max_retries=max_retries,
+                        temperature=temperature,
+                    )
+                    
+                    # 생성 과정 단계별 전송
+                    if generation_result.get('generation_attempts'):
+                        for attempt in generation_result['generation_attempts']:
+                            if attempt.get('attempt') == 1:
+                                # 답변 초안 생성 완료 - 상세 데이터 포함
+                                draft_data = {
+                                    'attempt_number': attempt.get('attempt', 1),
+                                    'answer_length': len(attempt.get('answer', '')),
+                                    'processing_time_ms': attempt.get('processing_time_ms', 0),
+                                    'temperature': generation_result.get('temperature', 0.7),
+                                    'draft_preview': attempt.get('answer', '')[:100] + '...' if len(attempt.get('answer', '')) > 100 else attempt.get('answer', ''),
+                                    'search_context_size': len(search_response.results) if search_response else 0
+                                }
+                                yield f"data: {json.dumps({'step': 'draft_generated', 'message': '답변 초안 생성이 완료되었습니다', 'data': draft_data, 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
+                                
+                                yield f"data: {json.dumps({'step': 'reflection', 'message': '생성된 답변의 품질을 검토하고 있습니다', 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
+                                
+                                # 품질 검토 완료 - 상세 데이터 포함
+                                reflection_data = {
+                                    'reflection': attempt.get('reflection', {}),
+                                    'is_acceptable': attempt.get('is_acceptable', False),
+                                    'total_score': attempt.get('reflection', {}).get('total_score', 0),
+                                    'scores': attempt.get('reflection', {}).get('scores', {}),
+                                    'improvement_suggestions': attempt.get('improvement_suggestions', []),
+                                    'answer_quality': '우수' if attempt.get('is_acceptable') else '재생성 필요'
+                                }
+                                yield f"data: {json.dumps({'step': 'reflection_completed', 'message': '품질 검토가 완료되었습니다', 'data': reflection_data, 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
+                                
+                                if not attempt.get('is_acceptable') and generation_result.get('total_attempts', 1) > 1:
+                                    yield f"data: {json.dumps({'step': 'regenerating', 'message': '품질 개선을 위해 답변을 재생성하고 있습니다', 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
+                    
+                    # 답변 생성 완료
+                    yield f"data: {json.dumps({'step': 'answer_completed', 'message': 'AI 답변 생성이 완료되었습니다', 'data': generation_result, 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
+                    
+                    logger.info("✅ Answer generation completed successfully")
+                    
+                except Exception as gen_error:
+                    logger.error(f"❌ Answer generation failed: {gen_error}")
+                    error_data = {
+                        "step": "answer_generation_error",
+                        "message": f"답변 생성 중 오류가 발생했습니다: {str(gen_error)}",
+                        "timestamp": time.time(),
+                        "error": str(gen_error)
                     }
                     yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 

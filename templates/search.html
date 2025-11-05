@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multimodal Search</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔍</text></svg>">
-    <link rel="stylesheet" href="/static/css/search.css?v=30.0">
+    <link rel="stylesheet" href="/static/css/search.css?v=33.0">
     <link rel="stylesheet" href="/static/css/streaming.css?v=29.0">
 </head>
 <body>
@@ -21,13 +21,16 @@
         <!-- 검색 입력 -->
         <div class="search-input-container">
             <div class="search-input-header">
-                <div class="search-input-title">검색 입력</div>
-                <div class="search-input-description">텍스트와 미디어 파일을 조합하여 검색하세요</div>
+                <div class="search-input-title">멀티모달 검색</div>
+                <div class="search-input-description">텍스트와 미디어 파일을 조합하여 검색하고, LLM 답변을 생성할 수 있습니다</div>
             </div>
 
             <div class="chat-input">
                 <div class="input-section">
-                    <input type="text" id="messageInput" placeholder="검색어를 입력하세요">
+                    <input type="text" id="messageInput" placeholder="검색어를 입력하세요 (Enter: 검색, Shift+Enter: LLM답변생성)">
+                </div>
+                
+                <div class="action-row">
                     <div class="file-inputs">
                         <input type="file" id="textFileInput" accept=".txt,.md,.csv,.json,.xml,.html,.pdf,text/*,application/pdf,application/json" style="display: none;">
                         <input type="file" id="imageInput" accept="image/*" style="display: none;">
@@ -47,8 +50,13 @@
                             🎥
                         </button>
                     </div>
+                    
+                    <div class="button-group">
+                        <button id="searchButton" onclick="performSearch()">검색</button>
+                        <button id="generateButton" onclick="performSearchAndGenerate()">LLM 답변 생성</button>
+                        <button id="stopButton" onclick="stopSearch()" style="display: none;">중지</button>
+                    </div>
                 </div>
-                <button id="sendButton" onclick="sendMessage()">검색</button>
             </div>
 
             <div id="selectedFiles" class="selected-files"></div>
@@ -61,7 +69,7 @@
             <div class="option-group">
                 <div class="settings-row">
                     <label>결과 수:</label>
-                    <input type="number" id="maxResults" value="10" min="1" max="50" style="width: 70px;">
+                    <input type="number" id="maxResults" value="5" min="1" max="50" style="width: 70px;">
                 </div>
             </div>
 
@@ -76,6 +84,7 @@
                     <label for="includeMediaMeta">미디어 메타데이터</label>
                 </div>
             </div>
+
         </div>
 
         <!-- 빠른 검색 -->
@@ -102,6 +111,17 @@
 
     <!-- 메인 콘텐츠 -->
     <div class="main-content">
+        <!-- AI 생성 답변 레이어 -->
+        <div class="ai-answer-container" id="aiAnswerContainer" style="display: none;">
+            <div class="ai-answer-header" id="aiAnswerHeader">
+                <div class="ai-answer-title">생성된 답변</div>
+                <div class="ai-answer-info" id="aiAnswerInfo">검색 결과를 기반으로 생성된 AI 답변입니다</div>
+            </div>
+            <div class="ai-answer-content" id="aiAnswerContent">
+                <!-- AI 답변 내용이 여기에 동적으로 추가됩니다 -->
+            </div>
+        </div>
+
         <!-- 검색 결과 (최우선 표시) -->
         <div class="search-results-container">
             <div class="search-results-header" id="searchResultsHeader" style="display: none;">
@@ -120,7 +140,7 @@
         <!-- 검색 과정 표시 (접을 수 있는 참고 자료) -->
         <div class="search-process-container" id="searchProcessContainer" style="display: none;">
             <div class="search-process-header">
-                <h2>검색 진행 상황</h2>
+                <h2>진행 상황</h2>
                 <div class="search-progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
                 </div>
@@ -139,9 +159,9 @@
 <script src="/static/js/tooltipManager.js"></script>
 <script src="/static/js/fileHandler.js?v=52.0"></script>
 <script src="/static/js/historyManager.js?v=33.0"></script>
-<script src="/static/js/uiController.js"></script>
-<script src="/static/js/streamingSearch.js?v=51.0"></script>
-<script src="/static/js/search.js?v=47.0"></script>
+<script src="/static/js/uiController.js?v=10.0"></script>
+<script src="/static/js/streamingSearch.js?v=52.0"></script>
+<script src="/static/js/search.js?v=100.0"></script>
 <script>
     // 앱 초기화
     document.addEventListener('DOMContentLoaded', function () {
@@ -240,6 +260,8 @@
                 return window.tempSelectedFiles;
             };
         }
+        
+        // 전역 함수들은 search.js에서 정의됨
     });
 </script>
 </body>

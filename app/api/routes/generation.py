@@ -21,7 +21,7 @@ async def generate_multimodal_answer(
     text_file: Optional[UploadFile] = File(default=None, description="텍스트 파일"),
     include_chunk_meta: bool = Form(default=True, description="Chunk 메타데이터 포함 여부"),
     include_media_meta: bool = Form(default=True, description="Media 메타데이터 포함 여부"),
-    max_results: int = Form(default=10, ge=1, le=100, description="최대 검색 결과 수"),
+    max_results: int = Form(default=5, ge=1, le=100, description="최대 검색 결과 수"),
     temperature: float = Form(default=0.7, ge=0.0, le=2.0, description="생성 온도"),
     max_retries: int = Form(default=2, ge=0, le=5, description="재생성 최대 횟수"),
     search_service: SearchService = Depends(get_search_service),

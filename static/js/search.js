@@ -9,75 +9,22 @@ class SearchController {
         this.messageInput = document.getElementById('messageInput');
     }
     
-    async sendMessage() {
-        const message = this.messageInput.value.trim();
-        const hasFiles = (window.hasFiles && window.hasFiles()) || (window.fileHandler && window.fileHandler.hasFiles());
-        
-        if (!message && !hasFiles) return;
+    async performSearchOnly() {
+        const formData = this.prepareFormData('search_only');
+        if (!formData) return;
 
-        // Check if this looks like a conversational query
-        if (message && window.uiController.checkConversationalQuery(message)) {
-            window.uiController.clearInput();
-            window.uiController.showConversationalGuide();
-            return;
-        }
-
-        // 검색 히스토리에 추가
-        const historyText = this.buildHistoryText(message, hasFiles);
-        const originalText = message;
-        const isFileOnly = !message && hasFiles;
+        this.startSearchProcess();
         
-        if (historyText && window.historyManager) {
-            window.historyManager.addToSearchHistory(historyText, originalText, isFileOnly, null);
+        // 검색만 수행 시 AI 답변 레이어 숨김
+        const aiAnswerContainer = document.getElementById('aiAnswerContainer');
+        if (aiAnswerContainer) {
+            aiAnswerContainer.style.display = 'none';
         }
-        
-        window.uiController.clearInput();
-        window.uiController.disableSearchButton();
-        
-        // 기존 검색 결과 숨기기
-        if (this.searchResultsHeader) {
-            this.searchResultsHeader.style.display = 'none';
-        }
-        this.searchResultsContent.innerHTML = '';
 
         try {
-            // Prepare form data for streaming
-            const formData = new FormData();
-            if (message) {
-                formData.append('text_query', message);
-            }
-            
-            // Add files if selected
-            const selectedFiles = window.tempSelectedFiles || (window.fileHandler && window.fileHandler.getSelectedFiles()) || (window.getSelectedFiles && window.getSelectedFiles());
-            
-            if (selectedFiles) {
-                if (selectedFiles.image) {
-                    formData.append('image', selectedFiles.image);
-                }
-                if (selectedFiles.video) {
-                    formData.append('video', selectedFiles.video);
-                }
-                if (selectedFiles.audio) {
-                    formData.append('audio', selectedFiles.audio);
-                }
-                if (selectedFiles.text_file) {
-                    formData.append('text_file', selectedFiles.text_file);
-                }
-            }
-            
-            formData.append('max_results', document.getElementById('maxResults').value);
-            formData.append('include_chunk_meta', document.getElementById('includeChunkMeta').checked);
-            formData.append('include_media_meta', document.getElementById('includeMediaMeta').checked);
-
-            // Start streaming search
+            // 기존 스트리밍 검색 수행
             if (window.streamingSearchController) {
                 await window.streamingSearchController.startStreamingSearch(formData);
-                
-                // Update search history with streaming results
-                if (window.historyManager) {
-                    // Note: This will be updated once streaming completes
-                    // The streaming controller will handle the final results
-                }
             } else {
                 // Fallback to regular search if streaming is not available
                 await this.fallbackToRegularSearch(formData);
@@ -90,10 +37,140 @@ class SearchController {
 
         } catch (error) {
             console.error('Search failed:', error);
-            window.uiController.showError(error);
+            if (window.uiController && typeof window.uiController.showError === 'function') {
+                window.uiController.showError(error);
+            }
         } finally {
-            window.uiController.enableSearchButton();
+            if (window.uiController && typeof window.uiController.enableSearchButton === 'function') {
+                window.uiController.enableSearchButton();
+            }
+            // 검색 완료 시 버튼 상태 복원
+            this.restoreButtonState();
         }
+    }
+
+    async performSearchAndGenerate() {
+        const formData = this.prepareFormData('search_with_answer');
+        if (!formData) return;
+
+        this.startSearchProcess();
+
+        try {
+            // 통합 스트리밍 API 사용 - 답변 생성 파라미터 추가
+            formData.append('generate_answer', 'true');
+            formData.append('temperature', '0.7');
+            formData.append('max_retries', '2');
+            
+            // 기존 스트리밍 검색 로직 재사용
+            if (window.streamingSearchController) {
+                await window.streamingSearchController.startStreamingSearch(formData);
+            } else {
+                throw new Error('Streaming controller not available');
+            }
+
+            // Clear files after successful search
+            if (window.fileHandler) {
+                window.fileHandler.clearFiles();
+            }
+
+        } catch (error) {
+            console.error('Answer generation failed:', error);
+            if (window.uiController && typeof window.uiController.showError === 'function') {
+                window.uiController.showError(`답변 생성 실패: ${error.message}`);
+            }
+        } finally {
+            if (window.uiController && typeof window.uiController.enableSearchButton === 'function') {
+                window.uiController.enableSearchButton();
+            }
+            // 검색 완료 시 버튼 상태 복원
+            this.restoreButtonState();
+        }
+    }
+
+    prepareFormData(searchType = 'search_only') {
+        const message = this.messageInput.value.trim();
+        const hasFiles = (window.hasFiles && window.hasFiles()) || (window.fileHandler && window.fileHandler.hasFiles());
+        
+        if (!message && !hasFiles) return null;
+
+        // Check if this looks like a conversational query
+        try {
+            if (message && window.uiController && typeof window.uiController.checkConversationalQuery === 'function') {
+                if (window.uiController.checkConversationalQuery(message)) {
+                    if (typeof window.uiController.clearInput === 'function') {
+                        window.uiController.clearInput();
+                    }
+                    if (typeof window.uiController.showConversationalGuide === 'function') {
+                        window.uiController.showConversationalGuide();
+                    }
+                    return null;
+                }
+            }
+        } catch (error) {
+            console.warn('uiController method call failed:', error);
+            // Continue with normal flow
+        }
+
+        // 검색 히스토리에 추가
+        const historyText = this.buildHistoryText(message, hasFiles);
+        const originalText = message;
+        const isFileOnly = !message && hasFiles;
+        
+        if (historyText && window.historyManager) {
+            window.historyManager.addToSearchHistory(historyText, originalText, isFileOnly, null, searchType);
+        }
+
+        // Prepare form data for streaming
+        const formData = new FormData();
+        if (message) {
+            formData.append('text_query', message);
+        }
+        
+        // Add files if selected
+        const selectedFiles = window.tempSelectedFiles || (window.fileHandler && window.fileHandler.getSelectedFiles()) || (window.getSelectedFiles && window.getSelectedFiles());
+        
+        if (selectedFiles) {
+            if (selectedFiles.image) {
+                formData.append('image', selectedFiles.image);
+            }
+            if (selectedFiles.video) {
+                formData.append('video', selectedFiles.video);
+            }
+            if (selectedFiles.audio) {
+                formData.append('audio', selectedFiles.audio);
+            }
+            if (selectedFiles.text_file) {
+                formData.append('text_file', selectedFiles.text_file);
+            }
+        }
+        
+        formData.append('max_results', document.getElementById('maxResults').value);
+        formData.append('include_chunk_meta', document.getElementById('includeChunkMeta').checked);
+        formData.append('include_media_meta', document.getElementById('includeMediaMeta').checked);
+
+        return formData;
+    }
+
+    startSearchProcess() {
+        // 버튼 상태 변경: 검색/생성 버튼 숨김, 중지 버튼 표시
+        document.getElementById('searchButton').style.display = 'none';
+        document.getElementById('generateButton').style.display = 'none';
+        document.getElementById('stopButton').style.display = 'inline-block';
+        
+        if (window.uiController) {
+            if (typeof window.uiController.clearInput === 'function') {
+                window.uiController.clearInput();
+            }
+            if (typeof window.uiController.disableSearchButton === 'function') {
+                window.uiController.disableSearchButton();
+            }
+        }
+        
+        // 기존 검색 결과 숨기기
+        if (this.searchResultsHeader) {
+            this.searchResultsHeader.style.display = 'none';
+        }
+        this.searchResultsContent.innerHTML = '';
     }
     
     async fallbackToRegularSearch(formData) {
@@ -164,6 +241,13 @@ class SearchController {
         const cleanedLines = lines.map(line => line.trim());
         
         return cleanedLines.join('\n');
+    }
+    
+    restoreButtonState() {
+        // 검색 완료 시 버튼 상태 복원
+        document.getElementById('searchButton').style.display = 'inline-block';
+        document.getElementById('generateButton').style.display = 'inline-block';
+        document.getElementById('stopButton').style.display = 'none';
     }
     
     sanitizeElementForDisplay(element) {
@@ -298,17 +382,38 @@ class SearchController {
         
         this.searchResultsContent.innerHTML = resultsHtml;
     }
+    
 }
 
 // 전역 인스턴스 생성
 window.searchController = new SearchController();
 
 // HTML에서 호출할 수 있도록 전역 함수 정의
-function sendMessage() {
+function performSearch() {
     if (window.searchController) {
-        window.searchController.sendMessage();
+        window.searchController.performSearchOnly();
+    }
+}
+
+function performSearchAndGenerate() {
+    if (window.searchController) {
+        window.searchController.performSearchAndGenerate();
+    }
+}
+
+// 중지 버튼 클릭 시 호출될 함수
+function stopSearch() {
+    if (window.streamingSearchController) {
+        window.streamingSearchController.stopSearch();
+        
+        // 검색 중지 시 버튼 상태 복원
+        document.getElementById('searchButton').style.display = 'inline-block';
+        document.getElementById('generateButton').style.display = 'inline-block';
+        document.getElementById('stopButton').style.display = 'none';
     }
 }
 
 // window 객체에도 명시적으로 할당
-window.sendMessage = sendMessage;
+window.performSearch = performSearch;
+window.performSearchAndGenerate = performSearchAndGenerate;
+window.stopSearch = stopSearch;

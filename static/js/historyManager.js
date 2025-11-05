@@ -27,11 +27,16 @@ class HistoryManager {
         }
     }
     
-    addToSearchHistory(query, originalText = '', isFileOnly = false, searchResult = null) {
-        console.log('🔍 Adding to search history:', { query, originalText, isFileOnly, hasSearchResult: !!searchResult });
+    addToSearchHistory(query, originalText = '', isFileOnly = false, searchResult = null, searchType = null) {
+        console.log('🔍 Adding to search history:', { query, originalText, isFileOnly, hasSearchResult: !!searchResult, searchType });
         
         // 모달리티 타입 결정
         const modality = this.getSearchModality(query, isFileOnly);
+        
+        // 검색 타입 자동 결정 (전달되지 않은 경우)
+        if (!searchType) {
+            searchType = this.determineSearchType(searchResult);
+        }
         
         // 새로운 히스토리 항목 생성
         const historyEntry = {
@@ -40,13 +45,15 @@ class HistoryManager {
             originalText: originalText,
             isFileOnly: isFileOnly,
             modality: modality,
+            searchType: searchType, // 검색 타입 추가 ('search_only' | 'search_with_answer')
             timestamp: Date.now(),
             searchResult: searchResult ? {
                 total_hits: searchResult.total_hits,
                 took_ms: Math.round(searchResult.took_ms) || 0, // 소수점 제거
                 element_types_used: searchResult.element_types_used,
                 results: searchResult.results?.slice(0, 20) || [], // 최대 20개 결과만 저장
-                searchProcess: searchResult.searchProcess || null // 진행 과정 데이터 저장
+                searchProcess: searchResult.searchProcess || null, // 진행 과정 데이터 저장
+                aiAnswer: searchResult.aiAnswer || null // AI 답변 데이터 저장
             } : null
         };
 
@@ -96,6 +103,42 @@ class HistoryManager {
         return '';
     }
     
+    determineSearchType(searchResult) {
+        // AI 답변이 있거나 10단계 진행 과정이 있으면 답변 생성으로 판단
+        if (searchResult) {
+            // AI 답변 데이터가 있는 경우
+            if (searchResult.aiAnswer && searchResult.aiAnswer.final_answer) {
+                return 'search_with_answer';
+            }
+            
+            // 진행 과정에서 답변 생성 단계가 있는 경우
+            if (searchResult.searchProcess && searchResult.searchProcess.length > 0) {
+                const hasAnswerSteps = searchResult.searchProcess.some(step => 
+                    step.step === 'answer_generation_start' || 
+                    step.step === 'answer_completed' || 
+                    step.step === 'draft_generated'
+                );
+                if (hasAnswerSteps) {
+                    return 'search_with_answer';
+                }
+            }
+        }
+        
+        // 기본값은 검색만 수행
+        return 'search_only';
+    }
+    
+    getSearchTypeDisplay(searchType) {
+        switch (searchType) {
+            case 'search_with_answer':
+                return '검색+답변';
+            case 'search_only':
+                return '검색만';
+            default:
+                return '검색만';
+        }
+    }
+    
     updateSearchHistoryUI() {
         const historyData = this.getSearchHistoryData();
         
@@ -135,9 +178,17 @@ class HistoryManager {
             const hasProcessData = entry.searchResult && entry.searchResult.searchProcess && entry.searchResult.searchProcess.length > 0;
             const processIcon = hasProcessData ? '<span class="process-icon" title="검색 진행 과정 포함">⚙️</span>' : '';
             
+            // AI 답변 포함 여부 확인
+            const hasAiAnswer = entry.searchResult && entry.searchResult.aiAnswer && entry.searchResult.aiAnswer.final_answer;
+            const aiAnswerIcon = hasAiAnswer ? '<span class="ai-answer-icon" title="AI 답변 포함">🤖</span>' : '';
+            
+            // 검색 타입 표시 (기존 modality 대신 또는 추가로)
+            const searchTypeText = this.getSearchTypeDisplay(entry.searchType || 'search_only');
+            
             historyItem.innerHTML = `
-                <div class="search-history-query">${entry.query} ${processIcon}</div>
+                <div class="search-history-query">${entry.query} ${processIcon} ${aiAnswerIcon}</div>
                 <div class="search-history-meta">
+                    <div class="search-history-type">${searchTypeText}</div>
                     <div class="search-history-modality">${entry.modality}</div>
                     <div class="search-history-time">${timeText}</div>
                 </div>
@@ -179,10 +230,20 @@ class HistoryManager {
     
     restoreSearchResult(searchResult) {
         console.log('restoreSearchResult called with:', searchResult);
+        console.log('📊 Has AI Answer:', !!searchResult.aiAnswer);
+        console.log('📊 Has Search Process:', !!searchResult.searchProcess, 'Length:', searchResult.searchProcess?.length || 0);
         
         // 검색 결과 복원
         if (window.searchController) {
             window.searchController.displaySearchResults(searchResult);
+        }
+        
+        // AI 답변도 복원 (있는 경우)
+        if (searchResult.aiAnswer && window.streamingSearchController && window.streamingSearchController.renderAnswerResult) {
+            console.log('🤖 Restoring AI answer from history:', searchResult.aiAnswer);
+            window.streamingSearchController.renderAnswerResult(searchResult.aiAnswer);
+        } else if (searchResult.aiAnswer) {
+            console.log('⚠️ AI answer exists but streamingSearchController.renderAnswerResult not available');
         }
         
         // 검색 진행 과정도 복원 (있는 경우)
@@ -242,6 +303,23 @@ class HistoryManager {
         streamingController.searchSteps.innerHTML = '';
         streamingController.currentStep = 0;
         streamingController.searchProcessData = [...searchProcessData]; // 데이터 복사
+        
+        // 답변 생성 포함 여부 미리 확인
+        const hasAnswerGeneration = searchProcessData.some(s => 
+            s.step === 'answer_generation_start' || 
+            s.step === 'answer_completed' || 
+            s.step === 'draft_generated'
+        );
+        
+        if (hasAnswerGeneration) {
+            streamingController.totalSteps = 10;
+            streamingController.hasAnswerGeneration = true;
+            console.log('🤖 History restore: Setting 10-step mode for answer generation');
+        } else {
+            streamingController.totalSteps = 7;
+            streamingController.hasAnswerGeneration = false;
+            console.log('🔍 History restore: Setting 7-step mode for search only');
+        }
         
         // 히스토리 복원 모드 클래스 추가
         streamingController.searchProcessContainer.classList.add('history-restore');
@@ -306,6 +384,55 @@ class HistoryManager {
                     case 'completed':
                         streamingController.addStep('검색 완료', message, data, 'success', timestamp);
                         break;
+                        
+                    // 답변 생성 단계들 추가
+                    case 'answer_generation_start':
+                        streamingController.addStep('답변 생성 시작', message, data, 'info', timestamp);
+                        streamingController.currentStep = 8;
+                        break;
+                    case 'draft_generation':
+                        streamingController.addStep('답변 초안 생성 중', message, null, 'loading', timestamp);
+                        break;
+                    case 'draft_generated':
+                        // 메타데이터를 포함한 데이터 객체 생성
+                        const draftMetadata = data && streamingController.createAnswerMetadata ? {
+                            ...data,
+                            _metadata: streamingController.createAnswerMetadata(data, '초안 생성')
+                        } : data;
+                        streamingController.addStep('답변 초안 생성 완료', message, draftMetadata, 'success', timestamp);
+                        streamingController.currentStep = 9;
+                        break;
+                    case 'reflection':
+                        streamingController.addStep('답변 품질 검토 중', message, null, 'loading', timestamp);
+                        break;
+                    case 'reflection_completed':
+                        // 메타데이터를 포함한 데이터 객체 생성
+                        const reflectionMetadata = data && streamingController.createReflectionMetadata ? {
+                            ...data,
+                            _metadata: streamingController.createReflectionMetadata(data)
+                        } : data;
+                        streamingController.addStep('답변 품질 검토 완료', message, reflectionMetadata, 'success', timestamp);
+                        break;
+                    case 'regenerating':
+                        streamingController.addStep('답변 재생성 중', message, null, 'loading', timestamp);
+                        break;
+                    case 'answer_completed':
+                        // 메타데이터를 포함한 데이터 객체 생성
+                        const finalMetadata = data && streamingController.createFinalAnswerMetadata ? {
+                            ...data,
+                            _metadata: streamingController.createFinalAnswerMetadata(data)
+                        } : data;
+                        streamingController.addStep('답변 생성 완료', message, finalMetadata, 'success', timestamp);
+                        streamingController.currentStep = 10;
+                        // 답변 결과 렌더링
+                        if (data && streamingController.renderAnswerResult) {
+                            streamingController.renderAnswerResult(data);
+                        }
+                        break;
+                    case 'answer_generation_error':
+                        streamingController.addStep('답변 생성 실패', message, data, 'error', timestamp);
+                        break;
+                        
                     case 'error':
                         streamingController.addStep('오류 발생', message, data, 'error', timestamp);
                         break;
@@ -323,8 +450,25 @@ class HistoryManager {
                 // 마지막 단계 완료 후 접기
                 if (index === searchProcessData.length - 1) {
                     setTimeout(() => {
-                        // 완료된 검색이므로 currentStep을 totalSteps로 설정하여 8/8 표시
-                        streamingController.currentStep = streamingController.totalSteps;
+                        // 최고 단계 찾기 (이미 totalSteps는 설정됨)
+                        const maxStep = Math.max(...searchProcessData.map(s => {
+                            switch(s.step) {
+                                case 'start': return 1;
+                                case 'input_processed': return 2;
+                                case 'query_analyzed': return 3;
+                                case 'features_extracted': return 4;
+                                case 'embeddings_generated': return 5;
+                                case 'search_executed': return 6;
+                                case 'result_enriched': return 7;
+                                case 'answer_generation_start': return 8;
+                                case 'draft_generated': return 9;
+                                case 'answer_completed': return 10;
+                                default: return 0;
+                            }
+                        }));
+                        streamingController.currentStep = Math.max(maxStep, streamingController.currentStep);
+                        
+                        console.log(`🏁 History restore completed: ${streamingController.currentStep}/${streamingController.totalSteps}`);
                         streamingController.updateProgress();
                         streamingController.makeCollapsible();
                     }, 500);
@@ -345,14 +489,21 @@ class HistoryManager {
         console.log('📋 Current history data length:', historyData.length);
         
         if (historyData.length > 0) {
-            // 가장 최근 항목에 검색 결과 추가
-            historyData[0].searchResult = {
-                total_hits: searchResult.total_hits,
-                took_ms: Math.round(searchResult.took_ms) || 0, // 소수점 제거
-                element_types_used: searchResult.element_types_used,
-                results: searchResult.results?.slice(0, 20) || [], // 최대 20개 결과만 저장
-                searchProcess: searchResult.searchProcess || null // 진행 과정 데이터 저장
-            };
+            // 기존 searchResult가 없으면 새로 생성, 있으면 업데이트
+            if (!historyData[0].searchResult) {
+                historyData[0].searchResult = {};
+            }
+            
+            // 가장 최근 항목에 검색 결과 업데이트 (기존 데이터 유지)
+            const currentResult = historyData[0].searchResult;
+            
+            // 새로운 데이터로 업데이트 (있는 경우만)
+            if (searchResult.total_hits !== undefined) currentResult.total_hits = searchResult.total_hits;
+            if (searchResult.took_ms !== undefined) currentResult.took_ms = Math.round(searchResult.took_ms) || 0;
+            if (searchResult.element_types_used !== undefined) currentResult.element_types_used = searchResult.element_types_used;
+            if (searchResult.results !== undefined) currentResult.results = searchResult.results?.slice(0, 20) || [];
+            if (searchResult.searchProcess !== undefined) currentResult.searchProcess = searchResult.searchProcess;
+            if (searchResult.aiAnswer !== undefined) currentResult.aiAnswer = searchResult.aiAnswer;
             
             console.log('✅ Updated latest history entry with results');
             
@@ -365,6 +516,46 @@ class HistoryManager {
             console.log('✅ Search history UI updated with results');
         } else {
             console.log('❌ No history data found to update with results');
+        }
+    }
+    
+    // AI 답변 데이터를 검색 히스토리에 추가하는 함수
+    updateSearchHistoryWithAnswer(answerData) {
+        console.log('🤖 Updating search history with AI answer:', {
+            hasAnswer: !!answerData?.final_answer,
+            answerLength: answerData?.final_answer?.length || 0,
+            attempts: answerData?.total_attempts || 0
+        });
+        
+        // localStorage에서 히스토리 데이터 가져오기
+        let historyData = this.getSearchHistoryData();
+        
+        if (historyData.length > 0 && answerData) {
+            // 가장 최근 항목에 AI 답변 데이터 추가
+            if (!historyData[0].searchResult) {
+                historyData[0].searchResult = {};
+            }
+            
+            historyData[0].searchResult.aiAnswer = {
+                final_answer: answerData.final_answer,
+                processing_time_ms: answerData.processing_time_ms,
+                total_attempts: answerData.total_attempts,
+                success: answerData.success,
+                generation_attempts: answerData.generation_attempts?.slice(0, 5) || [], // 최대 5개 시도만 저장
+                search_context: answerData.search_context
+            };
+            
+            console.log('✅ Updated latest history entry with AI answer');
+            
+            // 저장
+            this.saveSearchHistoryData(historyData);
+            console.log('✅ Search history with AI answer saved');
+            
+            // UI 업데이트
+            this.updateSearchHistoryUI();
+            console.log('✅ Search history UI updated with AI answer');
+        } else {
+            console.log('❌ No history data found to update with AI answer');
         }
     }
     

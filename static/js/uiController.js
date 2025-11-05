@@ -4,7 +4,8 @@
 class UIController {
     constructor() {
         this.messageInput = document.getElementById('messageInput');
-        this.sendButton = document.getElementById('sendButton');
+        this.searchButton = document.getElementById('searchButton');
+        this.generateButton = document.getElementById('generateButton');
         this.searchResultsContent = document.getElementById('searchResultsContent');
         this.searchResultsHeader = document.getElementById('searchResultsHeader');
         this.searchResultsInfo = document.getElementById('searchResultsInfo');
@@ -13,23 +14,46 @@ class UIController {
     }
     
     initializeEventListeners() {
-        // 엔터키로 검색 실행
+        // 엔터키로 기본 검색 실행
         this.messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                this.handleSendMessage();
+                this.handleSearch();
+            }
+        });
+        
+        // Shift+Enter로 검색+생성 실행
+        this.messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && e.shiftKey) {
+                e.preventDefault();
+                this.handleSearchAndGenerate();
             }
         });
         
         // 검색 버튼 클릭
-        this.sendButton.addEventListener('click', () => {
-            this.handleSendMessage();
-        });
+        if (this.searchButton) {
+            this.searchButton.addEventListener('click', () => {
+                this.handleSearch();
+            });
+        }
+        
+        // 생성 버튼 클릭
+        if (this.generateButton) {
+            this.generateButton.addEventListener('click', () => {
+                this.handleSearchAndGenerate();
+            });
+        }
     }
     
-    handleSendMessage() {
+    handleSearch() {
         if (window.searchController) {
-            window.searchController.sendMessage();
+            window.searchController.performSearchOnly();
+        }
+    }
+    
+    handleSearchAndGenerate() {
+        if (window.searchController) {
+            window.searchController.performSearchAndGenerate();
         }
     }
     
@@ -89,11 +113,13 @@ class UIController {
     }
     
     disableSearchButton() {
-        this.sendButton.disabled = true;
+        if (this.searchButton) this.searchButton.disabled = true;
+        if (this.generateButton) this.generateButton.disabled = true;
     }
     
     enableSearchButton() {
-        this.sendButton.disabled = false;
+        if (this.searchButton) this.searchButton.disabled = false;
+        if (this.generateButton) this.generateButton.disabled = false;
     }
     
     focusMessageInput() {

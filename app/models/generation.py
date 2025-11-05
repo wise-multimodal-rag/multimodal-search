@@ -28,7 +28,7 @@ class GenerationRequest(BaseModel):
     text_file: Optional[Dict[str, Any]] = Field(default=None, description="텍스트 파일 정보")
     include_chunk_meta: bool = Field(default=True, description="Chunk 메타데이터 포함 여부")
     include_media_meta: bool = Field(default=True, description="Media 메타데이터 포함 여부")
-    max_results: int = Field(default=10, ge=1, le=100, description="최대 검색 결과 수")
+    max_results: int = Field(default=5, ge=1, le=100, description="최대 검색 결과 수")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="생성 온도")
     max_retries: int = Field(default=2, ge=0, le=5, description="재생성 최대 횟수")
 

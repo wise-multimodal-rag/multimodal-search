@@ -205,8 +205,8 @@
 }
 
 .search-step.warning {
-    border-left-color: #10b981;
-    background: #f0fdf4;
+    border-left-color: #f59e0b;
+    background: #fffbeb;
 }
 
 @keyframes pulse {
@@ -446,6 +446,8 @@
     max-width: calc(100% - 90px); /* 시간 표시 공간(80px) + 여유공간 확보 */
     overflow: hidden;
 }
+
+/* 답변 생성 단계별 메타데이터는 기존 .step-details와 .data-item 클래스 사용 */
 
 .step-title {
     font-weight: 600;
