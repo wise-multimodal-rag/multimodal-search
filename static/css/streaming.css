@@ -224,6 +224,40 @@
     }
 }
 
+/* 답변 초안 내용 스타일 */
+.draft-content {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #374151;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.draft-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.draft-content::-webkit-scrollbar-track {
+    background: #f1f3f4;
+    border-radius: 3px;
+}
+
+.draft-content::-webkit-scrollbar-thumb {
+    background: #c1c8cd;
+    border-radius: 3px;
+}
+
+.draft-content::-webkit-scrollbar-thumb:hover {
+    background: #a8b2ba;
+}
+
 /* 로딩 스피너 */
 .loading-spinner {
     display: inline-block;

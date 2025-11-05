@@ -48,9 +48,9 @@ class HistoryManager {
             searchType: searchType, // 검색 타입 추가 ('search_only' | 'search_with_answer')
             timestamp: Date.now(),
             searchResult: searchResult ? {
-                total_hits: searchResult.total_hits,
+                total_hits: searchResult.total_hits || 0,
                 took_ms: Math.round(searchResult.took_ms) || 0, // 소수점 제거
-                element_types_used: searchResult.element_types_used,
+                element_types_used: searchResult.element_types_used || [],
                 results: searchResult.results?.slice(0, 20) || [], // 최대 20개 결과만 저장
                 searchProcess: searchResult.searchProcess || null, // 진행 과정 데이터 저장
                 aiAnswer: searchResult.aiAnswer || null // AI 답변 데이터 저장
@@ -498,9 +498,9 @@ class HistoryManager {
             const currentResult = historyData[0].searchResult;
             
             // 새로운 데이터로 업데이트 (있는 경우만)
-            if (searchResult.total_hits !== undefined) currentResult.total_hits = searchResult.total_hits;
+            if (searchResult.total_hits !== undefined) currentResult.total_hits = searchResult.total_hits || 0;
             if (searchResult.took_ms !== undefined) currentResult.took_ms = Math.round(searchResult.took_ms) || 0;
-            if (searchResult.element_types_used !== undefined) currentResult.element_types_used = searchResult.element_types_used;
+            if (searchResult.element_types_used !== undefined) currentResult.element_types_used = searchResult.element_types_used || [];
             if (searchResult.results !== undefined) currentResult.results = searchResult.results?.slice(0, 20) || [];
             if (searchResult.searchProcess !== undefined) currentResult.searchProcess = searchResult.searchProcess;
             if (searchResult.aiAnswer !== undefined) currentResult.aiAnswer = searchResult.aiAnswer;
@@ -544,6 +544,18 @@ class HistoryManager {
                 generation_attempts: answerData.generation_attempts?.slice(0, 5) || [], // 최대 5개 시도만 저장
                 search_context: answerData.search_context
             };
+            
+            // LLM 답변 생성의 경우 전체 처리 시간을 took_ms에 업데이트
+            if (answerData.processing_time_ms && answerData.processing_time_ms > 0) {
+                // 기존 검색 시간과 AI 답변 생성 시간을 합산
+                const existingSearchTime = historyData[0].searchResult.took_ms || 0;
+                historyData[0].searchResult.took_ms = Math.round(existingSearchTime + answerData.processing_time_ms);
+                console.log(`📊 Updated total processing time: ${historyData[0].searchResult.took_ms}ms (search: ${existingSearchTime}ms + answer: ${Math.round(answerData.processing_time_ms)}ms)`);
+            }
+            
+            // AI 답변이 추가되면 searchType을 'search_with_answer'로 업데이트
+            historyData[0].searchType = 'search_with_answer';
+            console.log('📝 Updated searchType to search_with_answer');
             
             console.log('✅ Updated latest history entry with AI answer');
             

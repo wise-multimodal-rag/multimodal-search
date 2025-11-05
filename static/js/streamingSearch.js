@@ -219,6 +219,14 @@ class StreamingSearchController {
                 content += `<div class="data-item"><strong>참고 문서:</strong> ${data.search_context_size}개</div>`;
             }
             
+            // 생성된 초안 내용 추가
+            if (data.answer_draft) {
+                content += `<div class="data-section">
+                    <h4>📝 생성된 답변 초안</h4>
+                    <div class="draft-content">${this.formatAnswerText(data.answer_draft)}</div>
+                </div>`;
+            }
+            
             if (data.draft_preview) {
                 const truncatedPreview = this.truncateText(data.draft_preview, 100);
                 content += `
@@ -1377,9 +1385,7 @@ class StreamingSearchController {
                 <div class="ai-answer-header">
                     <div class="answer-header-left">
                         <h3>생성된 답변</h3>
-                        <div class="answer-info">
-                            생성 시간: ${data.processing_time_ms ? (data.processing_time_ms / 1000).toFixed(1) + '초' : '-'} • 시도: ${data.total_attempts || 1}회
-                        </div>
+                        <div class="answer-info">검색 결과를 기반으로 생성된 AI 답변입니다</div>
                     </div>
                 </div>
                 

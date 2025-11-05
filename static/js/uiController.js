@@ -100,11 +100,31 @@ class UIController {
     }
     
     updateSearchResultsHeader(searchResult) {
-        const resultCount = searchResult.total_hits;
-        const took = searchResult.took_ms;
+        if (!searchResult) {
+            console.warn('searchResult is undefined in updateSearchResultsHeader');
+            return;
+        }
+        
+        const resultCount = searchResult.total_hits || 0;
+        const took = searchResult.took_ms || 0;
+        
+        // element_types_used를 더 안전하게 처리
+        let elementTypes = '';
+        if (searchResult.element_types_used) {
+            if (Array.isArray(searchResult.element_types_used)) {
+                elementTypes = searchResult.element_types_used.join(', ');
+            } else {
+                console.warn('element_types_used is not an array:', searchResult.element_types_used);
+            }
+        }
         
         // 검색 결과 헤더 업데이트
-        this.searchResultsInfo.innerHTML = `${resultCount}개 결과 • ${took}ms • ${searchResult.element_types_used.join(', ')}`;
+        let infoText = `${resultCount}개 결과 • ${took}ms`;
+        if (elementTypes) {
+            infoText += ` • ${elementTypes}`;
+        }
+        
+        this.searchResultsInfo.innerHTML = infoText;
         this.searchResultsHeader.style.display = 'block';
     }
     

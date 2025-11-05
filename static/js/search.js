@@ -50,8 +50,13 @@ class SearchController {
     }
 
     async performSearchAndGenerate() {
+        console.log('SearchController.performSearchAndGenerate called');
         const formData = this.prepareFormData('search_with_answer');
-        if (!formData) return;
+        console.log('formData prepared:', !!formData);
+        if (!formData) {
+            console.log('No formData, returning early');
+            return;
+        }
 
         this.startSearchProcess();
 
@@ -281,7 +286,9 @@ class SearchController {
     
     displaySearchResults(searchResult) {
         // 검색 결과 헤더 업데이트
-        window.uiController.updateSearchResultsHeader(searchResult);
+        if (window.uiController && searchResult) {
+            window.uiController.updateSearchResultsHeader(searchResult);
+        }
         
         // 검색 결과 내용 생성
         let resultsHtml = '';
@@ -396,8 +403,12 @@ function performSearch() {
 }
 
 function performSearchAndGenerate() {
+    console.log('performSearchAndGenerate called');
     if (window.searchController) {
+        console.log('searchController exists, calling performSearchAndGenerate');
         window.searchController.performSearchAndGenerate();
+    } else {
+        console.error('searchController not found');
     }
 }
 
