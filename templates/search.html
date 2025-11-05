@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multimodal RAG</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔍</text></svg>">
-    <link rel="stylesheet" href="/static/css/search.css?v=33.0">
+    <link rel="stylesheet" href="/static/css/search.css?v=34.0">
     <link rel="stylesheet" href="/static/css/streaming.css?v=30.0">
 </head>
 <body>
@@ -156,12 +156,30 @@
 </div>
 
 <!-- JavaScript 파일들 -->
-<script src="/static/js/tooltipManager.js"></script>
-<script src="/static/js/fileHandler.js?v=52.0"></script>
-<script src="/static/js/historyManager.js?v=33.0"></script>
-<script src="/static/js/uiController.js?v=11.0"></script>
-<script src="/static/js/streamingSearch.js?v=53.0"></script>
-<script src="/static/js/search.js?v=101.0"></script>
+<!-- Utilities (dependencies first) -->
+<script src="/static/js/utils/dataUtils.js?v=1.0"></script>
+<script src="/static/js/utils/textFormatter.js?v=1.0"></script>
+<script src="/static/js/utils/metadataCreator.js?v=1.0"></script>
+<script src="/static/js/utils/searchDataProcessor.js?v=1.0"></script>
+
+<!-- Managers -->
+<script src="/static/js/managers/tooltipManager.js"></script>
+<script src="/static/js/managers/historyManager.js?v=33.0"></script>
+<script src="/static/js/managers/retryManager.js?v=1.0"></script>
+
+<!-- Handlers -->
+<script src="/static/js/handlers/fileHandler.js?v=52.0"></script>
+
+<!-- Streaming modules -->
+<script src="/static/js/streaming/progressManager.js?v=1.0"></script>
+<script src="/static/js/streaming/streamingHandler.js?v=1.0"></script>
+<script src="/static/js/streaming/searchStepRenderer.js?v=1.0"></script>
+<script src="/static/js/streaming/searchResultRenderer.js?v=1.0"></script>
+
+<!-- Core controllers -->
+<script src="/static/js/core/uiController.js?v=11.0"></script>
+<script src="/static/js/core/streamingSearch.js?v=61.0"></script>
+<script src="/static/js/core/search.js?v=101.0"></script>
 <script>
     // 앱 초기화
     document.addEventListener('DOMContentLoaded', function () {

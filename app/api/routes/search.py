@@ -356,6 +356,7 @@ async def search_multimodal_stream(
                                     'answer_length': len(attempt.get('answer', '')),
                                     'processing_time_ms': attempt.get('processing_time_ms', 0),
                                     'temperature': generation_result.get('temperature', 0.7),
+                                    'answer_draft': attempt.get('answer', ''),  # 전체 초안 내용 추가
                                     'draft_preview': attempt.get('answer', '')[:100] + '...' if len(attempt.get('answer', '')) > 100 else attempt.get('answer', ''),
                                     'search_context_size': len(search_response.results) if search_response else 0
                                 }
