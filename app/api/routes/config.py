@@ -1,5 +1,4 @@
-"""클라이언트 설정 제공 API
-"""
+"""클라이언트 설정 제공 API"""
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
@@ -11,6 +10,7 @@ router = APIRouter()
 @router.get("/config/client")
 async def get_client_config():
     """클라이언트에서 사용할 설정 정보 제공
+    
     보안상 중요한 정보는 제외하고 필요한 설정만 전달
     """
     client_config = {
@@ -74,6 +74,7 @@ async def get_client_config():
 @router.get("/config/features")
 async def get_feature_flags():
     """기능 플래그 정보 제공
+    
     A/B 테스트나 점진적 배포에 사용
     """
     features = {

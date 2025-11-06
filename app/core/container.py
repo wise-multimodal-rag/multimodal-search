@@ -1,5 +1,4 @@
-"""향상된 의존성 주입 컨테이너
-"""
+"""향상된 의존성 주입 컨테이너"""
 import inspect
 from functools import lru_cache
 from typing import Any, Callable, Dict, Optional, Type, TypeVar
