@@ -4,22 +4,26 @@
 
 OpenSearch를 사용한 멀티모달 검색 및 RAG 시스템입니다. 텍스트, 이미지, 비디오, 오디오를 통합하여 검색하고, 하이브리드 검색(BM25 + 벡터 검색)과 LLM 기반 질의 분석을 지원합니다.
 
-## 검색 파이프라인 플로우
+## 시스템 아키텍처
+
+### 1. 멀티모달 검색 파이프라인
 
 ```mermaid
 flowchart TD
     %% 입력 단계
-    A[사용자 요청] --> B{입력 유형 확인}
-    B --> C[텍스트 쿼리]
-    B --> D[이미지 파일]
-    B --> E[비디오 파일]  
-    B --> F[오디오 파일]
+    A[사용자 요청] --> B[입력 파일 분석]
+    B --> C1[텍스트 쿼리]
+    B --> C2[이미지 파일]
+    B --> C3[비디오 파일]
+    B --> C4[오디오 파일]
+    B --> C5[텍스트 파일]
     
     %% Step 1: 입력 처리
-    C --> G[Step 1: 멀티모달 입력 처리<br/>InputProcessor]
-    D --> G
-    E --> G
-    F --> G
+    C1 --> G[Step 1: 멀티모달 입력 처리<br/>InputProcessor]
+    C2 --> G
+    C3 --> G
+    C4 --> G
+    C5 --> G
     G --> G1[텍스트 데이터 구조화]
     G --> G2[이미지 Base64 변환]
     G --> G3[비디오 Base64 변환]
@@ -27,7 +31,7 @@ flowchart TD
     
     %% Step 2: 쿼리 확장 및 의도 분석
     G1 --> H[Step 2: 쿼리 확장 및 의도 분석<br/>QueryAnalyzer]
-    H --> H1[Step 2-1: 🤖 지능형 쿼리 확장<br/>필요한 기법만 선택적 적용]
+    H --> H1[🤖 지능형 쿼리 확장<br/>필요한 기법만 선택적 적용]
     H1 --> H1A{🤖 LLM 확장 성공?}
     H1A -->|성공| H2[적응형 확장 쿼리 생성<br/>쿼리 특성에 따라 1-3개]
     H1A -->|실패| H3[원본 쿼리 사용<br/>확장 없이 진행]
@@ -36,7 +40,7 @@ flowchart TD
     H2A -->|true| H2B[순차적 의존성 표시<br/>Query 2가 Query 1 결과 필요]
     H2A -->|false| H2C[병렬 독립 실행 표시<br/>모든 쿼리 독립적]
     
-    H2B --> H4[Step 2-2: 🤖 의도 분석<br/>확장된 주요 쿼리 기반]
+    H2B --> H4[🤖 의도 분석<br/>확장된 주요 쿼리 기반]
     H2C --> H4
     H3 --> H4
     H4 --> H4A{🤖 LLM 분석 성공?}
@@ -45,13 +49,13 @@ flowchart TD
     H5 --> I[선택된 element_types + 확장된 쿼리들 + 의존성 정보<br/>paragraph, title, image, etc.]
     H6 --> I
     
-    %% Step 3: 특징 추출 (선택된 element_types에 따라 제어됨)
+    %% Step 3: 특징 추출
     G1 --> J[Step 3: 멀티모달 특징 추출<br/>MultimodalFeatureExtractor]
     G2 --> J
     G3 --> J
     G4 --> J
     I --> J
-    J --> J1{선택된 element_types<br/>확인}
+    J --> J1{선택된 element_types 확인}
     J1 -->|텍스트 관련 타입| J2[텍스트 특징 추출<br/>키워드, 엔티티, 요약]
     J1 -->|이미지 관련 타입| J3[이미지 특징 추출<br/>캡션, 객체 탐지]
     J1 -->|비디오 관련 타입| J4[🤖 비디오 특징 추출<br/>장면, 활동, 객체]
@@ -66,8 +70,10 @@ flowchart TD
     J3 --> K
     J4 --> K
     J5 --> K
+    K --> K1[원본 모달리티 임베딩<br/>text, image, video, audio]
+    K --> K2[특징 기반 임베딩<br/>summary, caption, keywords, etc.]
     
-    %% Step 5: OpenSearch 검색 (확장된 쿼리 사용)
+    %% Step 5: OpenSearch 검색
     I --> L[Step 5: OpenSearch 검색<br/>OpenSearchService]
     K1 --> L
     K2 --> L
@@ -97,11 +103,11 @@ flowchart TD
     M1 -->|No| N
     M2 -->|No| N
     
-    %% Step 7: 응답 생성
-    N --> O[Step 7: 응답 생성<br/>SearchResponse]
+    %% Step 7: 검색 응답 생성
+    N --> O[Step 7: 검색 응답 생성<br/>SearchResponse]
     O --> O1[검색 통계 계산]
     O --> O2[실행 시간 측정]
-    O --> P[최종 응답 반환<br/>총 검색 수, 최대 점수, 결과 목록]
+    O --> SR[검색 결과 완료]
     
     %% 외부 API 의존성
     J2 -.->|API 호출| API1[Feature Extraction API<br/>키워드, 엔티티, 요약]
@@ -109,8 +115,6 @@ flowchart TD
     J4 -.->|🤖 LLM 호출| API3[🤖 LiteLLM<br/>비디오 분석]
     J5 -.->|🤖 LLM 호출| API3
     K -.->|API 호출| API4[Embedding API<br/>텍스트/이미지/비디오/오디오 임베딩]
-    API4 --> K1[원본 모달리티 임베딩<br/>text, image, video, audio]
-    API4 --> K2[특징 기반 임베딩<br/>summary, caption, keywords, etc.]
     H -.->|🤖 LLM 호출| API3
     
     %% 인덱스 구조
@@ -131,23 +135,103 @@ flowchart TD
     class IDX1,IDX2,IDX3 dbClass
 ```
 
+### 2. LLM 답변 생성 파이프라인
+
+```mermaid
+flowchart TD
+    %% 시작점
+    START[검색 결과 입력<br/>SearchResponse] --> AG[AnswerGenerationService]
+    
+    %% 컨텍스트 준비
+    AG --> AG1[검색 결과를 컨텍스트로 변환<br/>상위 10개 결과 사용]
+    AG1 --> AG2[답변 생성 루프 시작<br/>최대 2회 시도]
+    
+    %% 답변 생성 루프
+    AG2 --> LOOP{시도 횟수 체크}
+    LOOP -->|1차 시도| TRY1[첫 번째 시도]
+    LOOP -->|2차 시도| TRY2[두 번째 시도]
+    
+    %% 첫 번째 시도
+    TRY1 --> AG3A[🤖 LLM 초안 답변 생성<br/>Draft Answer<br/>temperature: 0.7]
+    AG3A --> AG4A[🤖 LLM Reflection 평가<br/>5가지 기준으로 품질 평가]
+    AG4A --> EVAL1[평가 결과 분석<br/>총점 / 50점]
+    EVAL1 --> AG5A{품질 평가<br/>35점 이상?}
+    
+    %% 첫 번째 시도 결과 처리
+    AG5A -->|Yes, 35점 이상| ACCEPT[답변 수락<br/>생성 완료]
+    AG5A -->|No, 35점 이하| CHECK_RETRY{재시도 가능?}
+    CHECK_RETRY -->|Yes| AG6[재생성 준비<br/>온도 조정 +0.1]
+    CHECK_RETRY -->|No| SELECT_BEST[최고 점수 답변 선택]
+    
+    %% 두 번째 시도
+    AG6 --> TRY2
+    TRY2 --> AG3B[🤖 LLM 재생성 답변<br/>Regenerated Answer<br/>temperature: 0.8]
+    AG3B --> AG4B[🤖 LLM Reflection 평가<br/>5가지 기준으로 품질 평가]
+    AG4B --> EVAL2[평가 결과 분석<br/>총점 / 50점]
+    EVAL2 --> AG5B[2차 시도 완료<br/>최고 점수 답변 선택]
+    
+    %% 최종 결과 처리
+    AG5B --> SELECT_BEST
+    SELECT_BEST --> BEST[최고 점수 답변 선택<br/>1차 vs 2차 비교]
+    ACCEPT --> GR[GenerationResponse 생성]
+    BEST --> GR
+    
+    %% 응답 완성
+    GR --> RESPONSE[최종 응답 반환<br/>- final_answer<br/>- generation_attempts<br/>- best_score<br/>- completion_reason]
+    
+    %% Reflection 평가 기준 (서브 플로우)
+    REFLECTION_DETAIL[🤖 Reflection 평가 기준<br/>정확성, 완성도, 명확성, 구조, 관련성<br/>각 0-10점, 총점 35점 이상 수락]
+    
+    %% 외부 LLM API 호출
+    AG3A -.->|🤖 LLM 호출| LLM_API[🤖 LiteLLM<br/>답변 생성]
+    AG3B -.->|🤖 LLM 호출| LLM_API
+    AG4A -.->|🤖 LLM 호출| LLM_API2[🤖 LiteLLM<br/>품질 평가]
+    AG4B -.->|🤖 LLM 호출| LLM_API2
+    
+    %% 스타일링
+    classDef startClass fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
+    classDef processClass fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef llmClass fill:#f3e5f5,stroke:#7b1fa2,stroke-width:3px
+    classDef decisionClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef endClass fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef apiClass fill:#fff8e1,stroke:#ff8f00,stroke-width:2px
+    
+    class START,AG1,AG2,AG6,GR startClass
+    class LOOP,TRY1,TRY2,EVAL1,EVAL2,SELECT_BEST,BEST processClass
+    class AG3A,AG3B,AG4A,AG4B llmClass
+    class AG5A,AG5B,CHECK_RETRY decisionClass
+    class ACCEPT,RESPONSE endClass
+    class LLM_API,LLM_API2 apiClass
+```
+
 ## 주요 특징
 
-- **멀티모달 입력**: 텍스트, 이미지, 비디오, 오디오 동시 지원
+### 멀티모달 검색 엔진
+- **멀티모달 입력**: 텍스트, 이미지, 비디오, 오디오, 텍스트 파일 동시 지원
 - **적응형 쿼리 확장**: 쿼리 특성에 따른 선택적 기법 적용 (Decomposition, Rewriting, Expansion)
-- **🆕 지능형 의존성 처리**: LLM이 판단하는 순차/병렬 실행 방식 자동 선택
+- **지능형 의존성 처리**: LLM이 판단하는 순차/병렬 실행 방식 자동 선택
 - **하이브리드 검색**: BM25 텍스트 검색 + 벡터 유사도 검색 + 확장 쿼리 통합
 - **LLM 기반 질의 분석**: 검색 의도 파악 및 최적 element type 선택
-- **🆕 컨텍스트 전파**: 이전 검색 결과를 활용한 다음 쿼리 보강
+- **컨텍스트 전파**: 이전 검색 결과를 활용한 다음 쿼리 보강
 - **가중치 기반 결과 융합**: 확장된 쿼리별 가중치 적용 및 중복 제거
+
+### AI 답변 생성 시스템
+- **2단계 품질 보장**: 초안 생성 → Reflection 평가 → 재생성 (최대 2회)
+- **5차원 품질 평가**: 정확성, 완성도, 명확성, 구조, 관련성 종합 평가
+- **적응형 온도 조절**: 재생성 시 창의성 증가 (temperature +0.1)
+- **점수 기반 수락**: 35점 이상 자동 수락, 미만 시 재생성 또는 최고 점수 선택
+- **스트리밍 답변 생성**: 실시간 생성 과정 모니터링 및 취소 가능
+- **컨텍스트 활용**: 검색 결과를 구조화된 컨텍스트로 변환하여 답변 생성
+
+### 시스템 아키텍처
 - **3계층 인덱스 구조**: media_meta, chunk_meta, elements로 체계적 관리
 - **외부 API 통합**: Feature Extraction 및 Embedding API 활용
-- **🆕 고급 예외 처리**: Circuit Breaker 패턴과 Retry Handler로 시스템 안정성 보장
-- **🆕 보안 강화**: 민감 정보 마스킹 및 API 키 관리 시스템
-- **🆕 병렬 처리 최적화**: 검색 및 임베딩 생성의 비동기 병렬 처리
-- **🆕 외부 API 모니터링**: 실시간 외부 서비스 상태 체크 및 헬스 모니터링
-- **🆕 스마트 로깅**: Base64 데이터 마스킹 및 노이즈 필터링으로 효율적인 디버깅
-- **🆕 강화된 입력 검증**: 유연한 파일 시그니처 검증 및 XSS 방지
+- **고급 예외 처리**: Circuit Breaker 패턴과 Retry Handler로 시스템 안정성 보장
+- **보안 강화**: 민감 정보 마스킹 및 API 키 관리 시스템
+- **병렬 처리 최적화**: 검색 및 임베딩 생성의 비동기 병렬 처리
+- **외부 API 모니터링**: 실시간 외부 서비스 상태 체크 및 헬스 모니터링
+- **스마트 로깅**: Base64 데이터 마스킹 및 노이즈 필터링으로 효율적인 디버깅
+- **강화된 입력 검증**: 유연한 파일 시그니처 검증 및 XSS 방지
 
 ## 기술 스택
 
@@ -204,11 +288,16 @@ docker-compose --profile dev up
 ```
 
 ### 4. 접속 및 테스트
-- **🌐 웹 데모**: http://localhost:8000/search
-- **📚 API 문서**: http://localhost:8000/docs
-- **💚 헬스체크**: http://localhost:8000/health
-- **🔍 외부 API 상태**: http://localhost:8000/health/external-apis
-- **📊 OpenSearch 대시보드**: http://localhost:5601
+- **웹 데모**: http://localhost:8000/search
+- **API 문서**: http://localhost:8000/docs
+- **헬스체크**: http://localhost:8000/health
+- **외부 API 상태**: http://localhost:8000/health/external-apis
+- **OpenSearch 대시보드**: http://localhost:5601
+
+#### API 엔드포인트
+- **멀티모달 검색**: `POST /api/search/multimodal`
+- **AI 답변 생성**: `POST /api/generation/multimodal`
+- **스트리밍 검색**: `GET /api/search/multimodal/stream`
 
 ## 아키텍처
 
@@ -219,19 +308,30 @@ app/
 ├── core/                # 핵심 시스템 컴포넌트
 │   ├── config.py        # 설정 관리
 │   ├── logging.py       # 로깅 시스템 (스마트 필터링)
-│   ├── security.py      # 🆕 보안 관리 (API 키 마스킹, 보안 유틸리티)
-│   ├── exceptions.py    # 🆕 예외 처리 (Circuit Breaker, Retry Handler, 미들웨어)
-│   ├── validators.py    # 🆕 강화된 입력 검증 (파일 시그니처, XSS 방지)
+│   ├── security.py      # 보안 관리 (API 키 마스킹, 보안 유틸리티)
+│   ├── exceptions.py    # 예외 처리 (Circuit Breaker, Retry Handler, 미들웨어)
+│   ├── validators.py    # 강화된 입력 검증 (파일 시그니처, XSS 방지)
 │   ├── dependencies.py  # 의존성 주입
 │   └── index_mappings.py # OpenSearch 인덱스 매핑
 ├── models/              # Pydantic 모델
+│   ├── opensearch.py    # 검색 관련 모델
+│   ├── generation.py    # 답변 생성 관련 모델
+│   └── features.py      # 특징 추출 모델
 ├── services/            # 비즈니스 로직 (병렬 처리 최적화)
 │   ├── search/          # 검색 서비스 (병렬 쿼리 실행)
+│   ├── generation/      # AI 답변 생성 서비스
+│   ├── streaming/       # 스트리밍 통합 서비스
 │   ├── embeddings/      # 임베딩 서비스 (병렬 임베딩 생성)
 │   ├── analysis/        # 분석 서비스
 │   └── processing/      # 전처리 서비스
 ├── clients/             # 외부 API 클라이언트 (보안 강화)
+│   ├── llm_client.py    # LLM 클라이언트 (답변 생성용)
+│   ├── embedding_client.py # 임베딩 API 클라이언트
+│   └── feature_extraction_client.py # 특징 추출 API 클라이언트
 └── api/routes/          # API 엔드포인트
+    ├── search.py        # 검색 엔드포인트
+    ├── generation.py    # 답변 생성 엔드포인트
+    └── config.py        # 설정 엔드포인트
 ```
 
 ### OpenSearch 인덱스 구조
@@ -272,7 +372,7 @@ DEBUG=false
 STORAGE_PATH=/storage
 ```
 
-**🔒 보안 주의사항:**
+**보안 주의사항:**
 - `.env` 파일은 이미 `.gitignore`에 추가되어 버전 관리에서 제외됩니다
 - 프로덕션 환경에서는 환경 변수나 보안 관리 시스템을 사용하세요
 - API 키는 절대 하드코딩하지 마세요
@@ -392,11 +492,18 @@ STORAGE_PATH=/storage
 - **검색 로직 간소화**: 불필요한 리랭킹 과정 제거
 - **실시간 모니터링**: 외부 API 상태 및 응답 시간 추적
 
-## 🚀 최근 업데이트 (v0.2.0)
+## 최근 업데이트 (v0.3.0)
 
-### 주요 개선사항
-- **🆕 지능형 Query Decomposition**: LLM이 판단하는 순차/병렬 실행 방식으로 검색 정확도 대폭 향상
-- **🆕 컨텍스트 전파 시스템**: 이전 검색 결과를 활용한 다음 쿼리 보강으로 의존적 질의 처리 개선
+### AI 답변 생성 시스템 추가
+- **새로운 답변 생성 서비스**: 검색 결과를 기반으로 한 지능형 답변 생성
+- **Reflection 기반 품질 관리**: 5차원 평가를 통한 답변 품질 보장
+- **최대 2회 재생성**: 초안 → 평가 → 재생성 프로세스로 답변 품질 향상
+- **스트리밍 답변 생성**: 실시간 생성 과정 모니터링 및 중간 취소 가능
+- **통합 스트리밍 서비스**: 검색과 답변 생성의 완전한 통합 처리
+
+### 이전 검색 시스템 개선사항 (v0.2.0)
+- **지능형 Query Decomposition**: LLM이 판단하는 순차/병렬 실행 방식으로 검색 정확도 대폭 향상
+- **컨텍스트 전파 시스템**: 이전 검색 결과를 활용한 다음 쿼리 보강으로 의존적 질의 처리 개선
 - **성능 최적화**: 로깅 볼륨 86% 감소, 불필요한 코드 350줄 제거
 - **시스템 안정성**: Circuit Breaker 패턴 및 재시도 메커니즘 도입
 - **보안 강화**: API 키 마스킹, 파일 시그니처 검증 개선
@@ -404,6 +511,10 @@ STORAGE_PATH=/storage
 - **모니터링**: 외부 API 헬스체크 및 성능 추적
 
 ### 새로운 기능
+- **멀티모달 답변 생성**: 검색된 텍스트, 이미지, 비디오 정보를 종합한 AI 답변
+- **품질 기반 재생성**: 35점 미만 답변 자동 재생성, 35점 이상 즉시 수락
+- **실시간 생성 모니터링**: 초안 생성 → 품질 평가 → 재생성 과정 실시간 추적
+- **답변 생성 API**: `/api/generation/multimodal` 엔드포인트 추가
 - **의존성 인식 검색**: "최신 기술과 그 활용법" 같은 복합 쿼리에서 1차 결과를 2차 쿼리에 반영
 - **적응형 실행 엔진**: 쿼리 특성에 따른 최적 실행 방식 자동 선택
 - **컨텍스트 추출 알고리즘**: 검색 결과에서 키워드, 엔티티, 개념 자동 추출
