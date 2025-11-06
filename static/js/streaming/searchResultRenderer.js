@@ -87,7 +87,7 @@ class SearchResultRenderer {
                     </div>
                     <div class="answer-header-right">
                         <button class="preview-toggle-btn" onclick="toggleAnswerPreview('${answerId}')">
-                            📖 Preview
+                            Preview
                         </button>
                     </div>
                 `;

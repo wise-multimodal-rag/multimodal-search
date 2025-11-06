@@ -5,9 +5,17 @@ class StreamingHandler {
     constructor() {
         this.partialData = '';
         this.abortController = null;
+        this.isStreaming = false; // 중복 스트리밍 방지
     }
     
     async startStreaming(url, formData, hasAnswerGeneration, onStepResult, onError) {
+        // 중복 스트리밍 방지
+        if (this.isStreaming) {
+            console.warn('⚠️ StreamingHandler: Already streaming, ignoring new request');
+            return;
+        }
+        
+        this.isStreaming = true;
         this.abortController = new AbortController();
         this.partialData = '';
         this.hasAnswerGeneration = hasAnswerGeneration;
@@ -67,6 +75,10 @@ class StreamingHandler {
                 console.error('Streaming failed:', error);
                 onError(`스트리밍 검색 실패: ${error.message}`);
             }
+        } finally {
+            // 스트리밍 상태 해제
+            console.log('🔚 StreamingHandler: Streaming completed, resetting state');
+            this.isStreaming = false;
         }
     }
     
@@ -148,12 +160,14 @@ class StreamingHandler {
             console.log('🛑 Stopping streaming...');
             this.abortController.abort();
         }
+        this.isStreaming = false;
     }
     
     reset() {
         this.partialData = '';
         this.abortController = null;
         this.hasAnswerGeneration = false;
+        this.isStreaming = false;
     }
 }
 

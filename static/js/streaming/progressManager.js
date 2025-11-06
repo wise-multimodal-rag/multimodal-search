@@ -11,11 +11,12 @@ class ProgressManager {
         this.totalSteps = 7;
     }
     
-    updateProgress(currentStep = null, totalSteps = null) {
+    updateProgress(currentStep = null, totalSteps = null, isRegenerating = false) {
         if (currentStep !== null) this.currentStep = currentStep;
         if (totalSteps !== null) this.totalSteps = totalSteps;
         
-        const progress = Math.min((this.currentStep / this.totalSteps) * 100, 100);
+        // 재생성 중일 때는 진행률을 100%로 고정하되 특별한 표시
+        const progress = isRegenerating ? 100 : Math.min((this.currentStep / this.totalSteps) * 100, 100);
         
         // 진행률 바에 펄스 효과 추가
         this.progressFill.classList.add('updating');
@@ -25,17 +26,25 @@ class ProgressManager {
         
         this.progressFill.style.width = `${progress}%`;
         
-        // 검색 완료 시 진행바에 completed 클래스 추가
-        if (this.currentStep >= this.totalSteps) {
+        // 재생성 중이거나 검색 완료 시 진행바에 completed 클래스 추가
+        if (this.currentStep >= this.totalSteps || isRegenerating) {
             this.progressFill.classList.add('completed');
         }
         
-        console.log('Progress update:', this.currentStep, '/', this.totalSteps);
+        console.log('Progress update:', this.currentStep, '/', this.totalSteps, isRegenerating ? '(regenerating)' : '');
         
         if (this.progressText) {
-            const statusText = this.currentStep === this.totalSteps 
-                ? `검색 완료 (${this.totalSteps}/${this.totalSteps})`
-                : `${this.currentStep}/${this.totalSteps} 단계 완료`;
+            let statusText;
+            if (isRegenerating) {
+                statusText = `답변 재생성 중 (${this.totalSteps}/${this.totalSteps})`;
+            } else if (this.currentStep === this.totalSteps) {
+                // 답변 생성 모드일 때는 "답변 생성 완료", 검색만 모드일 때는 "검색 완료"
+                statusText = this.totalSteps === 10 ? 
+                    `답변 생성 완료 (${this.totalSteps}/${this.totalSteps})` : 
+                    `검색 완료 (${this.totalSteps}/${this.totalSteps})`;
+            } else {
+                statusText = `${this.currentStep}/${this.totalSteps} 단계 완료`;
+            }
             this.progressText.textContent = statusText;
         }
     }

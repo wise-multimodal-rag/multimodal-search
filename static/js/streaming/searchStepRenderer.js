@@ -141,6 +141,33 @@ class SearchStepRenderer {
         console.log(`🧹 Cleaned up ${loadingSteps.length} loading steps`);
     }
     
+    hideCompletedLoadingSteps() {
+        // 최종 완료 시 남아있는 로딩 단계들을 숨김
+        const loadingSteps = this.searchSteps.querySelectorAll('.search-step.loading');
+        console.log(`🧹 hideCompletedLoadingSteps: Found ${loadingSteps.length} loading steps to check`);
+        
+        loadingSteps.forEach(step => {
+            const titleElement = step.querySelector('.step-title');
+            if (titleElement) {
+                const title = titleElement.textContent;
+                console.log(`🔍 Checking loading step title: "${title}"`);
+                
+                // 답변 생성 관련 모든 중간 로딩 단계들 숨김
+                const shouldHide = title.includes('검토 중') || 
+                                 title.includes('재생성 중') ||
+                                 title.includes('초안 생성 중') ||
+                                 title.includes('답변 품질 검토 중');
+                
+                if (shouldHide) {
+                    console.log(`🧹 Hiding intermediate loading step: ${title}`);
+                    step.style.display = 'none';
+                } else {
+                    console.log(`✅ Keeping step visible: ${title}`);
+                }
+            }
+        });
+    }
+    
     renderStepData(container, data, stepType) {
         if (!container || !data) return;
         

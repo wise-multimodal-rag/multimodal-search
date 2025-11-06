@@ -70,6 +70,15 @@ class LLMClient:
                         if "content" in message and message["content"]:
                             content = message["content"]
                             logger.debug(f"LLM response received, length: {len(content)} chars")
+                            
+                            # 답변 생성 모드일 때만 상세 내용 로깅
+                            if use_generation_model and len(content) > 100:  # 긴 응답만 로깅 (답변 생성 시)
+                                logger.info(f"🤖 LLM Raw Response ({payload.get('model')}):")
+                                logger.info(f"📝 Content ({len(content)} chars):")
+                                logger.info(f"{'*'*50}")
+                                logger.info(content)
+                                logger.info(f"{'*'*50}")
+                            
                             return content
                         elif "content" in message and message["content"] == "":
                             logger.warning(f"LLM returned empty content, finish_reason: {finish_reason}")

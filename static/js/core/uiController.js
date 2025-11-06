@@ -14,32 +14,40 @@ class UIController {
     }
     
     initializeEventListeners() {
-        // 엔터키로 기본 검색 실행
+        // 엔터키 이벤트 통합 처리 - 중복 리스너 방지
         this.messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter') {
                 e.preventDefault();
-                this.handleSearch();
+                if (e.shiftKey) {
+                    // Shift+Enter로 검색+생성 실행
+                    this.handleSearchAndGenerate();
+                } else {
+                    // 일반 Enter로 기본 검색 실행
+                    this.handleSearch();
+                }
             }
         });
         
-        // Shift+Enter로 검색+생성 실행
-        this.messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && e.shiftKey) {
-                e.preventDefault();
-                this.handleSearchAndGenerate();
-            }
-        });
-        
-        // 검색 버튼 클릭
+        // 검색 버튼 클릭 - 중복 클릭 방지
         if (this.searchButton) {
-            this.searchButton.addEventListener('click', () => {
+            this.searchButton.addEventListener('click', (e) => {
+                // 이미 비활성화된 버튼은 클릭 무시
+                if (this.searchButton.disabled) {
+                    console.log('🚫 Search button is disabled, ignoring click');
+                    return;
+                }
                 this.handleSearch();
             });
         }
         
-        // 생성 버튼 클릭
+        // 생성 버튼 클릭 - 중복 클릭 방지
         if (this.generateButton) {
-            this.generateButton.addEventListener('click', () => {
+            this.generateButton.addEventListener('click', (e) => {
+                // 이미 비활성화된 버튼은 클릭 무시
+                if (this.generateButton.disabled) {
+                    console.log('🚫 Generate button is disabled, ignoring click');
+                    return;
+                }
                 this.handleSearchAndGenerate();
             });
         }

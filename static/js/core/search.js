@@ -10,8 +10,20 @@ class SearchController {
     }
     
     async performSearchOnly() {
+        console.log('🚀 SearchController.performSearchOnly called');
+        
+        // 중복 호출 방지
+        if (this._isProcessing) {
+            console.warn('⚠️ performSearchOnly already in progress, ignoring');
+            return;
+        }
+        this._isProcessing = true;
+        
         const formData = this.prepareFormData('search_only');
-        if (!formData) return;
+        if (!formData) {
+            this._isProcessing = false;
+            return;
+        }
 
         this.startSearchProcess();
         
@@ -41,6 +53,7 @@ class SearchController {
                 window.uiController.showError(error);
             }
         } finally {
+            this._isProcessing = false;
             if (window.uiController && typeof window.uiController.enableSearchButton === 'function') {
                 window.uiController.enableSearchButton();
             }
@@ -50,7 +63,16 @@ class SearchController {
     }
 
     async performSearchAndGenerate() {
-        console.log('SearchController.performSearchAndGenerate called');
+        console.log('🚀 SearchController.performSearchAndGenerate called');
+        console.log('🔍 Input value before prepareFormData:', this.messageInput ? this.messageInput.value : 'NO_INPUT_ELEMENT');
+        
+        // 중복 호출 방지
+        if (this._isProcessing) {
+            console.warn('⚠️ performSearchAndGenerate already in progress, ignoring');
+            return;
+        }
+        this._isProcessing = true;
+        
         const formData = this.prepareFormData('search_with_answer');
         console.log('formData prepared:', !!formData);
         if (!formData) {
@@ -84,6 +106,7 @@ class SearchController {
                 window.uiController.showError(`답변 생성 실패: ${error.message}`);
             }
         } finally {
+            this._isProcessing = false;
             if (window.uiController && typeof window.uiController.enableSearchButton === 'function') {
                 window.uiController.enableSearchButton();
             }
@@ -93,8 +116,18 @@ class SearchController {
     }
 
     prepareFormData(searchType = 'search_only') {
-        const message = this.messageInput.value.trim();
+        // 입력값을 미리 저장 (다른 스크립트에서 클리어될 가능성 대비)
+        const messageInputValue = this.messageInput ? this.messageInput.value : '';
+        const message = messageInputValue.trim();
         const hasFiles = (window.hasFiles && window.hasFiles()) || (window.fileHandler && window.fileHandler.hasFiles());
+        
+        console.log('🔍 prepareFormData debug:', {
+            messageInputValue: messageInputValue,
+            messageTrimmed: message,
+            hasFiles: hasFiles,
+            messageInputElement: this.messageInput,
+            messageInputExists: !!this.messageInput
+        });
         
         if (!message && !hasFiles) return null;
 
@@ -120,6 +153,15 @@ class SearchController {
         const historyText = this.buildHistoryText(message, hasFiles);
         const originalText = message;
         const isFileOnly = !message && hasFiles;
+        
+        console.log('🔍 Debug search history values:', {
+            message: message,
+            hasFiles: hasFiles,
+            historyText: historyText,
+            originalText: originalText,
+            isFileOnly: isFileOnly,
+            searchType: searchType
+        });
         
         if (historyText && window.historyManager) {
             window.historyManager.addToSearchHistory(historyText, originalText, isFileOnly, null, searchType);
@@ -201,20 +243,26 @@ class SearchController {
     }
     
     buildHistoryText(message, hasFiles) {
+        console.log('🔍 buildHistoryText called with:', { message, hasFiles });
+        
         if (message && hasFiles) {
             const fileNames = this.getFileNames();
             const fileCount = fileNames.length;
+            console.log('🔍 Case: message + hasFiles, fileNames:', fileNames);
             if (fileCount === 1) {
                 return `${message} (+${fileNames[0]})`;
             } else {
                 return `${message} (+${fileCount}개: ${fileNames.join(', ')})`;
             }
         } else if (message) {
+            console.log('🔍 Case: message only');
             return message;
         } else if (hasFiles) {
             const fileNames = this.getFileNames();
+            console.log('🔍 Case: hasFiles only, fileNames:', fileNames);
             return fileNames.join(', ');
         }
+        console.log('🔍 Case: empty result');
         return '';
     }
     

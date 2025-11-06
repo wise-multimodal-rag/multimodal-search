@@ -165,9 +165,8 @@ async def search_multimodal_stream(
     # 파일들을 즉시 처리 (스트림 생성 전에)
     if image:
         try:
-            logger.info(f"🔄 Reading image file immediately: {image.filename}")
             image_content = await image.read()
-            logger.info(f"📊 Image read result: {len(image_content) if image_content else 0} bytes")
+            logger.info(f"📷 Image: {image.filename} ({len(image_content) if image_content else 0} bytes)")
 
             if image_content and len(image_content) > 0:
                 processed_files["image"] = {
@@ -175,7 +174,6 @@ async def search_multimodal_stream(
                     "filename": image.filename or "unknown_image",
                     "content_type": image.content_type or "image/jpeg",
                 }
-                logger.info(f"✅ Image processing successful: {len(image_content)} bytes")
             else:
                 error_msg = f"이미지 파일이 비어있습니다: {image.filename}"
                 file_processing_errors.append(error_msg)
@@ -187,9 +185,8 @@ async def search_multimodal_stream(
 
     if video:
         try:
-            logger.info(f"🔄 Reading video file immediately: {video.filename}")
             video_content = await video.read()
-            logger.info(f"📊 Video read result: {len(video_content) if video_content else 0} bytes")
+            logger.info(f"🎥 Video: {video.filename} ({len(video_content) if video_content else 0} bytes)")
 
             if video_content and len(video_content) > 0:
                 processed_files["video"] = {
@@ -197,7 +194,6 @@ async def search_multimodal_stream(
                     "filename": video.filename or "unknown_video",
                     "content_type": video.content_type or "video/mp4",
                 }
-                logger.info(f"✅ Video processing successful: {len(video_content)} bytes")
             else:
                 error_msg = f"비디오 파일이 비어있습니다: {video.filename}"
                 file_processing_errors.append(error_msg)
@@ -209,9 +205,8 @@ async def search_multimodal_stream(
 
     if audio:
         try:
-            logger.info(f"🔄 Reading audio file immediately: {audio.filename}")
             audio_content = await audio.read()
-            logger.info(f"📊 Audio read result: {len(audio_content) if audio_content else 0} bytes")
+            logger.info(f"🎵 Audio: {audio.filename} ({len(audio_content) if audio_content else 0} bytes)")
 
             if audio_content and len(audio_content) > 0:
                 processed_files["audio"] = {
@@ -219,7 +214,6 @@ async def search_multimodal_stream(
                     "filename": audio.filename or "unknown_audio",
                     "content_type": audio.content_type or "audio/mp3",
                 }
-                logger.info(f"✅ Audio processing successful: {len(audio_content)} bytes")
             else:
                 error_msg = f"오디오 파일이 비어있습니다: {audio.filename}"
                 file_processing_errors.append(error_msg)
@@ -231,9 +225,8 @@ async def search_multimodal_stream(
 
     if text_file:
         try:
-            logger.info(f"🔄 Reading text file immediately: {text_file.filename}")
             text_content = await text_file.read()
-            logger.info(f"📊 Text file read result: {len(text_content) if text_content else 0} bytes")
+            logger.info(f"📄 Text: {text_file.filename} ({len(text_content) if text_content else 0} bytes)")
 
             if text_content and len(text_content) > 0:
                 processed_files["text_file"] = {
@@ -241,7 +234,6 @@ async def search_multimodal_stream(
                     "filename": text_file.filename or "unknown.txt",
                     "content_type": text_file.content_type or "text/plain",
                 }
-                logger.info(f"✅ Text file processing successful: {len(text_content)} bytes")
             else:
                 error_msg = f"텍스트 파일이 비어있습니다: {text_file.filename}"
                 file_processing_errors.append(error_msg)
@@ -251,7 +243,7 @@ async def search_multimodal_stream(
             file_processing_errors.append(error_msg)
             logger.error(f"❌ {error_msg}")
 
-    logger.info(f"📋 Pre-processing complete: {len(processed_files)} files ready, {len(file_processing_errors)} errors")
+    logger.info(f"📋 Files ready: {len(processed_files)}, errors: {len(file_processing_errors)}")
 
     async def generate_search_stream():
         try:
@@ -316,9 +308,8 @@ async def search_multimodal_stream(
                     yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
             
             # 답변 생성이 요청된 경우 추가 처리
-            logger.info(f"🔍 Answer generation check: generate_answer={generate_answer}, search_results exists={bool(search_results)}")
             if generate_answer and search_results:
-                logger.info("🤖 Starting answer generation after search completion")
+                logger.info("🤖 Starting answer generation")
                 
                 try:
                     # 검색 결과를 SearchResponse 형태로 변환
@@ -346,42 +337,62 @@ async def search_multimodal_stream(
                         temperature=temperature,
                     )
                     
-                    # 생성 과정 단계별 전송
+                    # 생성 과정 단계별 전송 - 모든 시도에 대해
                     if generation_result.get('generation_attempts'):
                         for attempt in generation_result['generation_attempts']:
-                            if attempt.get('attempt') == 1:
-                                # 답변 초안 생성 완료 - 상세 데이터 포함
-                                draft_data = {
-                                    'attempt_number': attempt.get('attempt', 1),
-                                    'answer_length': len(attempt.get('answer', '')),
-                                    'processing_time_ms': attempt.get('processing_time_ms', 0),
-                                    'temperature': generation_result.get('temperature', 0.7),
-                                    'answer_draft': attempt.get('answer', ''),  # 전체 초안 내용 추가
-                                    'draft_preview': attempt.get('answer', '')[:100] + '...' if len(attempt.get('answer', '')) > 100 else attempt.get('answer', ''),
-                                    'search_context_size': len(search_response.results) if search_response else 0
-                                }
-                                yield f"data: {json.dumps({'step': 'draft_generated', 'message': '답변 초안 생성이 완료되었습니다', 'data': draft_data, 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
-                                
-                                yield f"data: {json.dumps({'step': 'reflection', 'message': '생성된 답변의 품질을 검토하고 있습니다', 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
-                                
-                                # 품질 검토 완료 - 상세 데이터 포함
-                                reflection_data = {
-                                    'reflection': attempt.get('reflection', {}),
-                                    'is_acceptable': attempt.get('is_acceptable', False),
-                                    'total_score': attempt.get('reflection', {}).get('total_score', 0),
-                                    'scores': attempt.get('reflection', {}).get('scores', {}),
-                                    'improvement_suggestions': attempt.get('improvement_suggestions', []),
-                                    'answer_quality': '우수' if attempt.get('is_acceptable') else '재생성 필요'
-                                }
-                                yield f"data: {json.dumps({'step': 'reflection_completed', 'message': '품질 검토가 완료되었습니다', 'data': reflection_data, 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
-                                
-                                if not attempt.get('is_acceptable') and generation_result.get('total_attempts', 1) > 1:
-                                    yield f"data: {json.dumps({'step': 'regenerating', 'message': '품질 개선을 위해 답변을 재생성하고 있습니다', 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
+                            attempt_num = attempt.get('attempt', 1)
+                            
+                            # 답변 초안 생성 완료 - 상세 데이터 포함
+                            draft_content = attempt.get('draft_answer', '')  # 올바른 키 사용
+                            draft_data = {
+                                'attempt_number': attempt_num,
+                                'answer_length': len(draft_content),
+                                'processing_time_ms': attempt.get('processing_time_ms', 0),
+                                'temperature': generation_result.get('temperature', 0.7),
+                                'answer_draft': draft_content,  # 전체 초안 내용 추가
+                                'draft_preview': draft_content[:100] + '...' if len(draft_content) > 100 else draft_content,
+                                'search_context_size': len(search_response.results) if search_response else 0
+                            }
+                            
+                            # 초안 생성 메시지
+                            draft_message = f"답변 초안 생성이 완료되었습니다 ({attempt_num}회차)" if attempt_num > 1 else "답변 초안 생성이 완료되었습니다"
+                            yield f"data: {json.dumps({'step': 'draft_generated', 'message': draft_message, 'data': draft_data, 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
+                            
+                            # 품질 검토 시작
+                            reflection_message = f"생성된 답변의 품질을 검토하고 있습니다 ({attempt_num}회차)" if attempt_num > 1 else "생성된 답변의 품질을 검토하고 있습니다"
+                            yield f"data: {json.dumps({'step': 'reflection', 'message': reflection_message, 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
+                            
+                            # 품질 검토 완료 - 상세 데이터 포함
+                            reflection_data = {
+                                'attempt_number': attempt_num,  # 시도 횟수 추가
+                                'reflection': attempt.get('reflection', {}),
+                                'is_acceptable': attempt.get('is_acceptable', False),
+                                'total_score': attempt.get('reflection', {}).get('total_score', 0),
+                                'scores': attempt.get('reflection', {}).get('scores', {}),
+                                'improvement_suggestions': attempt.get('improvement_suggestions', []),
+                                'answer_quality': '우수' if attempt.get('is_acceptable') else '재생성 필요'
+                            }
+                            
+                            # 품질 검토 완료 메시지
+                            review_message = f"품질 검토가 완료되었습니다 ({attempt_num}회차)" if attempt_num > 1 else "품질 검토가 완료되었습니다"
+                            yield f"data: {json.dumps({'step': 'reflection_completed', 'message': review_message, 'data': reflection_data, 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
+                            
+                            # 재생성이 필요하고 마지막 시도가 아닌 경우
+                            if not attempt.get('is_acceptable') and attempt_num < generation_result.get('total_attempts', 1):
+                                yield f"data: {json.dumps({'step': 'regenerating', 'message': f'품질 개선을 위해 답변을 재생성하고 있습니다 ({attempt_num + 1}회차 시도)', 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
                     
                     # 답변 생성 완료
                     yield f"data: {json.dumps({'step': 'answer_completed', 'message': 'AI 답변 생성이 완료되었습니다', 'data': generation_result, 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
                     
-                    logger.info("✅ Answer generation completed successfully")
+                    # 최종 답변 API 레벨에서 로깅 (간단히)
+                    if generation_result and generation_result.get("final_answer"):
+                        final_answer = generation_result["final_answer"]
+                        success = generation_result.get("success", False)
+                        total_attempts = generation_result.get("total_attempts", 0)
+                        logger.info(f"🌟 API Final Answer: {len(final_answer)} chars, Success: {success}, Attempts: {total_attempts}")
+                        logger.info(f"📄 Answer: {final_answer[:150]}...")
+                    
+                    logger.info("✅ Answer generation completed")
                     
                 except Exception as gen_error:
                     logger.error(f"❌ Answer generation failed: {gen_error}")

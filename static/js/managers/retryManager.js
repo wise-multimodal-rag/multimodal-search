@@ -45,10 +45,7 @@ class RetryManager {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
-            console.log('✅ Retry request sent successfully');
-            
-            // 사용자에게 재시도 알림
-            addStep('답변 재생성 중', `품질 개선을 위해 답변을 다시 생성합니다 (${currentRetry}/${this.maxRetries}회차)`, null, 'info', Date.now() / 1000);
+            console.log('✅ Retry request sent successfully - server will send regenerating step');
             
         } catch (error) {
             console.error('❌ Failed to trigger answer retry:', error);

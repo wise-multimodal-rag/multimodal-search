@@ -14,6 +14,8 @@ class StreamingSearchController {
         this.hasAnswerGeneration = false;
         this.searchProcessData = [];
         this.retryCount = 0;
+        this.draftCount = 0; // 초안 생성 횟수 추적
+        this.isRegenerating = false; // 재생성 중 상태 추적
         
         // 모듈 인스턴스 생성
         this.progressManager = new ProgressManager(
@@ -103,13 +105,7 @@ class StreamingSearchController {
     handleStepResult(stepResult) {
         const { step, message, data, timestamp, error } = stepResult;
         
-        console.log('🔍 Step result received:', stepResult);
-        console.log('📊 Current step before:', this.progressManager.currentStep, 'New step:', step);
-        
-        // LLM 답변 생성 모드에서 특별히 로깅
-        if (this.hasAnswerGeneration && step) {
-            console.log(`🤖 [Answer Generation Mode] Processing step: ${step}, Current progress: ${this.progressManager.currentStep}/${this.progressManager.totalSteps}`);
-        }
+        console.log(`🔍 Step: ${step} (${this.progressManager.currentStep}/${this.progressManager.totalSteps})`);
         
         // 진행 과정 데이터에 저장
         const processStep = {
@@ -120,7 +116,6 @@ class StreamingSearchController {
             recordedAt: new Date().toISOString()
         };
         this.searchProcessData.push(processStep);
-        console.log('Added process step:', step, '- Total steps:', this.searchProcessData.length);
         
         // 단계별 처리
         this.processStep(step, message, data, timestamp, error);
@@ -198,14 +193,13 @@ class StreamingSearchController {
                 break;
                 
             case 'completed':
-                console.log(`🎯 Search completed. Answer generation mode: ${this.hasAnswerGeneration}`);
+                console.log(`🎯 Search completed (answer mode: ${this.hasAnswerGeneration})`);
                 if (this.hasAnswerGeneration) {
                     // 답변 생성 모드인 경우: 검색 완료만 표시하고 계속 진행
                     this.stepRenderer.addStep('검색 완료', message, data, 'success', timestamp);
-                    console.log('🔄 Search completed, waiting for answer generation steps...');
                 } else {
                     // 검색만 모드인 경우: 최종 단계로 설정하고 완료 처리
-                    this.stepRenderer.addStep('검색 완료', message, data, 'success', timestamp);
+                    this.stepRenderer.addStep('검색 완룼', message, data, 'success', timestamp);
                     this.progressManager.currentStep = 7; // 검색 완료 = 7단계
                     this.progressManager.updateProgress();
                 }
@@ -214,7 +208,7 @@ class StreamingSearchController {
                 
             // 답변 생성 단계들 (8-10단계)
             case 'answer_generation_start':
-                console.log('🤖 Answer generation started - moving to step 8');
+                console.log('🤖 Answer generation started');
                 this.stepRenderer.addStep('답변 생성 시작', message, null, 'info', timestamp);
                 this.progressManager.currentStep = 8;
                 this.progressManager.updateProgress();
@@ -225,16 +219,29 @@ class StreamingSearchController {
                 break;
                 
             case 'draft_generated':
-                console.log('🎯 draft_generated event received with data:', data);
+                console.log('🎯 Draft generated:', data?.answer_length || 0, 'chars');
+                
+                this.draftCount++;
+                const isRegenerated = this.draftCount > 1;
+                const draftTitle = isRegenerated ? 
+                    `답변 초안 재생성 완료 (${this.draftCount}회차)` : 
+                    '답변 초안 생성 완료';
                 
                 // 메타데이터를 포함한 데이터 객체 생성
                 const draftMetadata = data ? {
                     ...data,
-                    _metadata: MetadataCreator.createAnswerMetadata(data, '초안 생성')
+                    _metadata: MetadataCreator.createAnswerMetadata(data, isRegenerated ? `초안 재생성 (${this.draftCount}회차)` : '초안 생성')
                 } : null;
-                this.stepRenderer.updateLastLoadingStep('답변 초안 생성 완료', message, draftMetadata, 'success', timestamp);
-                this.progressManager.currentStep = 9;
-                this.progressManager.updateProgress();
+                
+                if (isRegenerated) {
+                    // 재생성된 초안은 새로운 단계로 추가
+                    this.stepRenderer.addStep(draftTitle, message, draftMetadata, 'success', timestamp);
+                } else {
+                    // 첫 번째 초안은 기존 로딩 단계 업데이트
+                    this.stepRenderer.updateLastLoadingStep(draftTitle, message, draftMetadata, 'success', timestamp);
+                    this.progressManager.currentStep = 9;
+                    this.progressManager.updateProgress();
+                }
                 break;
                 
             case 'reflection':
@@ -245,50 +252,102 @@ class StreamingSearchController {
                 // 메타데이터를 포함한 데이터 객체 생성
                 const reflectionMetadata = data ? {
                     ...data,
-                    _metadata: MetadataCreator.createReflectionMetadata(data)
+                    _metadata: MetadataCreator.createReflectionMetadata(data, this.draftCount)
                 } : null;
                 
                 // 품질 점수 확인 및 재시도 로직
                 if (data && data.total_score !== undefined) {
                     const qualityScore = data.total_score;
-                    console.log(`🎯 Quality score check: ${qualityScore}/50`);
+                    console.log(`🎯 Quality: ${qualityScore}/50 ${qualityScore >= 35 ? 'PASS' : 'RETRY'}`);
+                    
+                    const reflectionTitle = this.draftCount > 1 ? 
+                        `답변 품질 검토 완료 (${this.draftCount}회차)` : 
+                        '답변 품질 검토 완료';
                     
                     if (qualityScore < 35) {
-                        console.log(`⚠️ Quality score ${qualityScore} is below threshold (35). Triggering retry...`);
-                        this.stepRenderer.updateLastLoadingStep('답변 품질 검토 완료 (재시도 필요)', `품질 점수 ${qualityScore}/50 - 35점 이하로 재생성을 시작합니다`, reflectionMetadata, 'warning', timestamp);
+                        const retryMessage = `품질 점수 ${qualityScore}/50 - 35점 이하로 재생성을 시작합니다`;
+                        
+                        if (this.draftCount > 1) {
+                            // 재생성된 검토는 새로운 단계로 추가
+                            this.stepRenderer.addStep(`${reflectionTitle} (재시도 필요)`, retryMessage, reflectionMetadata, 'warning', timestamp);
+                        } else {
+                            // 첫 번째 검토는 기존 로딩 단계 업데이트
+                            this.stepRenderer.updateLastLoadingStep(`${reflectionTitle} (재시도 필요)`, retryMessage, reflectionMetadata, 'warning', timestamp);
+                        }
                         
                         // 재시도 요청을 서버에 전송
                         this.retryManager.triggerAnswerRetry(this.retryCount, this.streamingHandler.abortController, this.stepRenderer.addStep.bind(this.stepRenderer));
                         return; // 여기서 중단하고 재시도 프로세스 시작
                     } else {
-                        console.log(`✅ Quality score ${qualityScore} meets threshold (>=35). Proceeding...`);
-                        this.stepRenderer.updateLastLoadingStep('답변 품질 검토 완료', message, reflectionMetadata, 'success', timestamp);
+                        if (this.draftCount > 1) {
+                            // 재생성된 검토는 새로운 단계로 추가
+                            this.stepRenderer.addStep(reflectionTitle, message, reflectionMetadata, 'success', timestamp);
+                        } else {
+                            // 첫 번째 검토는 기존 로딩 단계 업데이트
+                            this.stepRenderer.updateLastLoadingStep(reflectionTitle, message, reflectionMetadata, 'success', timestamp);
+                        }
                     }
                 } else {
                     // 점수 정보가 없으면 기본 처리
-                    this.stepRenderer.updateLastLoadingStep('답변 품질 검토 완료', message, reflectionMetadata, 'success', timestamp);
+                    const reflectionTitle = this.draftCount > 1 ? 
+                        `답변 품질 검토 완료 (${this.draftCount}회차)` : 
+                        '답변 품질 검토 완료';
+                    
+                    if (this.draftCount > 1) {
+                        this.stepRenderer.addStep(reflectionTitle, message, reflectionMetadata, 'success', timestamp);
+                    } else {
+                        this.stepRenderer.updateLastLoadingStep(reflectionTitle, message, reflectionMetadata, 'success', timestamp);
+                    }
                 }
                 break;
                 
             case 'regenerating':
-                this.stepRenderer.addStep('답변 재생성 중', message, null, 'loading', timestamp);
+                console.log('🔄 Regenerating attempt', this.draftCount + 1);
+                this.isRegenerating = true;
+                const regenerationTitle = `답변 재생성 중 (${this.draftCount + 1}회차 시도)`;
+                this.stepRenderer.addStep(regenerationTitle, message, null, 'loading', timestamp);
+                // 재생성 중임을 진행률에 반영
+                this.progressManager.updateProgress(null, null, true);
                 break;
                 
             case 'answer_completed':
-                console.log('✅ Answer generation completed - step 10', data);
+                console.log('✅ Answer completed');
                 // 메타데이터를 포함한 데이터 객체 생성
                 const finalMetadata = data ? {
                     ...data,
                     _metadata: MetadataCreator.createFinalAnswerMetadata(data)
                 } : null;
-                this.stepRenderer.updateLastLoadingStep('답변 생성 완료', message, finalMetadata, 'success', timestamp);
+                
+                // 재생성 중이었다면 regenerating 단계를 완료로 업데이트, 그렇지 않으면 새 단계 추가
+                const hasRegeneratingStep = Array.from(this.searchSteps.querySelectorAll('.search-step.loading .step-title'))
+                    .some(title => title.textContent.includes('재생성 중'));
+                
+                if (hasRegeneratingStep) {
+                    this.stepRenderer.updateLastLoadingStep('답변 재생성 완료', message, finalMetadata, 'success', timestamp);
+                } else {
+                    this.stepRenderer.updateLastLoadingStep('답변 생성 완료', message, finalMetadata, 'success', timestamp);
+                }
+                
                 this.progressManager.currentStep = 10;
-                this.progressManager.updateProgress();
-                this.resultRenderer.renderAnswerResult(data, this.searchProcessData);
+                
+                // 재생성 상태 해제
+                this.isRegenerating = false;
+                this.progressManager.updateProgress(null, null, false);
+                
+                // 최종 완료 시 남아있는 중간 로딩 단계들 숨김
+                this.stepRenderer.hideCompletedLoadingSteps();
+                
+                // 재생성이 진행 중이 아닐 때만 최종 답변 렌더링
+                const shouldRenderFinalAnswer = this.shouldRenderFinalAnswer(data);
+                console.log('🤖 Should render:', shouldRenderFinalAnswer);
+                
+                if (shouldRenderFinalAnswer) {
+                    this.resultRenderer.renderAnswerResult(data, this.searchProcessData);
+                }
                 break;
                 
             case 'answer_generation_error':
-                console.log('❌ Answer generation error', message);
+                console.error('❌ Answer generation failed:', message);
                 this.stepRenderer.updateLastLoadingStep('답변 생성 실패', message, null, 'error', timestamp);
                 this.showError(message);
                 break;
@@ -307,8 +366,44 @@ class StreamingSearchController {
                 break;
                 
             default:
-                console.log('Unknown step:', step);
+                console.warn('Unknown step:', step);
         }
+    }
+    
+    shouldRenderFinalAnswer(data) {
+        // 재생성이 진행 중이면 렌더링하지 않음
+        if (this.isRegenerating) {
+            return false;
+        }
+        
+        // 백엔드에서 is_final 플래그를 보내는 경우 이를 우선 사용
+        if (data && typeof data.is_final === 'boolean') {
+            return data.is_final;
+        }
+        
+        // is_final 플래그가 없는 경우, 다른 조건들로 판단
+        if (data) {
+            // success가 true이고 더 이상 재생성이 필요하지 않은 경우
+            if (data.success === true) {
+                return true;
+            }
+            
+            // 품질 점수가 임계값을 넘는 경우 (35점 이상)
+            if (data.generation_attempts && data.generation_attempts.length > 0) {
+                const lastAttempt = data.generation_attempts[data.generation_attempts.length - 1];
+                if (lastAttempt.reflection && lastAttempt.reflection.total_score >= 35) {
+                    return true;
+                }
+            }
+            
+            // max_attempts에 도달한 경우
+            if (data.total_attempts && data.max_attempts && data.total_attempts >= data.max_attempts) {
+                return true;
+            }
+        }
+        
+        // 기본적으로는 렌더링하지 않음 (재생성이 계속될 수 있음)
+        return false;
     }
     
     addMetadataToLastStep(metadata) {
@@ -327,6 +422,8 @@ class StreamingSearchController {
         this.isStreaming = false;
         this.hasAnswerGeneration = false;
         this.searchProcessData = [];
+        this.draftCount = 0;
+        this.isRegenerating = false;
         
         if (this.searchSteps) {
             this.searchSteps.innerHTML = '';
@@ -342,6 +439,8 @@ class StreamingSearchController {
         this.searchProcessData = [];
         this.progressManager.clearProcess();
         this.hasAnswerGeneration = false;
+        this.draftCount = 0;
+        this.isRegenerating = false;
     }
 }
 
@@ -375,13 +474,13 @@ function toggleAnswerPreview(answerId) {
         // Preview 모드에서 일반 텍스트 모드로
         plainText.style.display = 'block';
         previewText.style.display = 'none';
-        toggleBtn.innerHTML = '📖 Preview';
+        toggleBtn.innerHTML = 'Preview';
         toggleBtn.classList.remove('active');
     } else {
         // 일반 텍스트 모드에서 Preview 모드로
         plainText.style.display = 'none';
         previewText.style.display = 'block';
-        toggleBtn.innerHTML = '📝 Text';
+        toggleBtn.innerHTML = 'Text';
         toggleBtn.classList.add('active');
     }
 }

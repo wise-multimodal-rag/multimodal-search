@@ -48,11 +48,19 @@ class AnswerGenerationService:
                 logger.error(f"Failed to generate draft answer in attempt {attempt + 1}")
                 continue
             
+            # 생성된 초안 답변 로깅 (간단히)
+            logger.info(f"📝 Draft {attempt + 1}: {len(draft_answer)} chars - {draft_answer[:100]}...")
+            
             # 2. Reflection 수행
             reflection_result = await self._perform_reflection(query, draft_answer, context)
             if not reflection_result:
                 logger.error(f"Failed to perform reflection in attempt {attempt + 1}")
                 continue
+            
+            # Reflection 결과 로깅 (간단히)
+            total_score = reflection_result.get('total_score', 0)
+            is_acceptable = reflection_result.get('is_acceptable', False)
+            logger.info(f"🔍 Reflection {attempt + 1}: {total_score}/50 ({'PASS' if is_acceptable else 'RETRY'})")
             
             attempt_result = {
                 "attempt": attempt + 1,
@@ -66,7 +74,8 @@ class AnswerGenerationService:
             
             # 3. 품질 검증
             if reflection_result.get("is_acceptable", False):
-                logger.info(f"Answer accepted in attempt {attempt + 1}")
+                logger.info(f"✅ Answer accepted in attempt {attempt + 1} - Score: {reflection_result.get('total_score', 0)}/50")
+                logger.info(f"🎉 FINAL ANSWER: {len(draft_answer)} chars - {draft_answer[:100]}...")
                 return {
                     "success": True,
                     "final_answer": draft_answer,
@@ -86,7 +95,11 @@ class AnswerGenerationService:
                 temperature = min(1.0, temperature + 0.1)
         
         # 모든 시도가 실패한 경우, 마지막 생성된 답변을 반환
-        logger.warning(f"All generation attempts failed quality check, returning last attempt")
+        logger.warning(f"❌ All attempts failed quality check, using best attempt")
+        if generation_attempts:
+            last_answer = generation_attempts[-1]["draft_answer"]
+            last_score = generation_attempts[-1]["reflection"].get("total_score", 0)
+            logger.info(f"🔶 FALLBACK: {len(last_answer)} chars - Score: {last_score}/50 - {last_answer[:100]}...")
         return {
             "success": False,
             "final_answer": generation_attempts[-1]["draft_answer"] if generation_attempts else None,

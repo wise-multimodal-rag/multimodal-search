@@ -213,8 +213,29 @@ class HistoryManager {
             // 검색 타입 표시 (기존 modality 대신 또는 추가로)
             const searchTypeText = this.getSearchTypeDisplay(entry.searchType || 'search_only');
             
+            // 표시할 쿼리 텍스트 구성
+            let displayQuery = '';
+            if (entry.originalText && entry.originalText.trim()) {
+                // 원본 텍스트가 있으면 우선 표시 (파일 포함 시 파일명도 함께)
+                if (entry.modality && entry.modality.includes('+') && !entry.isFileOnly) {
+                    // 멀티모달 검색 (텍스트+파일)의 경우 query 사용 (파일명 포함)
+                    displayQuery = entry.query;
+                } else {
+                    // 텍스트만 검색의 경우 원본 텍스트 사용
+                    displayQuery = entry.originalText;
+                }
+            } else if (entry.isFileOnly) {
+                // 파일만 있는 경우 query를 사용 (파일명)
+                displayQuery = entry.query;
+            } else {
+                // 기타 경우 query 사용
+                displayQuery = entry.query;
+            }
+            
+            console.log('🔍 History display - originalText:', entry.originalText, 'query:', entry.query, 'isFileOnly:', entry.isFileOnly, 'displayQuery:', displayQuery);
+            
             historyItem.innerHTML = `
-                <div class="search-history-query">${entry.query} ${processIcon} ${aiAnswerIcon}</div>
+                <div class="search-history-query">${displayQuery} ${processIcon} ${aiAnswerIcon}</div>
                 <div class="search-history-meta">
                     <div class="search-history-type">${searchTypeText}</div>
                     <div class="search-history-modality">${entry.modality}</div>
@@ -224,22 +245,10 @@ class HistoryManager {
             
             // 클릭 동작 설정
             historyItem.onclick = () => {
-                console.log('🖱️ History item clicked:', {
-                    query: entry.query,
-                    originalText: entry.originalText,
-                    isFileOnly: entry.isFileOnly,
-                    hasSearchResult: !!entry.searchResult,
-                    searchResultKeys: entry.searchResult ? Object.keys(entry.searchResult) : [],
-                    hasResults: !!(entry.searchResult?.results?.length),
-                    hasAiAnswer: !!(entry.searchResult?.aiAnswer),
-                    hasSearchProcess: !!(entry.searchResult?.searchProcess?.length)
-                });
+                console.log('🖱️ History clicked:', entry.query.substring(0, 50) + '...');
                 
                 if (entry.searchResult && (entry.searchResult.results?.length > 0 || entry.searchResult.aiAnswer || entry.searchResult.searchProcess?.length > 0)) {
-                    console.log('✅ Restoring search results from history');
                     this.restoreSearchResult(entry.searchResult);
-                } else {
-                    console.log('⚠️ No search result data to restore, only setting search example');
                 }
                 
                 // 검색창에 텍스트 복원
@@ -280,34 +289,24 @@ class HistoryManager {
         // AI 답변도 복원 (있는 경우)
         if (searchResult.aiAnswer && searchResult.aiAnswer.final_answer) {
             console.log('🤖 Restoring AI answer from history...');
-            if (window.streamingSearchController && window.streamingSearchController.renderAnswerResult) {
-                window.streamingSearchController.renderAnswerResult(searchResult.aiAnswer);
+            if (window.streamingSearchController && window.streamingSearchController.resultRenderer && window.streamingSearchController.resultRenderer.renderAnswerResult) {
+                window.streamingSearchController.resultRenderer.renderAnswerResult(searchResult.aiAnswer, searchResult.searchProcess);
             } else {
-                console.error('❌ streamingSearchController.renderAnswerResult not available');
+                console.error('❌ streamingSearchController.resultRenderer.renderAnswerResult not available');
             }
         } else if (searchResult.aiAnswer) {
             console.log('⚠️ AI answer exists but no final_answer:', searchResult.aiAnswer);
         }
         
         // 검색 진행 과정도 복원 (있는 경우)
-        console.log('Checking searchProcess:', searchResult.searchProcess);
-        console.log('streamingSearchController available:', !!window.streamingSearchController);
-        
         if (searchResult.searchProcess && searchResult.searchProcess.length > 0) {
             if (window.streamingSearchController) {
-                console.log('Restoring search process with', searchResult.searchProcess.length, 'steps');
+                console.log('🔄 Restoring process:', searchResult.searchProcess.length, 'steps');
                 this.restoreSearchProcess(searchResult.searchProcess);
             } else {
-                console.log('StreamingSearchController not ready, waiting...');
                 // 컨트롤러가 준비될 때까지 대기 (최대 3초)
                 this.waitForStreamingController(searchResult.searchProcess, 0);
             }
-        } else {
-            console.log('No search process to restore:', {
-                hasProcess: !!searchResult.searchProcess,
-                processLength: searchResult.searchProcess?.length || 0,
-                hasController: !!window.streamingSearchController
-            });
         }
         
         // 페이지 상단으로 스크롤 (검색 결과가 최상단에 위치)
@@ -449,10 +448,20 @@ class HistoryManager {
                         streamingController.stepRenderer.addStep('답변 품질 검토 중', message, null, 'loading', timestamp);
                         break;
                     case 'reflection_completed':
+                        // 시도 횟수 추출 (데이터에서 attempt_number를 찾거나 index 기반 추정)
+                        let attemptNumber = null;
+                        if (data && data.attempt_number) {
+                            attemptNumber = data.attempt_number;
+                        } else {
+                            // 히스토리에서 이전에 몇 번의 draft_generated가 있었는지 카운트
+                            const draftCount = searchProcessData.filter(s => s.step === 'draft_generated').length;
+                            attemptNumber = draftCount > 0 ? draftCount : 1;
+                        }
+                        
                         // 메타데이터를 포함한 데이터 객체 생성
                         const reflectionMetadata = data && MetadataCreator.createReflectionMetadata ? {
                             ...data,
-                            _metadata: MetadataCreator.createReflectionMetadata(data)
+                            _metadata: MetadataCreator.createReflectionMetadata(data, attemptNumber)
                         } : data;
                         streamingController.stepRenderer.addStep('답변 품질 검토 완료', message, reflectionMetadata, 'success', timestamp);
                         break;
@@ -465,8 +474,22 @@ class HistoryManager {
                             ...data,
                             _metadata: MetadataCreator.createFinalAnswerMetadata(data)
                         } : data;
-                        streamingController.stepRenderer.addStep('답변 생성 완료', message, finalMetadata, 'success', timestamp);
+                        
+                        // 재생성 중이었다면 regenerating 단계를 완료로 업데이트, 그렇지 않으면 새 단계 추가
+                        const hasRegeneratingStep = Array.from(streamingController.searchSteps.querySelectorAll('.search-step.loading .step-title'))
+                            .some(title => title.textContent.includes('재생성 중'));
+                        
+                        if (hasRegeneratingStep) {
+                            streamingController.stepRenderer.addStep('답변 재생성 완료', message, finalMetadata, 'success', timestamp);
+                        } else {
+                            streamingController.stepRenderer.addStep('답변 생성 완료', message, finalMetadata, 'success', timestamp);
+                        }
+                        
                         streamingController.progressManager.currentStep = 10;
+                        
+                        // 히스토리 복원 시에도 중간 로딩 단계들 숨김
+                        streamingController.stepRenderer.hideCompletedLoadingSteps();
+                        
                         // 답변 결과 렌더링
                         if (data && streamingController.resultRenderer.renderAnswerResult) {
                             streamingController.resultRenderer.renderAnswerResult(data, streamingController.searchProcessData);
@@ -483,7 +506,7 @@ class HistoryManager {
                         streamingController.stepRenderer.addStep('파일 처리 실패', message, data, 'warning', timestamp);
                         break;
                     default:
-                        console.log('Unknown step in restore:', step);
+                        console.warn('Unknown step in restore:', step);
                         streamingController.stepRenderer.addStep(step, message, data, 'info', timestamp);
                         break;
                 }
@@ -521,15 +544,10 @@ class HistoryManager {
     }
     
     updateSearchHistoryWithResults(searchResult) {
-        console.log('📊 Updating search history with results:', { 
-            total_hits: searchResult?.total_hits, 
-            took_ms: searchResult?.took_ms,
-            results_count: searchResult?.results?.length 
-        });
+        console.log('📊 Updating history with results:', searchResult?.results?.length || 0, 'items');
         
         // localStorage에서 히스토리 데이터 가져오기
         let historyData = this.getSearchHistoryData();
-        console.log('📋 Current history data length:', historyData.length);
         
         if (historyData.length > 0) {
             // 기존 searchResult가 없으면 새로 생성, 있으면 업데이트
@@ -548,34 +566,19 @@ class HistoryManager {
             if (searchResult.searchProcess !== undefined) currentResult.searchProcess = searchResult.searchProcess;
             if (searchResult.aiAnswer !== undefined) currentResult.aiAnswer = searchResult.aiAnswer;
             
-            console.log('✅ Updated latest history entry with results:', {
-                totalHits: currentResult.total_hits,
-                resultsCount: currentResult.results?.length || 0,
-                hasSearchProcess: !!(currentResult.searchProcess?.length),
-                processSteps: currentResult.searchProcess?.length || 0,
-                hasAiAnswer: !!currentResult.aiAnswer,
-                query: historyData[0].query
-            });
+            console.log('✅ Updated history with results');
             
             // 저장
             this.saveSearchHistoryData(historyData);
-            console.log('✅ Search history with results saved');
             
             // UI 업데이트
             this.updateSearchHistoryUI();
-            console.log('✅ Search history UI updated with results');
-        } else {
-            console.log('❌ No history data found to update with results');
         }
     }
     
     // AI 답변 데이터를 검색 히스토리에 추가하는 함수
     updateSearchHistoryWithAnswer(answerData) {
-        console.log('🤖 Updating search history with AI answer:', {
-            hasAnswer: !!answerData?.final_answer,
-            answerLength: answerData?.final_answer?.length || 0,
-            attempts: answerData?.total_attempts || 0
-        });
+        console.log('🤖 Updating history with AI answer:', answerData?.final_answer?.length || 0, 'chars');
         
         // localStorage에서 히스토리 데이터 가져오기
         let historyData = this.getSearchHistoryData();
@@ -605,19 +608,14 @@ class HistoryManager {
             
             // AI 답변이 추가되면 searchType을 'search_with_answer'로 업데이트
             historyData[0].searchType = 'search_with_answer';
-            console.log('📝 Updated searchType to search_with_answer');
             
-            console.log('✅ Updated latest history entry with AI answer');
+            console.log('✅ Updated history with AI answer');
             
             // 저장
             this.saveSearchHistoryData(historyData);
-            console.log('✅ Search history with AI answer saved');
             
             // UI 업데이트
             this.updateSearchHistoryUI();
-            console.log('✅ Search history UI updated with AI answer');
-        } else {
-            console.log('❌ No history data found to update with AI answer');
         }
     }
     
