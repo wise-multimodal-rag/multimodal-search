@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from loguru import logger
 
+from app.core.common_handlers import execute_multimodal_search
 from app.core.dependencies import get_answer_generation_service, get_search_service
 from app.models.generation import GenerationResponse
 from app.services import SearchService
@@ -33,16 +34,18 @@ async def generate_multimodal_answer(
     try:
         logger.info(f"Starting multimodal answer generation for query: {text_query}")
         
-        # 1. 멀티모달 검색 수행 - 직접 search_service 호출
-        search_result = await search_service.search_multimodal(
+        # 1. 공통 함수를 사용하여 멀티모달 검색 수행
+        search_result = await execute_multimodal_search(
             text_query=text_query,
-            image_file=image,
-            video_file=video,
-            audio_file=audio,
+            image=image,
+            video=video,
+            audio=audio,
             text_file=text_file,
             include_chunk_meta=include_chunk_meta,
             include_media_meta=include_media_meta,
             max_results=max_results,
+            search_service=search_service,
+            input_validator=None,  # generation endpoint는 검증 생략
         )
         
         logger.info(f"Search completed, found {search_result.total_hits} results")
