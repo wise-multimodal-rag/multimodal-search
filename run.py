@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Development server runner
+"""Development server runner
 """
 import uvicorn
 from app.core.config import settings

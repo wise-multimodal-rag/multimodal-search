@@ -7,10 +7,12 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from app.core.dependencies import get_search_service
-from app.core.validators import input_validator
+from app.core.dependencies import (get_input_validator, get_multimodal_stream_service,
+                                   get_search_service)
+from app.core.validators import InputValidator
 from app.models.opensearch import SearchResponse
-from app.services import SearchService
+from app.services import (FilePreprocessingService, MultimodalStreamService,
+                          SearchService)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -25,8 +27,9 @@ async def search_multimodal(
     text_file: Optional[UploadFile] = File(default=None, description="텍스트 파일"),
     include_chunk_meta: bool = Form(default=True, description="Chunk 메타데이터 포함 여부"),
     include_media_meta: bool = Form(default=True, description="Media 메타데이터 포함 여부"),
-    max_results: int = Form(default=10, ge=1, le=100, description="최대 결과 수"),
+    max_results: int = Form(default=5, ge=1, le=100, description="최대 결과 수"),
     search_service: SearchService = Depends(get_search_service),
+    input_validator: InputValidator = Depends(get_input_validator),
 ):
     """진정한 멀티모달 검색 엔드포인트 - 텍스트, 이미지, 비디오, 오디오 조합 입력"""
     try:
@@ -139,8 +142,9 @@ async def search_multimodal(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/search/multimodal/stream")
-async def search_multimodal_stream(
+@router.post("/search/multimodal/stream")  
+async def multimodal_search_and_generate_stream(
+    request: Request,
     text_query: Optional[str] = Form(default="쿼리를 입력해주세요", description="텍스트 검색 쿼리"),
     image: Optional[UploadFile] = File(default=None, description="이미지 파일"),
     video: Optional[UploadFile] = File(default=None, description="비디오 파일"),
@@ -148,174 +152,67 @@ async def search_multimodal_stream(
     text_file: Optional[UploadFile] = File(default=None, description="텍스트 파일"),
     include_chunk_meta: bool = Form(default=True, description="Chunk 메타데이터 포함 여부"),
     include_media_meta: bool = Form(default=True, description="Media 메타데이터 포함 여부"),
-    max_results: int = Form(default=10, ge=1, le=100, description="최대 결과 수"),
-    search_service: SearchService = Depends(get_search_service),
+    max_results: int = Form(default=5, ge=1, le=100, description="최대 결과 수"),
+    generate_answer: bool = Form(default=False, description="AI 답변도 함께 생성"),
+    temperature: float = Form(default=0.7, ge=0.0, le=2.0, description="답변 생성 온도"),
+    max_retries: int = Form(default=2, ge=0, le=5, description="답변 재생성 최대 횟수"),
+    multimodal_stream_service: MultimodalStreamService = Depends(get_multimodal_stream_service),
 ):
-    """실시간 스트리밍 방식의 멀티모달 검색 엔드포인트"""
-    # 요청 받자마자 즉시 파일들을 읽어서 메모리에 보관
-    processed_files = {}
-    file_processing_errors = []
-
-    # 파일들을 즉시 처리 (스트림 생성 전에)
-    if image:
+    """멀티모달 검색 및 선택적 AI 답변 생성 스트리밍 엔드포인트
+    
+    검색만 수행하거나 검색 + LLM 답변 생성을 함께 수행할 수 있습니다.
+    generate_answer=True일 때 답변 생성도 함께 실행됩니다.
+    """
+    logger.info(f"🚀 Stream API: answer={generate_answer}, temp={temperature}, retries={max_retries}")
+    
+    # 🔧 새로운 로직: 최대 1회 재시도만 허용 (총 2번 시도)
+    if max_retries > 1:
+        logger.warning(f"⚠️ max_retries {max_retries} exceeded limit, forcing to 1 (total 2 attempts)")
+        max_retries = 1
+    
+    # 파일 전처리
+    processed_files, file_processing_errors = await FilePreprocessingService.preprocess_files(
+        image=image,
+        video=video,
+        audio=audio,
+        text_file=text_file
+    )
+    
+    # 파일 제공 여부 확인
+    files_were_provided = any([image, video, audio, text_file])
+    
+    # 클라이언트 연결 상태를 체크하는 스트리밍 래퍼
+    async def client_aware_stream():
         try:
-            logger.info(f"🔄 Reading image file immediately: {image.filename}")
-            image_content = await image.read()
-            logger.info(f"📊 Image read result: {len(image_content) if image_content else 0} bytes")
-
-            if image_content and len(image_content) > 0:
-                processed_files["image"] = {
-                    "data": image_content,
-                    "filename": image.filename or "unknown_image",
-                    "content_type": image.content_type or "image/jpeg",
-                }
-                logger.info(f"✅ Image processing successful: {len(image_content)} bytes")
-            else:
-                error_msg = f"이미지 파일이 비어있습니다: {image.filename}"
-                file_processing_errors.append(error_msg)
-                logger.error(f"❌ {error_msg}")
-        except Exception as e:
-            error_msg = f"이미지 파일 읽기 실패: {str(e)}"
-            file_processing_errors.append(error_msg)
-            logger.error(f"❌ {error_msg}")
-
-    if video:
-        try:
-            logger.info(f"🔄 Reading video file immediately: {video.filename}")
-            video_content = await video.read()
-            logger.info(f"📊 Video read result: {len(video_content) if video_content else 0} bytes")
-
-            if video_content and len(video_content) > 0:
-                processed_files["video"] = {
-                    "data": video_content,
-                    "filename": video.filename or "unknown_video",
-                    "content_type": video.content_type or "video/mp4",
-                }
-                logger.info(f"✅ Video processing successful: {len(video_content)} bytes")
-            else:
-                error_msg = f"비디오 파일이 비어있습니다: {video.filename}"
-                file_processing_errors.append(error_msg)
-                logger.error(f"❌ {error_msg}")
-        except Exception as e:
-            error_msg = f"비디오 파일 읽기 실패: {str(e)}"
-            file_processing_errors.append(error_msg)
-            logger.error(f"❌ {error_msg}")
-
-    if audio:
-        try:
-            logger.info(f"🔄 Reading audio file immediately: {audio.filename}")
-            audio_content = await audio.read()
-            logger.info(f"📊 Audio read result: {len(audio_content) if audio_content else 0} bytes")
-
-            if audio_content and len(audio_content) > 0:
-                processed_files["audio"] = {
-                    "data": audio_content,
-                    "filename": audio.filename or "unknown_audio",
-                    "content_type": audio.content_type or "audio/mp3",
-                }
-                logger.info(f"✅ Audio processing successful: {len(audio_content)} bytes")
-            else:
-                error_msg = f"오디오 파일이 비어있습니다: {audio.filename}"
-                file_processing_errors.append(error_msg)
-                logger.error(f"❌ {error_msg}")
-        except Exception as e:
-            error_msg = f"오디오 파일 읽기 실패: {str(e)}"
-            file_processing_errors.append(error_msg)
-            logger.error(f"❌ {error_msg}")
-
-    if text_file:
-        try:
-            logger.info(f"🔄 Reading text file immediately: {text_file.filename}")
-            text_content = await text_file.read()
-            logger.info(f"📊 Text file read result: {len(text_content) if text_content else 0} bytes")
-
-            if text_content and len(text_content) > 0:
-                processed_files["text_file"] = {
-                    "data": text_content,
-                    "filename": text_file.filename or "unknown.txt",
-                    "content_type": text_file.content_type or "text/plain",
-                }
-                logger.info(f"✅ Text file processing successful: {len(text_content)} bytes")
-            else:
-                error_msg = f"텍스트 파일이 비어있습니다: {text_file.filename}"
-                file_processing_errors.append(error_msg)
-                logger.error(f"❌ {error_msg}")
-        except Exception as e:
-            error_msg = f"텍스트 파일 읽기 실패: {str(e)}"
-            file_processing_errors.append(error_msg)
-            logger.error(f"❌ {error_msg}")
-
-    logger.info(f"📋 Pre-processing complete: {len(processed_files)} files ready, {len(file_processing_errors)} errors")
-
-    async def generate_search_stream():
-        try:
-            # 파일 처리 오류가 있었다면 스트리밍으로 알림
-            if file_processing_errors:
-                for error in file_processing_errors:
-                    yield f"data: {json.dumps({'step': 'file_read_failed', 'message': error, 'timestamp': time.time()}, ensure_ascii=False)}\\n\\n"
-
-            # 파일이 제공되었는지 확인 (실제 파일 업로드 시도가 있었는지)
-            files_were_provided = any([image, video, audio, text_file])
-
-            # 처리된 파일 데이터와 함께 스트리밍 검색 시작
-            async for step_result in search_service.search_multimodal_stream(
+            async for chunk in multimodal_stream_service.process_multimodal_request(
                 text_query=text_query,
                 processed_files=processed_files,
                 include_chunk_meta=include_chunk_meta,
                 include_media_meta=include_media_meta,
                 max_results=max_results,
                 files_were_provided=files_were_provided,
+                generate_answer=generate_answer,
+                temperature=temperature,
+                max_retries=max_retries,
+                file_processing_errors=file_processing_errors,
             ):
-                # SSE 형식으로 데이터 전송 - 안전한 JSON 직렬화
-                try:
-                    json_data = json.dumps(step_result, ensure_ascii=False, default=str)
-                    data_size = len(json_data)
-
-                    # 크기 체크
-                    if data_size > 10 * 1024 * 1024:  # 10MB 초과
-                        logger.warning(
-                            f"⚠️ SSE data too large: {data_size / 1024 / 1024:.2f} MB for step {step_result.get('step', 'unknown')}"
-                        )
-                        # 간소화된 에러 메시지 전송
-                        error_data = {
-                            "step": step_result.get("step", "unknown"),
-                            "message": f"데이터가 너무 커서 전송할 수 없습니다 ({data_size / 1024 / 1024:.2f} MB)",
-                            "timestamp": time.time(),
-                            "error": "data_too_large",
-                        }
-                        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
-                    else:
-                        data_str = f"data: {json_data}\n\n"
-                        yield data_str
-                        logger.debug(f"✅ SSE data sent: {data_size} bytes for step {step_result.get('step', 'unknown')}")
-
-                except Exception as json_error:
-                    logger.error(f"❌ Failed to serialize step result: {json_error}")
-                    logger.error(f"❌ Step: {step_result.get('step', 'unknown')}")
-                    import traceback
-
-                    logger.error(f"❌ SSE serialization traceback: {traceback.format_exc()}")
-                    error_data = {
-                        "step": "serialization_error",
-                        "message": f"데이터 직렬화 실패: {str(json_error)}",
-                        "timestamp": time.time(),
-                    }
-                    yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
-
-            # 스트림 완료 신호
-            yield "data: [DONE]\n\n"
-
+                # 클라이언트 연결 상태 체크
+                if await request.is_disconnected():
+                    logger.info("🔌 Client disconnected, stopping stream")
+                    break
+                yield chunk
         except Exception as e:
-            logger.error(f"Streaming search failed: {e}")
-            error_result = {"step": "error", "error": str(e), "timestamp": time.time()}
-            yield f"data: {json.dumps(error_result, ensure_ascii=False)}\n\n"
-
+            logger.error(f"Stream error: {e}")
+            # 에러 발생 시에도 적절한 종료 신호
+            yield f"data: {json.dumps({'step': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+    
+    # 스트리밍 응답 생성
     return StreamingResponse(
-        generate_search_stream(),
+        client_aware_stream(),
         media_type="text/event-stream; charset=utf-8",
         headers={
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
+            "Connection": "keep-alive", 
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "*",
         },

@@ -12,6 +12,7 @@ class LLMClient:
         self.base_url = settings.litellm_url
         self.api_key = security_manager.get_api_key("LITELLM_API_KEY") or settings.litellm_api_key
         self.model = settings.litellm_model
+        self.generation_model = settings.litellm_generation_model
         self.timeout = 60.0
 
     async def complete(
@@ -20,17 +21,19 @@ class LLMClient:
         temperature: float = 0.3,
         max_tokens: Optional[int] = None,
         force_json: bool = False,
+        use_generation_model: bool = False,
     ) -> Optional[str]:
         """Get completion from LLM"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                payload = {"model": self.model, "messages": messages, "temperature": temperature}
+                model = self.generation_model if use_generation_model else self.model
+                payload = {"model": model, "messages": messages, "temperature": temperature}
 
                 if max_tokens:
                     payload["max_tokens"] = max_tokens
 
                 # Gemini-specific settings - only force JSON when explicitly requested
-                if "gemini" in self.model.lower() and force_json:
+                if "gemini" in model.lower() and force_json:
                     payload["response_format"] = {"type": "json_object"}
                     payload["extra_body"] = {"generationConfig": {"responseMimeType": "application/json"}}
 
@@ -67,6 +70,15 @@ class LLMClient:
                         if "content" in message and message["content"]:
                             content = message["content"]
                             logger.debug(f"LLM response received, length: {len(content)} chars")
+                            
+                            # 답변 생성 모드일 때만 상세 내용 로깅
+                            if use_generation_model and len(content) > 100:  # 긴 응답만 로깅 (답변 생성 시)
+                                logger.info(f"🤖 LLM Raw Response ({payload.get('model')}):")
+                                logger.info(f"📝 Content ({len(content)} chars):")
+                                logger.info(f"{'*'*50}")
+                                logger.info(content)
+                                logger.info(f"{'*'*50}")
+                            
                             return content
                         elif "content" in message and message["content"] == "":
                             logger.warning(f"LLM returned empty content, finish_reason: {finish_reason}")

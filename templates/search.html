@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multimodal Search</title>
+    <title>Multimodal RAG</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔍</text></svg>">
-    <link rel="stylesheet" href="/static/css/search.css?v=30.0">
-    <link rel="stylesheet" href="/static/css/streaming.css?v=29.0">
+    <link rel="stylesheet" href="/static/css/search.css?v=34.0">
+    <link rel="stylesheet" href="/static/css/streaming.css?v=30.0">
 </head>
 <body>
 <div class="header" style="text-align: center; margin-bottom: 30px; padding-top: 40px;">
-    <h1>Multimodal Search</h1>
-    <p>OpenSearch 기반 멀티모달 검색 시스템</p>
+    <h1>Multimodal RAG</h1>
+    <p>Multimodal RAG System based on Opensearch</p>
 </div>
 
 <div class="container">
@@ -21,13 +21,16 @@
         <!-- 검색 입력 -->
         <div class="search-input-container">
             <div class="search-input-header">
-                <div class="search-input-title">검색 입력</div>
-                <div class="search-input-description">텍스트와 미디어 파일을 조합하여 검색하세요</div>
+                <div class="search-input-title">멀티모달 검색</div>
+                <div class="search-input-description">텍스트와 미디어 파일을 조합하여 검색하고, LLM 답변을 생성할 수 있습니다</div>
             </div>
 
             <div class="chat-input">
                 <div class="input-section">
-                    <input type="text" id="messageInput" placeholder="검색어를 입력하세요">
+                    <input type="text" id="messageInput" placeholder="검색어를 입력하세요 (Enter: 검색, Shift+Enter: LLM답변생성)">
+                </div>
+                
+                <div class="action-row">
                     <div class="file-inputs">
                         <input type="file" id="textFileInput" accept=".txt,.md,.csv,.json,.xml,.html,.pdf,text/*,application/pdf,application/json" style="display: none;">
                         <input type="file" id="imageInput" accept="image/*" style="display: none;">
@@ -47,8 +50,13 @@
                             🎥
                         </button>
                     </div>
+                    
+                    <div class="button-group">
+                        <button id="searchButton" onclick="performSearch()">검색</button>
+                        <button id="generateButton" onclick="performSearchAndGenerate()">LLM 답변 생성</button>
+                        <button id="stopButton" onclick="stopSearch()" style="display: none;">중지</button>
+                    </div>
                 </div>
-                <button id="sendButton" onclick="sendMessage()">검색</button>
             </div>
 
             <div id="selectedFiles" class="selected-files"></div>
@@ -61,7 +69,7 @@
             <div class="option-group">
                 <div class="settings-row">
                     <label>결과 수:</label>
-                    <input type="number" id="maxResults" value="10" min="1" max="50" style="width: 70px;">
+                    <input type="number" id="maxResults" value="5" min="1" max="50" style="width: 70px;">
                 </div>
             </div>
 
@@ -76,6 +84,7 @@
                     <label for="includeMediaMeta">미디어 메타데이터</label>
                 </div>
             </div>
+
         </div>
 
         <!-- 빠른 검색 -->
@@ -102,6 +111,17 @@
 
     <!-- 메인 콘텐츠 -->
     <div class="main-content">
+        <!-- AI 생성 답변 레이어 -->
+        <div class="ai-answer-container" id="aiAnswerContainer" style="display: none;">
+            <div class="ai-answer-header" id="aiAnswerHeader">
+                <div class="ai-answer-title">생성된 답변</div>
+                <div class="ai-answer-info" id="aiAnswerInfo">검색 결과를 기반으로 생성된 AI 답변입니다</div>
+            </div>
+            <div class="ai-answer-content" id="aiAnswerContent">
+                <!-- AI 답변 내용이 여기에 동적으로 추가됩니다 -->
+            </div>
+        </div>
+
         <!-- 검색 결과 (최우선 표시) -->
         <div class="search-results-container">
             <div class="search-results-header" id="searchResultsHeader" style="display: none;">
@@ -120,11 +140,11 @@
         <!-- 검색 과정 표시 (접을 수 있는 참고 자료) -->
         <div class="search-process-container" id="searchProcessContainer" style="display: none;">
             <div class="search-process-header">
-                <h2>검색 진행 상황</h2>
+                <h2>진행 상황</h2>
                 <div class="search-progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
                 </div>
-                <div class="progress-text" id="progressText">0/7 단계 완료</div>
+                <div class="progress-text" id="progressText">0단계 완료</div>
             </div>
             
             <div class="search-steps" id="searchSteps">
@@ -136,15 +156,60 @@
 </div>
 
 <!-- JavaScript 파일들 -->
-<script src="/static/js/tooltipManager.js"></script>
-<script src="/static/js/fileHandler.js?v=52.0"></script>
-<script src="/static/js/historyManager.js?v=33.0"></script>
-<script src="/static/js/uiController.js"></script>
-<script src="/static/js/streamingSearch.js?v=51.0"></script>
-<script src="/static/js/search.js?v=47.0"></script>
+<!-- Configuration (load first) -->
+<script src="/static/js/config/appConfig.js?v=1.0"></script>
+
+<!-- State Management -->
+<script src="/static/js/state/stateManager.js?v=1.0"></script>
+<script src="/static/js/state/stateHelpers.js?v=1.0"></script>
+
+<!-- Utilities (dependencies first) -->
+<script src="/static/js/utils/dataUtils.js?v=1.0"></script>
+<script src="/static/js/utils/textFormatter.js?v=1.0"></script>
+<script src="/static/js/utils/metadataCreator.js?v=1.0"></script>
+<script src="/static/js/utils/searchDataProcessor.js?v=1.0"></script>
+
+<!-- Managers -->
+<script src="/static/js/managers/tooltipManager.js"></script>
+<script src="/static/js/managers/historyManager.js?v=33.0"></script>
+<script src="/static/js/managers/retryManager.js?v=1.0"></script>
+
+<!-- Handlers -->
+<script src="/static/js/handlers/fileHandler.js?v=52.0"></script>
+
+<!-- Streaming modules -->
+<script src="/static/js/streaming/progressManager.js?v=5.0"></script>
+<script src="/static/js/streaming/streamingHandler.js?v=5.0"></script>
+<script src="/static/js/streaming/searchStepRenderer.js?v=5.0"></script>
+<script src="/static/js/streaming/searchResultRenderer.js?v=5.0"></script>
+
+<!-- Core controllers -->
+<script src="/static/js/core/uiController.js?v=16.0"></script>
+<script src="/static/js/core/streamingSearch.js?v=66.0"></script>
+<script src="/static/js/core/search.js?v=106.0"></script>
 <script>
+    // 서버 설정 로드 함수
+    async function loadServerConfiguration() {
+        try {
+            const response = await fetch('/api/v1/config/client');
+            if (response.ok) {
+                const serverConfig = await response.json();
+                window.appConfig.injectServerConfig(serverConfig);
+                console.log('✅ Server configuration loaded successfully');
+            } else {
+                console.warn('⚠️ Failed to load server configuration, using defaults');
+            }
+        } catch (error) {
+            console.error('❌ Error loading server configuration:', error);
+            console.log('🔄 Continuing with default configuration');
+        }
+    }
+
     // 앱 초기화
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', async function () {
+        // 서버 설정 로드
+        await loadServerConfiguration();
+        
         // FileHandler가 없으면 강제로 초기화
         if (!window.fileHandler) {
             try {
@@ -167,20 +232,15 @@
         
         if (testTextInput && selectedFilesDiv) {
             
-            // 선택된 파일들을 저장할 임시 객체
-            window.tempSelectedFiles = {
-                image: null,
-                video: null,
-                audio: null,
-                text_file: null
-            };
+            // 선택된 파일들은 이제 상태 관리자에서 관리
+            // window.tempSelectedFiles 대신 window.stateManager 사용
             
             testTextInput.addEventListener('change', function(e) {
                 if (e.target.files && e.target.files[0]) {
                     const file = e.target.files[0];
                     
-                    // 파일 저장
-                    window.tempSelectedFiles.text_file = file;
+                    // 파일 저장 (상태 관리자 사용)
+                    window.searchState.selectFile('text_file', file);
                     
                     // UI 업데이트
                     updateFilePreview();
@@ -194,7 +254,7 @@
                     input.addEventListener('change', function(e) {
                         if (e.target.files && e.target.files[0]) {
                             const type = inputId.replace('Input', '');
-                            window.tempSelectedFiles[type] = e.target.files[0];
+                            window.searchState.selectFile(type, e.target.files[0]);
                             updateFilePreview();
                         }
                     });
@@ -204,7 +264,8 @@
             function updateFilePreview() {
                 selectedFilesDiv.innerHTML = '';
                 
-                Object.entries(window.tempSelectedFiles).forEach(([type, file]) => {
+                const selectedFiles = window.searchState.getSelectedFiles();
+                Object.entries(selectedFiles).forEach(([type, file]) => {
                     if (file) {
                         const preview = document.createElement('div');
                         preview.className = 'file-preview';
@@ -224,7 +285,7 @@
             
             // 전역 함수로 파일 제거 기능
             window.removeFile = function(type) {
-                window.tempSelectedFiles[type] = null;
+                window.searchState.removeFile(type);
                 const input = document.getElementById(type === 'text_file' ? 'textFileInput' : type + 'Input');
                 if (input) input.value = '';
                 updateFilePreview();
@@ -232,14 +293,16 @@
             
             // 파일 존재 여부 확인 함수
             window.hasFiles = function() {
-                return Object.values(window.tempSelectedFiles).some(file => file !== null);
+                return window.searchState.hasFiles();
             };
             
             // 선택된 파일들 반환 함수
             window.getSelectedFiles = function() {
-                return window.tempSelectedFiles;
+                return window.searchState.getSelectedFiles();
             };
         }
+        
+        // 전역 함수들은 search.js에서 정의됨
     });
 </script>
 </body>

@@ -9,75 +9,34 @@ class SearchController {
         this.messageInput = document.getElementById('messageInput');
     }
     
-    async sendMessage() {
-        const message = this.messageInput.value.trim();
-        const hasFiles = (window.hasFiles && window.hasFiles()) || (window.fileHandler && window.fileHandler.hasFiles());
+    async performSearchOnly() {
+        console.log('🚀 SearchController.performSearchOnly called');
         
-        if (!message && !hasFiles) return;
-
-        // Check if this looks like a conversational query
-        if (message && window.uiController.checkConversationalQuery(message)) {
-            window.uiController.clearInput();
-            window.uiController.showConversationalGuide();
+        // 중복 호출 방지
+        if (this._isProcessing) {
+            console.warn('⚠️ performSearchOnly already in progress, ignoring');
+            return;
+        }
+        this._isProcessing = true;
+        
+        const formData = this.prepareFormData('search_only');
+        if (!formData) {
+            this._isProcessing = false;
             return;
         }
 
-        // 검색 히스토리에 추가
-        const historyText = this.buildHistoryText(message, hasFiles);
-        const originalText = message;
-        const isFileOnly = !message && hasFiles;
+        this.startSearchProcess();
         
-        if (historyText && window.historyManager) {
-            window.historyManager.addToSearchHistory(historyText, originalText, isFileOnly, null);
+        // 검색만 수행 시 AI 답변 레이어 숨김
+        const aiAnswerContainer = document.getElementById('aiAnswerContainer');
+        if (aiAnswerContainer) {
+            aiAnswerContainer.style.display = 'none';
         }
-        
-        window.uiController.clearInput();
-        window.uiController.disableSearchButton();
-        
-        // 기존 검색 결과 숨기기
-        if (this.searchResultsHeader) {
-            this.searchResultsHeader.style.display = 'none';
-        }
-        this.searchResultsContent.innerHTML = '';
 
         try {
-            // Prepare form data for streaming
-            const formData = new FormData();
-            if (message) {
-                formData.append('text_query', message);
-            }
-            
-            // Add files if selected
-            const selectedFiles = window.tempSelectedFiles || (window.fileHandler && window.fileHandler.getSelectedFiles()) || (window.getSelectedFiles && window.getSelectedFiles());
-            
-            if (selectedFiles) {
-                if (selectedFiles.image) {
-                    formData.append('image', selectedFiles.image);
-                }
-                if (selectedFiles.video) {
-                    formData.append('video', selectedFiles.video);
-                }
-                if (selectedFiles.audio) {
-                    formData.append('audio', selectedFiles.audio);
-                }
-                if (selectedFiles.text_file) {
-                    formData.append('text_file', selectedFiles.text_file);
-                }
-            }
-            
-            formData.append('max_results', document.getElementById('maxResults').value);
-            formData.append('include_chunk_meta', document.getElementById('includeChunkMeta').checked);
-            formData.append('include_media_meta', document.getElementById('includeMediaMeta').checked);
-
-            // Start streaming search
+            // 기존 스트리밍 검색 수행
             if (window.streamingSearchController) {
                 await window.streamingSearchController.startStreamingSearch(formData);
-                
-                // Update search history with streaming results
-                if (window.historyManager) {
-                    // Note: This will be updated once streaming completes
-                    // The streaming controller will handle the final results
-                }
             } else {
                 // Fallback to regular search if streaming is not available
                 await this.fallbackToRegularSearch(formData);
@@ -90,10 +49,175 @@ class SearchController {
 
         } catch (error) {
             console.error('Search failed:', error);
-            window.uiController.showError(error);
+            if (window.uiController && typeof window.uiController.showError === 'function') {
+                window.uiController.showError(error);
+            }
         } finally {
-            window.uiController.enableSearchButton();
+            this._isProcessing = false;
+            if (window.uiController && typeof window.uiController.enableSearchButton === 'function') {
+                window.uiController.enableSearchButton();
+            }
+            // 검색 완료 시 버튼 상태 복원
+            this.restoreButtonState();
         }
+    }
+
+    async performSearchAndGenerate() {
+        console.log('🚀 SearchController.performSearchAndGenerate called');
+        console.log('🔍 Input value before prepareFormData:', this.messageInput ? this.messageInput.value : 'NO_INPUT_ELEMENT');
+        
+        // 중복 호출 방지
+        if (this._isProcessing) {
+            console.warn('⚠️ performSearchAndGenerate already in progress, ignoring');
+            return;
+        }
+        this._isProcessing = true;
+        
+        const formData = this.prepareFormData('search_with_answer');
+        console.log('formData prepared:', !!formData);
+        if (!formData) {
+            console.log('No formData, returning early');
+            return;
+        }
+
+        this.startSearchProcess();
+
+        try {
+            // 통합 스트리밍 API 사용 - 답변 생성 파라미터 추가
+            formData.append('generate_answer', 'true');
+            formData.append('temperature', '0.7');
+            formData.append('max_retries', '2');
+            
+            // 기존 스트리밍 검색 로직 재사용
+            if (window.streamingSearchController) {
+                await window.streamingSearchController.startStreamingSearch(formData);
+            } else {
+                throw new Error('Streaming controller not available');
+            }
+
+            // Clear files after successful search
+            if (window.fileHandler) {
+                window.fileHandler.clearFiles();
+            }
+
+        } catch (error) {
+            console.error('Answer generation failed:', error);
+            if (window.uiController && typeof window.uiController.showError === 'function') {
+                window.uiController.showError(`답변 생성 실패: ${error.message}`);
+            }
+        } finally {
+            this._isProcessing = false;
+            if (window.uiController && typeof window.uiController.enableSearchButton === 'function') {
+                window.uiController.enableSearchButton();
+            }
+            // 검색 완료 시 버튼 상태 복원
+            this.restoreButtonState();
+        }
+    }
+
+    prepareFormData(searchType = 'search_only') {
+        // 입력값을 미리 저장 (다른 스크립트에서 클리어될 가능성 대비)
+        const messageInputValue = this.messageInput ? this.messageInput.value : '';
+        const message = messageInputValue.trim();
+        const hasFiles = (window.hasFiles && window.hasFiles()) || (window.fileHandler && window.fileHandler.hasFiles());
+        
+        console.log('🔍 prepareFormData debug:', {
+            messageInputValue: messageInputValue,
+            messageTrimmed: message,
+            hasFiles: hasFiles,
+            messageInputElement: this.messageInput,
+            messageInputExists: !!this.messageInput
+        });
+        
+        if (!message && !hasFiles) return null;
+
+        // Check if this looks like a conversational query
+        try {
+            if (message && window.uiController && typeof window.uiController.checkConversationalQuery === 'function') {
+                if (window.uiController.checkConversationalQuery(message)) {
+                    if (typeof window.uiController.clearInput === 'function') {
+                        window.uiController.clearInput();
+                    }
+                    if (typeof window.uiController.showConversationalGuide === 'function') {
+                        window.uiController.showConversationalGuide();
+                    }
+                    return null;
+                }
+            }
+        } catch (error) {
+            console.warn('uiController method call failed:', error);
+            // Continue with normal flow
+        }
+
+        // 검색 히스토리에 추가
+        const historyText = this.buildHistoryText(message, hasFiles);
+        const originalText = message;
+        const isFileOnly = !message && hasFiles;
+        
+        console.log('🔍 Debug search history values:', {
+            message: message,
+            hasFiles: hasFiles,
+            historyText: historyText,
+            originalText: originalText,
+            isFileOnly: isFileOnly,
+            searchType: searchType
+        });
+        
+        if (historyText && window.historyManager) {
+            window.historyManager.addToSearchHistory(historyText, originalText, isFileOnly, null, searchType);
+        }
+
+        // Prepare form data for streaming
+        const formData = new FormData();
+        if (message) {
+            formData.append('text_query', message);
+        }
+        
+        // Add files if selected
+        const selectedFiles = window.tempSelectedFiles || (window.fileHandler && window.fileHandler.getSelectedFiles()) || (window.getSelectedFiles && window.getSelectedFiles());
+        
+        if (selectedFiles) {
+            if (selectedFiles.image) {
+                formData.append('image', selectedFiles.image);
+            }
+            if (selectedFiles.video) {
+                formData.append('video', selectedFiles.video);
+            }
+            if (selectedFiles.audio) {
+                formData.append('audio', selectedFiles.audio);
+            }
+            if (selectedFiles.text_file) {
+                formData.append('text_file', selectedFiles.text_file);
+            }
+        }
+        
+        formData.append('max_results', document.getElementById('maxResults').value);
+        formData.append('include_chunk_meta', document.getElementById('includeChunkMeta').checked);
+        formData.append('include_media_meta', document.getElementById('includeMediaMeta').checked);
+
+        return formData;
+    }
+
+    startSearchProcess() {
+        // 버튼 상태 변경: 검색/생성 버튼 숨김, 중지 버튼 표시
+        document.getElementById('searchButton').style.display = 'none';
+        document.getElementById('generateButton').style.display = 'none';
+        document.getElementById('stopButton').style.display = 'inline-block';
+        
+        if (window.uiController) {
+            if (typeof window.uiController.clearInput === 'function') {
+                window.uiController.clearInput();
+            }
+            if (typeof window.uiController.disableSearchButton === 'function') {
+                window.uiController.disableSearchButton();
+            }
+        }
+        
+        // 기존 검색 결과 숨기기
+        if (this.searchResultsHeader) {
+            this.searchResultsHeader.style.display = 'none';
+        }
+        this.searchResultsContent.innerHTML = '';
     }
     
     async fallbackToRegularSearch(formData) {
@@ -119,20 +243,26 @@ class SearchController {
     }
     
     buildHistoryText(message, hasFiles) {
+        console.log('🔍 buildHistoryText called with:', { message, hasFiles });
+        
         if (message && hasFiles) {
             const fileNames = this.getFileNames();
             const fileCount = fileNames.length;
+            console.log('🔍 Case: message + hasFiles, fileNames:', fileNames);
             if (fileCount === 1) {
                 return `${message} (+${fileNames[0]})`;
             } else {
                 return `${message} (+${fileCount}개: ${fileNames.join(', ')})`;
             }
         } else if (message) {
+            console.log('🔍 Case: message only');
             return message;
         } else if (hasFiles) {
             const fileNames = this.getFileNames();
+            console.log('🔍 Case: hasFiles only, fileNames:', fileNames);
             return fileNames.join(', ');
         }
+        console.log('🔍 Case: empty result');
         return '';
     }
     
@@ -166,6 +296,13 @@ class SearchController {
         return cleanedLines.join('\n');
     }
     
+    restoreButtonState() {
+        // 검색 완료 시 버튼 상태 복원
+        document.getElementById('searchButton').style.display = 'inline-block';
+        document.getElementById('generateButton').style.display = 'inline-block';
+        document.getElementById('stopButton').style.display = 'none';
+    }
+    
     sanitizeElementForDisplay(element) {
         // element 객체를 복사하여 embedding 관련 필드 제거/요약
         const sanitized = { ...element };
@@ -197,7 +334,9 @@ class SearchController {
     
     displaySearchResults(searchResult) {
         // 검색 결과 헤더 업데이트
-        window.uiController.updateSearchResultsHeader(searchResult);
+        if (window.uiController && searchResult) {
+            window.uiController.updateSearchResultsHeader(searchResult);
+        }
         
         // 검색 결과 내용 생성
         let resultsHtml = '';
@@ -298,17 +437,42 @@ class SearchController {
         
         this.searchResultsContent.innerHTML = resultsHtml;
     }
+    
 }
 
 // 전역 인스턴스 생성
 window.searchController = new SearchController();
 
 // HTML에서 호출할 수 있도록 전역 함수 정의
-function sendMessage() {
+function performSearch() {
     if (window.searchController) {
-        window.searchController.sendMessage();
+        window.searchController.performSearchOnly();
+    }
+}
+
+function performSearchAndGenerate() {
+    console.log('performSearchAndGenerate called');
+    if (window.searchController) {
+        console.log('searchController exists, calling performSearchAndGenerate');
+        window.searchController.performSearchAndGenerate();
+    } else {
+        console.error('searchController not found');
+    }
+}
+
+// 중지 버튼 클릭 시 호출될 함수
+function stopSearch() {
+    if (window.streamingSearchController) {
+        window.streamingSearchController.stopSearch();
+        
+        // 검색 중지 시 버튼 상태 복원
+        document.getElementById('searchButton').style.display = 'inline-block';
+        document.getElementById('generateButton').style.display = 'inline-block';
+        document.getElementById('stopButton').style.display = 'none';
     }
 }
 
 // window 객체에도 명시적으로 할당
-window.sendMessage = sendMessage;
+window.performSearch = performSearch;
+window.performSearchAndGenerate = performSearchAndGenerate;
+window.stopSearch = stopSearch;
