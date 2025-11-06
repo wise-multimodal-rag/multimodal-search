@@ -20,13 +20,13 @@ class SearchService:
 
     def __init__(
         self,
-        opensearch_service: OpenSearchService = None,
-        input_processor: InputProcessor = None,
-        feature_extractor: MultimodalFeatureExtractor = None,
-        query_analyzer: QueryAnalyzer = None,
-        embedding_service: EmbeddingService = None,
-        result_enricher: ResultEnricher = None,
-        search_executor: SearchExecutor = None,
+        opensearch_service: OpenSearchService,
+        input_processor: InputProcessor,
+        feature_extractor: MultimodalFeatureExtractor,
+        query_analyzer: QueryAnalyzer,
+        embedding_service: EmbeddingService,
+        result_enricher: ResultEnricher,
+        search_executor: SearchExecutor,
     ):
         # Define available element types for the system
         # Currently active types
@@ -61,14 +61,14 @@ class SearchService:
         # "sound_effect": "특수 효과음 - 박수소리, 벨소리, 알림음",
         # "ambient": "주변 환경음 - 에어컨 소리, 발걸음, 잡음"
 
-        # Use dependency injection or fallback to defaults
-        self.opensearch_service = opensearch_service or OpenSearchService()
-        self.input_processor = input_processor or InputProcessor()
-        self.feature_extractor = feature_extractor or MultimodalFeatureExtractor()
-        self.query_analyzer = query_analyzer or QueryAnalyzer()
-        self.embedding_service = embedding_service or EmbeddingService()
-        self.result_enricher = result_enricher or ResultEnricher(self.opensearch_service)
-        self.search_executor = search_executor or SearchExecutor(self.opensearch_service, self.query_analyzer)
+        # Strict dependency injection - no fallbacks
+        self.opensearch_service = opensearch_service
+        self.input_processor = input_processor
+        self.feature_extractor = feature_extractor
+        self.query_analyzer = query_analyzer
+        self.embedding_service = embedding_service
+        self.result_enricher = result_enricher
+        self.search_executor = search_executor
 
     async def search_multimodal(
         self,

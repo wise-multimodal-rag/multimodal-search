@@ -144,7 +144,7 @@
                 <div class="search-progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
                 </div>
-                <div class="progress-text" id="progressText">0/7 단계 완료</div>
+                <div class="progress-text" id="progressText">0단계 완료</div>
             </div>
             
             <div class="search-steps" id="searchSteps">
@@ -156,6 +156,13 @@
 </div>
 
 <!-- JavaScript 파일들 -->
+<!-- Configuration (load first) -->
+<script src="/static/js/config/appConfig.js?v=1.0"></script>
+
+<!-- State Management -->
+<script src="/static/js/state/stateManager.js?v=1.0"></script>
+<script src="/static/js/state/stateHelpers.js?v=1.0"></script>
+
 <!-- Utilities (dependencies first) -->
 <script src="/static/js/utils/dataUtils.js?v=1.0"></script>
 <script src="/static/js/utils/textFormatter.js?v=1.0"></script>
@@ -171,18 +178,38 @@
 <script src="/static/js/handlers/fileHandler.js?v=52.0"></script>
 
 <!-- Streaming modules -->
-<script src="/static/js/streaming/progressManager.js?v=1.0"></script>
-<script src="/static/js/streaming/streamingHandler.js?v=1.0"></script>
-<script src="/static/js/streaming/searchStepRenderer.js?v=1.0"></script>
-<script src="/static/js/streaming/searchResultRenderer.js?v=1.0"></script>
+<script src="/static/js/streaming/progressManager.js?v=5.0"></script>
+<script src="/static/js/streaming/streamingHandler.js?v=5.0"></script>
+<script src="/static/js/streaming/searchStepRenderer.js?v=5.0"></script>
+<script src="/static/js/streaming/searchResultRenderer.js?v=5.0"></script>
 
 <!-- Core controllers -->
-<script src="/static/js/core/uiController.js?v=11.0"></script>
-<script src="/static/js/core/streamingSearch.js?v=61.0"></script>
-<script src="/static/js/core/search.js?v=101.0"></script>
+<script src="/static/js/core/uiController.js?v=16.0"></script>
+<script src="/static/js/core/streamingSearch.js?v=66.0"></script>
+<script src="/static/js/core/search.js?v=106.0"></script>
 <script>
+    // 서버 설정 로드 함수
+    async function loadServerConfiguration() {
+        try {
+            const response = await fetch('/api/v1/config/client');
+            if (response.ok) {
+                const serverConfig = await response.json();
+                window.appConfig.injectServerConfig(serverConfig);
+                console.log('✅ Server configuration loaded successfully');
+            } else {
+                console.warn('⚠️ Failed to load server configuration, using defaults');
+            }
+        } catch (error) {
+            console.error('❌ Error loading server configuration:', error);
+            console.log('🔄 Continuing with default configuration');
+        }
+    }
+
     // 앱 초기화
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', async function () {
+        // 서버 설정 로드
+        await loadServerConfiguration();
+        
         // FileHandler가 없으면 강제로 초기화
         if (!window.fileHandler) {
             try {
@@ -205,20 +232,15 @@
         
         if (testTextInput && selectedFilesDiv) {
             
-            // 선택된 파일들을 저장할 임시 객체
-            window.tempSelectedFiles = {
-                image: null,
-                video: null,
-                audio: null,
-                text_file: null
-            };
+            // 선택된 파일들은 이제 상태 관리자에서 관리
+            // window.tempSelectedFiles 대신 window.stateManager 사용
             
             testTextInput.addEventListener('change', function(e) {
                 if (e.target.files && e.target.files[0]) {
                     const file = e.target.files[0];
                     
-                    // 파일 저장
-                    window.tempSelectedFiles.text_file = file;
+                    // 파일 저장 (상태 관리자 사용)
+                    window.searchState.selectFile('text_file', file);
                     
                     // UI 업데이트
                     updateFilePreview();
@@ -232,7 +254,7 @@
                     input.addEventListener('change', function(e) {
                         if (e.target.files && e.target.files[0]) {
                             const type = inputId.replace('Input', '');
-                            window.tempSelectedFiles[type] = e.target.files[0];
+                            window.searchState.selectFile(type, e.target.files[0]);
                             updateFilePreview();
                         }
                     });
@@ -242,7 +264,8 @@
             function updateFilePreview() {
                 selectedFilesDiv.innerHTML = '';
                 
-                Object.entries(window.tempSelectedFiles).forEach(([type, file]) => {
+                const selectedFiles = window.searchState.getSelectedFiles();
+                Object.entries(selectedFiles).forEach(([type, file]) => {
                     if (file) {
                         const preview = document.createElement('div');
                         preview.className = 'file-preview';
@@ -262,7 +285,7 @@
             
             // 전역 함수로 파일 제거 기능
             window.removeFile = function(type) {
-                window.tempSelectedFiles[type] = null;
+                window.searchState.removeFile(type);
                 const input = document.getElementById(type === 'text_file' ? 'textFileInput' : type + 'Input');
                 if (input) input.value = '';
                 updateFilePreview();
@@ -270,12 +293,12 @@
             
             // 파일 존재 여부 확인 함수
             window.hasFiles = function() {
-                return Object.values(window.tempSelectedFiles).some(file => file !== null);
+                return window.searchState.hasFiles();
             };
             
             // 선택된 파일들 반환 함수
             window.getSelectedFiles = function() {
-                return window.tempSelectedFiles;
+                return window.searchState.getSelectedFiles();
             };
         }
         

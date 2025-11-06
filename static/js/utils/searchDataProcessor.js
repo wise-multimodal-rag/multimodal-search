@@ -138,6 +138,59 @@ class SearchDataProcessor {
         
         return null;
     }
+    
+    // 이미지 URL 감지 (새로운 기능)
+    static detectImageUrl(content) {
+        if (!content || typeof content !== 'string') return null;
+        
+        try {
+            // HTTP/HTTPS URL 패턴 매칭
+            const urlPattern = /https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|bmp|webp|svg)(\?[^\s]*)?$/i;
+            const match = content.match(urlPattern);
+            
+            if (match) {
+                return content.trim();
+            }
+            
+            // 특정 도메인 패턴 (minio storage 등)
+            const minioPattern = /https?:\/\/[^\/]+\.minio\.[^\/]+\/[^\/]+\/[^\/]+\/[^\/]+\/[a-f0-9]+\.(jpg|jpeg|png|gif|bmp|webp|svg)/i;
+            const minioMatch = content.match(minioPattern);
+            
+            if (minioMatch) {
+                return content.trim();
+            }
+            
+            // internal.example.com 도메인 패턴
+            const labsPattern = /https?:\/\/[^\/]*internal\.example\.com[^\/]*\/[^\s]+\.(jpg|jpeg|png|gif|bmp|webp|svg)/i;
+            const labsMatch = content.match(labsPattern);
+            
+            if (labsMatch) {
+                return content.trim();
+            }
+            
+        } catch (e) {
+            console.warn('Failed to detect image URL:', e);
+        }
+        
+        return null;
+    }
+    
+    // Element가 이미지인지 판단
+    static isImageElement(element) {
+        if (!element) return false;
+        
+        // modality가 image이고 content가 URL인 경우
+        if (element.modality === 'image' && this.detectImageUrl(element.content)) {
+            return true;
+        }
+        
+        // element_type이 origin이고 content가 이미지 URL인 경우
+        if (element.element_type === 'origin' && this.detectImageUrl(element.content)) {
+            return true;
+        }
+        
+        return false;
+    }
 }
 
 // 전역 사용을 위한 export

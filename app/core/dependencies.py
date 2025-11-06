@@ -3,87 +3,90 @@ from functools import lru_cache
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.feature_extraction_client import FeatureExtractionClient
 from app.clients.llm_client import LLMClient
-from app.services import (EmbeddingService, InputProcessor, MultimodalFeatureExtractor,
+from app.core.container import container
+from app.core.validators import InputValidator
+from app.services import (EmbeddingService, FilePreprocessingService, InputProcessor,
+                          MultimodalFeatureExtractor, MultimodalStreamService,
                           OpenSearchService, QueryAnalyzer, ResultEnricher,
                           SearchExecutor, SearchService)
 from app.services.generation import AnswerGenerationService
 
 
+# DI 컨테이너 초기화
+def _initialize_container():
+    """DI 컨테이너에 모든 서비스 등록"""
+    if container.is_registered(EmbeddingClient):
+        return  # 이미 초기화됨
+    
+    # Clients
+    container.register(EmbeddingClient)
+    container.register(FeatureExtractionClient)
+    container.register(LLMClient)
+    
+    # Core services
+    container.register(InputValidator)
+    
+    # Services
+    container.register(EmbeddingService)
+    container.register(InputProcessor)
+    container.register(MultimodalFeatureExtractor)
+    container.register(QueryAnalyzer)
+    container.register(OpenSearchService)
+    container.register(ResultEnricher)
+    container.register(SearchExecutor)
+    container.register(SearchService)
+    container.register(AnswerGenerationService)
+    container.register(MultimodalStreamService)
+
+# 컨테이너 초기화
+_initialize_container()
+
+
 @lru_cache()
 def get_feature_extraction_client() -> FeatureExtractionClient:
     """Get singleton instance of FeatureExtractionClient"""
-    return FeatureExtractionClient()
+    return container.get(FeatureExtractionClient)
 
 
 @lru_cache()
 def get_embedding_client() -> EmbeddingClient:
     """Get singleton instance of EmbeddingClient"""
-    return EmbeddingClient()
+    return container.get(EmbeddingClient)
 
 
 @lru_cache()
 def get_llm_client() -> LLMClient:
     """Get singleton instance of LLMClient"""
-    return LLMClient()
+    return container.get(LLMClient)
+
+
+@lru_cache()
+def get_input_validator() -> InputValidator:
+    """Get singleton instance of InputValidator"""
+    return container.get(InputValidator)
 
 
 @lru_cache()
 def get_opensearch_service() -> OpenSearchService:
     """Get singleton instance of OpenSearchService"""
-    return OpenSearchService(embedding_service=get_embedding_service())
+    return container.get(OpenSearchService)
 
 
-@lru_cache()
-def get_input_processor() -> InputProcessor:
-    """Get singleton instance of InputProcessor"""
-    return InputProcessor()
-
-
-@lru_cache()
-def get_multimodal_feature_extractor() -> MultimodalFeatureExtractor:
-    """Get singleton instance of MultimodalFeatureExtractor"""
-    return MultimodalFeatureExtractor(feature_extraction_client=get_feature_extraction_client(), llm_client=get_llm_client())
-
-
-@lru_cache()
-def get_query_analyzer() -> QueryAnalyzer:
-    """Get singleton instance of QueryAnalyzer"""
-    return QueryAnalyzer(llm_client=get_llm_client())
-
-
-@lru_cache()
-def get_embedding_service() -> EmbeddingService:
-    """Get singleton instance of EmbeddingService"""
-    return EmbeddingService(embedding_client=get_embedding_client())
-
-
-@lru_cache()
-def get_result_enricher() -> ResultEnricher:
-    """Get singleton instance of ResultEnricher"""
-    return ResultEnricher(opensearch_service=get_opensearch_service())
-
-
-@lru_cache()
-def get_search_executor() -> SearchExecutor:
-    """Get singleton instance of SearchExecutor"""
-    return SearchExecutor(opensearch_service=get_opensearch_service(), query_analyzer=get_query_analyzer())
 
 
 @lru_cache()
 def get_search_service() -> SearchService:
     """Get singleton instance of SearchService with injected dependencies"""
-    return SearchService(
-        opensearch_service=get_opensearch_service(),
-        input_processor=get_input_processor(),
-        feature_extractor=get_multimodal_feature_extractor(),
-        query_analyzer=get_query_analyzer(),
-        embedding_service=get_embedding_service(),
-        result_enricher=get_result_enricher(),
-        search_executor=get_search_executor(),
-    )
+    return container.get(SearchService)
 
 
 @lru_cache()
 def get_answer_generation_service() -> AnswerGenerationService:
     """Get singleton instance of AnswerGenerationService"""
-    return AnswerGenerationService(llm_client=get_llm_client())
+    return container.get(AnswerGenerationService)
+
+
+@lru_cache()
+def get_multimodal_stream_service() -> MultimodalStreamService:
+    """Get singleton instance of MultimodalStreamService"""
+    return container.get(MultimodalStreamService)

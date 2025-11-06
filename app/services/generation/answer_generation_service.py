@@ -1,6 +1,7 @@
 import asyncio
 import json
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from loguru import logger
 
@@ -39,8 +40,11 @@ class AnswerGenerationService:
         
         generation_attempts = []
         
-        for attempt in range(max_retries + 1):
-            logger.info(f"Generation attempt {attempt + 1}/{max_retries + 1}")
+        # 새로운 로직: 최대 2회만 시도 (초안 1회 + 재생성 1회)
+        max_attempts = 2
+        
+        for attempt in range(max_attempts):
+            logger.info(f"Generation attempt {attempt + 1}/{max_attempts}")
             
             # 1. 초안 생성
             draft_answer = await self._generate_draft(query, context, temperature)
@@ -73,8 +77,11 @@ class AnswerGenerationService:
             generation_attempts.append(attempt_result)
             
             # 3. 품질 검증
-            if reflection_result.get("is_acceptable", False):
-                logger.info(f"✅ Answer accepted in attempt {attempt + 1} - Score: {reflection_result.get('total_score', 0)}/50")
+            total_score = reflection_result.get('total_score', 0)
+            is_acceptable = reflection_result.get("is_acceptable", False)
+            
+            if is_acceptable:
+                logger.info(f"✅ Answer accepted in attempt {attempt + 1} - Score: {total_score}/50")
                 logger.info(f"🎉 FINAL ANSWER: {len(draft_answer)} chars - {draft_answer[:100]}...")
                 return {
                     "success": True,
@@ -82,36 +89,69 @@ class AnswerGenerationService:
                     "query": query,
                     "total_attempts": attempt + 1,
                     "generation_attempts": generation_attempts,
+                    "best_attempt": attempt + 1,
+                    "best_score": total_score,
                     "search_context": {
                         "total_results": search_results.total_hits,
                         "element_types_used": search_results.element_types_used,
                     },
+                    "completion_reason": "quality_accepted"
                 }
             
-            # 재생성이 필요한 경우, 개선 사항을 반영하여 다음 시도 준비
-            if attempt < max_retries:
-                logger.info(f"Answer needs improvement, preparing retry {attempt + 2}")
+            # 마지막 시도인지 확인
+            if attempt >= max_attempts - 1:
+                logger.info(f"🔴 Generation reached max attempts ({attempt + 1}/{max_attempts}), selecting best answer")
+                break
+                
+            # 재생성 신호 (첫번째 시도가 35점 이하인 경우에만)
+            if total_score <= 35:
+                logger.info(f"🔄 Generation needs retry (score={total_score}), preparing attempt {attempt + 2}")
                 # 다음 시도에서는 약간 다른 온도 사용
                 temperature = min(1.0, temperature + 0.1)
+            else:
+                logger.info(f"🔶 Score {total_score}/50 is acceptable, completing generation")
+                break
         
-        # 모든 시도가 실패한 경우, 마지막 생성된 답변을 반환
-        logger.warning(f"❌ All attempts failed quality check, using best attempt")
+        # 모든 시도 완료 - 가장 점수가 높은 답변 선택
+        logger.info(f"🎯 Selecting best answer from {len(generation_attempts)} attempts")
+        
         if generation_attempts:
-            last_answer = generation_attempts[-1]["draft_answer"]
-            last_score = generation_attempts[-1]["reflection"].get("total_score", 0)
-            logger.info(f"🔶 FALLBACK: {len(last_answer)} chars - Score: {last_score}/50 - {last_answer[:100]}...")
-        return {
-            "success": False,
-            "final_answer": generation_attempts[-1]["draft_answer"] if generation_attempts else None,
-            "query": query,
-            "total_attempts": len(generation_attempts),
-            "generation_attempts": generation_attempts,
-            "search_context": {
-                "total_results": search_results.total_hits,
-                "element_types_used": search_results.element_types_used,
-            },
-            "error": "All generation attempts failed quality requirements",
-        }
+            # 점수가 가장 높은 답변 선택
+            best_attempt = max(generation_attempts, key=lambda x: x["reflection"].get("total_score", 0))
+            best_score = best_attempt["reflection"].get("total_score", 0)
+            best_answer = best_attempt["draft_answer"]
+            best_attempt_num = best_attempt["attempt"]
+            
+            logger.info(f"🏆 Selected attempt {best_attempt_num} with score {best_score}/50")
+            logger.info(f"🔶 BEST ANSWER: {len(best_answer)} chars - {best_answer[:100]}...")
+            
+            # 성공 여부 판단 (35점 이상이면 성공)
+            is_success = best_score >= 35
+            
+            return {
+                "success": is_success,
+                "final_answer": best_answer,
+                "query": query,
+                "total_attempts": len(generation_attempts),
+                "generation_attempts": generation_attempts,
+                "best_attempt": best_attempt_num,
+                "best_score": best_score,
+                "search_context": {
+                    "total_results": search_results.total_hits,
+                    "element_types_used": search_results.element_types_used,
+                },
+                "completion_reason": "best_score_selected"
+            }
+        else:
+            # 예외적인 경우
+            logger.error("🚨 No generation attempts found")
+            return {
+                "success": False,
+                "final_answer": None,
+                "query": query,
+                "total_attempts": 0,
+                "error": "No generation attempts completed"
+            }
 
     def _prepare_context(self, search_results: SearchResponse) -> str:
         """검색 결과를 LLM이 사용할 수 있는 컨텍스트로 변환"""
@@ -271,3 +311,265 @@ JSON 형식으로만 응답하세요:
             logger.error(f"Error performing reflection: {e}")
         
         return None
+
+    async def generate_answer_stream(
+        self,
+        query: str,
+        search_results: SearchResponse,
+        max_retries: int = 2,
+        temperature: float = 0.7,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """검색 결과를 기반으로 질의에 대한 답변을 스트리밍으로 생성합니다."""
+        start_time = time.time()
+        max_generation_time = 300  # 5분 최대 실행 시간
+        logger.info(f"🚀 Starting streaming answer generation for query: {query} (max_retries={max_retries})")
+        
+        # 검색 결과를 컨텍스트로 변환
+        context = self._prepare_context(search_results)
+        
+        # 답변 생성 시작 신호
+        yield {
+            'step': 'answer_generation_start',
+            'message': 'AI 답변 생성을 시작합니다',
+            'timestamp': time.time()
+        }
+        
+        generation_attempts = []
+        
+        # 새로운 로직: 최대 2회만 시도 (초안 1회 + 재생성 1회)
+        max_attempts = 2
+        logger.info(f"🎯 STREAM Starting generation with max_attempts={max_attempts} (1 initial + 1 regeneration)")
+        
+        for attempt in range(max_attempts):
+            logger.info(f"🔄 STREAM Starting attempt {attempt + 1}/{max_attempts}")
+            # 취소 요청 체크 및 양보
+            try:
+                await asyncio.sleep(0.01)  # 취소 체크를 위한 양보 (10ms)
+            except asyncio.CancelledError:
+                logger.info(f"🛑 STREAM Generation cancelled at attempt {attempt + 1}")
+                cancel_result = {
+                    'step': 'answer_generation_cancelled',
+                    'message': '답변 생성이 취소되었습니다',
+                    'timestamp': time.time()
+                }
+                yield cancel_result
+                return
+            
+            # 시간 제한 체크
+            elapsed_time = time.time() - start_time
+            if elapsed_time > max_generation_time:
+                logger.error(f"🚨 STREAM Generation timeout after {elapsed_time:.1f}s, stopping")
+                timeout_result = {
+                    'step': 'answer_generation_timeout',
+                    'message': f'답변 생성이 시간 초과되어 중단되었습니다 ({elapsed_time:.1f}초)',
+                    'timestamp': time.time()
+                }
+                yield timeout_result
+                return
+                
+            logger.info(f"🔄 STREAM Generation attempt {attempt + 1}/{max_attempts} (max_retries={max_retries}, elapsed={elapsed_time:.1f}s)")
+            
+            # 초안 생성 시작 신호
+            yield {
+                'step': 'draft_generation',
+                'message': f'답변 초안을 생성하고 있습니다 ({attempt + 1}회차)' if attempt > 0 else '검색 결과를 분석하여 답변 초안을 생성하고 있습니다',
+                'timestamp': time.time(),
+                'attempt_number': attempt + 1
+            }
+            
+            # 1. 초안 생성
+            logger.info(f"🎯 STREAM Generating draft for attempt {attempt + 1}")
+            try:
+                draft_answer = await self._generate_draft(query, context, temperature)
+                if not draft_answer:
+                    logger.error(f"❌ STREAM Failed to generate draft answer in attempt {attempt + 1}")
+                    continue
+                logger.info(f"✅ STREAM Draft generated for attempt {attempt + 1}: {len(draft_answer)} chars")
+            except asyncio.CancelledError:
+                logger.info(f"🛑 STREAM Draft generation cancelled at attempt {attempt + 1}")
+                raise
+            
+            # 초안 생성 완료 신호
+            draft_data = {
+                'attempt_number': attempt + 1,
+                'answer_length': len(draft_answer),
+                'temperature': temperature,
+                'answer_draft': draft_answer,
+                'draft_preview': draft_answer[:100] + '...' if len(draft_answer) > 100 else draft_answer,
+                'search_context_size': len(search_results.results) if search_results else 0
+            }
+            
+            draft_message = f"답변 초안 생성이 완료되었습니다 ({attempt + 1}회차)" if attempt > 0 else "답변 초안 생성이 완료되었습니다"
+            yield {
+                'step': 'draft_generated',
+                'message': draft_message,
+                'data': draft_data,
+                'timestamp': time.time()
+            }
+            
+            # 품질 검토 시작 신호
+            reflection_message = f"생성된 답변의 품질을 검토하고 있습니다 ({attempt + 1}회차)" if attempt > 0 else "생성된 답변의 품질을 검토하고 있습니다"
+            yield {
+                'step': 'reflection',
+                'message': reflection_message,
+                'timestamp': time.time(),
+                'attempt_number': attempt + 1
+            }
+            
+            # 2. Reflection 수행
+            logger.info(f"🔍 STREAM Performing reflection for attempt {attempt + 1}")
+            try:
+                reflection_result = await self._perform_reflection(query, draft_answer, context)
+                if not reflection_result:
+                    logger.error(f"❌ STREAM Failed to perform reflection in attempt {attempt + 1}")
+                    continue
+                logger.info(f"✅ STREAM Reflection completed for attempt {attempt + 1}: {reflection_result.get('total_score', 0)}/50")
+            except asyncio.CancelledError:
+                logger.info(f"🛑 STREAM Reflection cancelled at attempt {attempt + 1}")
+                raise
+            
+            # 품질 검토 완료 신호
+            reflection_data = {
+                'attempt_number': attempt + 1,
+                'reflection': reflection_result,
+                'is_acceptable': reflection_result.get('is_acceptable', False),
+                'total_score': reflection_result.get('total_score', 0),
+                'scores': reflection_result.get('scores', {}),
+                'improvement_suggestions': reflection_result.get('improvement_suggestions', []),
+                'answer_quality': '우수' if reflection_result.get('is_acceptable') else '재생성 필요'
+            }
+            
+            review_message = f"품질 검토가 완료되었습니다 ({attempt + 1}회차)" if attempt > 0 else "품질 검토가 완료되었습니다"
+            yield {
+                'step': 'reflection_completed',
+                'message': review_message,
+                'data': reflection_data,
+                'timestamp': time.time()
+            }
+            
+            attempt_result = {
+                "attempt": attempt + 1,
+                "draft_answer": draft_answer,
+                "reflection": reflection_result,
+                "is_acceptable": reflection_result.get("is_acceptable", False),
+                "improvement_suggestions": reflection_result.get("improvement_suggestions", []),
+            }
+            
+            generation_attempts.append(attempt_result)
+            
+            # 3. 품질 검증
+            is_acceptable = reflection_result.get("is_acceptable", False)
+            total_score = reflection_result.get("total_score", 0)
+            logger.info(f"🎯 STREAM Quality check: score={total_score}/50, acceptable={is_acceptable}, attempt={attempt + 1}/{max_attempts}")
+            
+            # 품질이 좋으면 바로 완료
+            if is_acceptable:
+                logger.info(f"✅ STREAM Answer accepted in attempt {attempt + 1}")
+                
+                # 최종 결과
+                final_result = {
+                    "success": True,
+                    "final_answer": draft_answer,
+                    "query": query,
+                    "total_attempts": len(generation_attempts),
+                    "generation_attempts": generation_attempts,
+                    "search_context": {
+                        "total_results": len(search_results.results) if search_results else 0,
+                        "element_types": search_results.element_types_used if search_results else []
+                    },
+                    "temperature": temperature,
+                    "is_final": True,
+                    "completion_reason": "quality_accepted"
+                }
+                
+                # 답변 생성 완료 신호
+                yield {
+                    'step': 'answer_completed',
+                    'message': 'AI 답변 생성이 완료되었습니다',
+                    'data': final_result,
+                    'timestamp': time.time()
+                }
+                logger.info(f"🏁 STREAM Generation completed successfully after {attempt + 1} attempts")
+                return
+            
+            # 마지막 시도인지 확인 (2회 제한)
+            if attempt >= max_attempts - 1:
+                logger.info(f"🔴 STREAM Generation reached max attempts ({attempt + 1}/{max_attempts}), selecting best answer")
+                break
+                
+            # 재생성 신호 (첫번째 시도가 35점 이하인 경우에만)
+            if total_score <= 35:
+                logger.info(f"🔄 STREAM Generation needs retry (score={total_score}), preparing attempt {attempt + 2}")
+                yield {
+                    'step': 'regenerating',
+                    'message': f'품질 개선을 위해 답변을 재생성하고 있습니다 (점수: {total_score}/50)',
+                    'timestamp': time.time()
+                }
+                # 다음 시도에서는 약간 다른 온도 사용
+                temperature = min(1.0, temperature + 0.1)
+            else:
+                logger.info(f"🔶 STREAM Score {total_score}/50 is acceptable, completing generation")
+                break
+        
+        # 모든 시도 완료 - 가장 점수가 높은 답변 선택
+        logger.info(f"🎯 STREAM Selecting best answer from {len(generation_attempts)} attempts")
+        
+        if generation_attempts:
+            # 점수가 가장 높은 답변 선택
+            best_attempt = max(generation_attempts, key=lambda x: x["reflection"].get("total_score", 0))
+            best_score = best_attempt["reflection"].get("total_score", 0)
+            best_answer = best_attempt["draft_answer"]
+            best_attempt_num = best_attempt["attempt"]
+            
+            logger.info(f"🏆 STREAM Selected attempt {best_attempt_num} with score {best_score}/50")
+            
+            # 성공 여부 판단 (35점 이상이면 성공)
+            is_success = best_score >= 35
+            completion_reason = "best_score_selected"
+            
+            final_result = {
+                "success": is_success,
+                "final_answer": best_answer,
+                "query": query,
+                "total_attempts": len(generation_attempts),
+                "max_attempts": max_attempts,
+                "generation_attempts": generation_attempts,
+                "best_attempt": best_attempt_num,
+                "best_score": best_score,
+                "search_context": {
+                    "total_results": len(search_results.results) if search_results else 0,
+                    "element_types": search_results.element_types_used if search_results else []
+                },
+                "temperature": temperature,
+                "is_final": True,
+                "completion_reason": completion_reason
+            }
+            
+            # 답변 생성 완료 신호
+            completion_message = f'AI 답변 생성이 완료되었습니다 ({best_attempt_num}차 답변 선택, 점수: {best_score}/50)'
+            yield {
+                'step': 'answer_completed',
+                'message': completion_message,
+                'data': final_result,
+                'timestamp': time.time()
+            }
+            logger.info(f"🏁 STREAM Generation completed - selected best answer from {len(generation_attempts)} attempts")
+        else:
+            # 예외적인 경우 - 시도가 하나도 없음
+            logger.error("🚨 STREAM No generation attempts found")
+            final_result = {
+                "success": False,
+                "final_answer": None,
+                "query": query,
+                "total_attempts": 0,
+                "error": "No generation attempts completed",
+                "is_final": True
+            }
+            yield {
+                'step': 'answer_completed',
+                'message': 'AI 답변 생성에 실패했습니다',
+                'data': final_result,
+                'timestamp': time.time()
+            }
+        
+        return

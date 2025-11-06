@@ -13,8 +13,8 @@ class MetadataCreator {
         console.log('createAnswerMetadata:', stage);
         let content = '<div class="step-details">';
         
-        // 초안 생성 단계의 메타데이터
-        if (stage === '초안 생성') {
+        // 초안 생성 단계의 메타데이터 (재생성 포함)
+        if (stage === '초안 생성' || stage.includes('초안 재생성')) {
             if (data.attempt_number) {
                 content += `<div class="data-item"><strong>시도 번호:</strong> ${data.attempt_number}회차</div>`;
             }

@@ -40,10 +40,10 @@ class StreamingSearchController {
         
         // 답변 생성 모드 확인 및 총 단계 수 설정
         this.hasAnswerGeneration = formData.get('generate_answer') === 'true';
-        const totalSteps = this.hasAnswerGeneration ? 10 : 7;
+        const totalSteps = this.hasAnswerGeneration ? 9 : 7; // 최대 2회 시도로 단계 수 조정
         this.progressManager.totalSteps = totalSteps;
         
-        console.log(`🎯 Streaming mode: ${this.hasAnswerGeneration ? '검색 + 답변 생성 (10단계)' : '검색만 (7단계)'}`);
+        console.log(`🎯 Streaming mode: ${this.hasAnswerGeneration ? '검색 + 답변 생성 (최대 9단계)' : '검색만 (7단계)'}`);
         
         // 초기화
         this.searchProcessData = [];
@@ -255,37 +255,38 @@ class StreamingSearchController {
                     _metadata: MetadataCreator.createReflectionMetadata(data, this.draftCount)
                 } : null;
                 
-                // 품질 점수 확인 및 재시도 로직
+                // 품질 점수 정보 표시 (재시도 로직은 백엔드에서 자동 처리)
                 if (data && data.total_score !== undefined) {
                     const qualityScore = data.total_score;
-                    console.log(`🎯 Quality: ${qualityScore}/50 ${qualityScore >= 35 ? 'PASS' : 'RETRY'}`);
+                    const isAcceptable = qualityScore >= 35;
+                    console.log(`🎯 Quality: ${qualityScore}/50 ${isAcceptable ? 'ACCEPTABLE' : 'NEEDS_IMPROVEMENT'}`);
                     
                     const reflectionTitle = this.draftCount > 1 ? 
                         `답변 품질 검토 완료 (${this.draftCount}회차)` : 
                         '답변 품질 검토 완료';
                     
-                    if (qualityScore < 35) {
-                        const retryMessage = `품질 점수 ${qualityScore}/50 - 35점 이하로 재생성을 시작합니다`;
-                        
-                        if (this.draftCount > 1) {
-                            // 재생성된 검토는 새로운 단계로 추가
-                            this.stepRenderer.addStep(`${reflectionTitle} (재시도 필요)`, retryMessage, reflectionMetadata, 'warning', timestamp);
-                        } else {
-                            // 첫 번째 검토는 기존 로딩 단계 업데이트
-                            this.stepRenderer.updateLastLoadingStep(`${reflectionTitle} (재시도 필요)`, retryMessage, reflectionMetadata, 'warning', timestamp);
-                        }
-                        
-                        // 재시도 요청을 서버에 전송
-                        this.retryManager.triggerAnswerRetry(this.retryCount, this.streamingHandler.abortController, this.stepRenderer.addStep.bind(this.stepRenderer));
-                        return; // 여기서 중단하고 재시도 프로세스 시작
+                    let reflectionMessage;
+                    let reflectionStatus;
+                    
+                    if (isAcceptable) {
+                        reflectionMessage = `품질 점수 ${qualityScore}/50 - 기준 충족으로 답변 완료`;
+                        reflectionStatus = 'success';
                     } else {
-                        if (this.draftCount > 1) {
-                            // 재생성된 검토는 새로운 단계로 추가
-                            this.stepRenderer.addStep(reflectionTitle, message, reflectionMetadata, 'success', timestamp);
+                        if (this.draftCount === 1) {
+                            reflectionMessage = `품질 점수 ${qualityScore}/50 - 35점 미만으로 재생성 진행`;
+                            reflectionStatus = 'warning';
                         } else {
-                            // 첫 번째 검토는 기존 로딩 단계 업데이트
-                            this.stepRenderer.updateLastLoadingStep(reflectionTitle, message, reflectionMetadata, 'success', timestamp);
+                            reflectionMessage = `품질 점수 ${qualityScore}/50 - 최대 시도 완료, 최고 점수 답변 선택`;
+                            reflectionStatus = 'info';
                         }
+                    }
+                    
+                    if (this.draftCount > 1) {
+                        // 재생성된 검토는 새로운 단계로 추가
+                        this.stepRenderer.addStep(reflectionTitle, reflectionMessage, reflectionMetadata, reflectionStatus, timestamp);
+                    } else {
+                        // 첫 번째 검토는 기존 로딩 단계 업데이트
+                        this.stepRenderer.updateLastLoadingStep(reflectionTitle, reflectionMessage, reflectionMetadata, reflectionStatus, timestamp);
                     }
                 } else {
                     // 점수 정보가 없으면 기본 처리
@@ -302,33 +303,60 @@ class StreamingSearchController {
                 break;
                 
             case 'regenerating':
-                console.log('🔄 Regenerating attempt', this.draftCount + 1);
+                console.log('🔄 Regenerating attempt - final attempt (2/2)');
                 this.isRegenerating = true;
-                const regenerationTitle = `답변 재생성 중 (${this.draftCount + 1}회차 시도)`;
-                this.stepRenderer.addStep(regenerationTitle, message, null, 'loading', timestamp);
+                const regenerationTitle = `답변 재생성 중 (2차 시도 - 최종)`;
+                this.stepRenderer.addStep(regenerationTitle, message || '품질 개선을 위해 마지막 재생성을 진행합니다', null, 'loading', timestamp);
                 // 재생성 중임을 진행률에 반영
                 this.progressManager.updateProgress(null, null, true);
                 break;
                 
             case 'answer_completed':
                 console.log('✅ Answer completed');
+                
+                // 🔧 스트리밍 상태 해제 (중복 요청 방지)
+                console.log('🔚 Answer completed - setting isStreaming to false');
+                this.isStreaming = false;
+                
+                // 최종 답변 선택 정보 로깅
+                if (data) {
+                    const bestAttempt = data.best_attempt || 'unknown';
+                    const bestScore = data.best_score || 'unknown';
+                    const completionReason = data.completion_reason || 'unknown';
+                    console.log(`🏆 Final answer selected: attempt ${bestAttempt}, score ${bestScore}/50, reason: ${completionReason}`);
+                }
+                
                 // 메타데이터를 포함한 데이터 객체 생성
                 const finalMetadata = data ? {
                     ...data,
                     _metadata: MetadataCreator.createFinalAnswerMetadata(data)
                 } : null;
                 
-                // 재생성 중이었다면 regenerating 단계를 완료로 업데이트, 그렇지 않으면 새 단계 추가
-                const hasRegeneratingStep = Array.from(this.searchSteps.querySelectorAll('.search-step.loading .step-title'))
-                    .some(title => title.textContent.includes('재생성 중'));
+                // 완료 메시지 생성
+                let completionTitle;
+                let completionMessage = message;
                 
-                if (hasRegeneratingStep) {
-                    this.stepRenderer.updateLastLoadingStep('답변 재생성 완료', message, finalMetadata, 'success', timestamp);
+                if (data && data.best_attempt && data.best_score !== undefined) {
+                    if (data.completion_reason === 'quality_accepted') {
+                        completionTitle = `답변 생성 완료 (${data.best_attempt}차 시도 성공)`;
+                        completionMessage = `품질 기준 충족으로 답변이 완료되었습니다 (점수: ${data.best_score}/50)`;
+                    } else if (data.completion_reason === 'best_score_selected') {
+                        completionTitle = `답변 생성 완료 (최고 점수 답변 선택)`;
+                        completionMessage = `${data.total_attempts}번의 시도 중 ${data.best_attempt}차 답변을 선택했습니다 (점수: ${data.best_score}/50)`;
+                    } else {
+                        completionTitle = '답변 생성 완료';
+                    }
                 } else {
-                    this.stepRenderer.updateLastLoadingStep('답변 생성 완료', message, finalMetadata, 'success', timestamp);
+                    // 재생성 중이었다면 regenerating 단계를 완료로 업데이트
+                    const hasRegeneratingStep = Array.from(this.searchSteps.querySelectorAll('.search-step.loading .step-title'))
+                        .some(title => title.textContent.includes('재생성 중'));
+                    
+                    completionTitle = hasRegeneratingStep ? '답변 재생성 완료' : '답변 생성 완료';
                 }
                 
-                this.progressManager.currentStep = 10;
+                this.stepRenderer.updateLastLoadingStep(completionTitle, completionMessage, finalMetadata, 'success', timestamp);
+                
+                this.progressManager.currentStep = this.progressManager.totalSteps; // 동적으로 설정
                 
                 // 재생성 상태 해제
                 this.isRegenerating = false;
@@ -344,17 +372,41 @@ class StreamingSearchController {
                 if (shouldRenderFinalAnswer) {
                     this.resultRenderer.renderAnswerResult(data, this.searchProcessData);
                 }
+                
+                // 검색 완료 시 버튼 상태 복원
+                if (window.searchController && window.searchController.restoreButtonState) {
+                    window.searchController.restoreButtonState();
+                }
                 break;
                 
             case 'answer_generation_error':
                 console.error('❌ Answer generation failed:', message);
+                
+                // 🔧 스트리밍 상태 해제 (중복 요청 방지)
+                console.log('🔚 Answer generation error - setting isStreaming to false');
+                this.isStreaming = false;
+                
                 this.stepRenderer.updateLastLoadingStep('답변 생성 실패', message, null, 'error', timestamp);
+                
+                // 검색 완료 시 버튼 상태 복원
+                if (window.searchController && window.searchController.restoreButtonState) {
+                    window.searchController.restoreButtonState();
+                }
                 this.showError(message);
                 break;
                 
             case 'error':
+                // 🔧 스트리밍 상태 해제 (중복 요청 방지)
+                console.log('🔚 General error - setting isStreaming to false');
+                this.isStreaming = false;
+                
                 this.stepRenderer.addStep('오류 발생', error, null, 'error', timestamp);
                 this.showError(error);
+                
+                // 검색 완료 시 버튼 상태 복원
+                if (window.searchController && window.searchController.restoreButtonState) {
+                    window.searchController.restoreButtonState();
+                }
                 break;
                 
             case 'file_read_failed':
@@ -373,36 +425,23 @@ class StreamingSearchController {
     shouldRenderFinalAnswer(data) {
         // 재생성이 진행 중이면 렌더링하지 않음
         if (this.isRegenerating) {
+            console.log('🚫 Not rendering - regeneration in progress');
             return false;
         }
         
         // 백엔드에서 is_final 플래그를 보내는 경우 이를 우선 사용
         if (data && typeof data.is_final === 'boolean') {
+            if (data.is_final) {
+                const reason = data.completion_reason || 'unknown';
+                const bestScore = data.best_score || 'unknown';
+                const bestAttempt = data.best_attempt || 'unknown';
+                console.log(`🎯 Final answer ready - reason: ${reason}, best attempt: ${bestAttempt}, score: ${bestScore}/50`);
+            }
             return data.is_final;
         }
         
-        // is_final 플래그가 없는 경우, 다른 조건들로 판단
-        if (data) {
-            // success가 true이고 더 이상 재생성이 필요하지 않은 경우
-            if (data.success === true) {
-                return true;
-            }
-            
-            // 품질 점수가 임계값을 넘는 경우 (35점 이상)
-            if (data.generation_attempts && data.generation_attempts.length > 0) {
-                const lastAttempt = data.generation_attempts[data.generation_attempts.length - 1];
-                if (lastAttempt.reflection && lastAttempt.reflection.total_score >= 35) {
-                    return true;
-                }
-            }
-            
-            // max_attempts에 도달한 경우
-            if (data.total_attempts && data.max_attempts && data.total_attempts >= data.max_attempts) {
-                return true;
-            }
-        }
-        
-        // 기본적으로는 렌더링하지 않음 (재생성이 계속될 수 있음)
+        // 기본적으로는 렌더링하지 않음 (is_final 플래그 없으면 계속 진행 중)
+        console.log('⏳ Not rendering - waiting for completion signal');
         return false;
     }
     

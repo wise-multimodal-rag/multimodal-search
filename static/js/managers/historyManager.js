@@ -167,8 +167,27 @@ class HistoryManager {
         }
     }
     
+    cleanupHistoryData(historyData) {
+        // 기존 데이터에서 이모지 제거
+        const cleanedData = historyData.map(entry => {
+            if (entry.query) {
+                // 쿼리에서 이모지 제거
+                entry.query = entry.query.replace(/[⚙️🤖📷🎥🎵📄]/g, '').trim();
+            }
+            return entry;
+        });
+        
+        // 정리된 데이터를 다시 저장
+        this.saveSearchHistoryData(cleanedData);
+        
+        return cleanedData;
+    }
+    
     updateSearchHistoryUI() {
-        const historyData = this.getSearchHistoryData();
+        let historyData = this.getSearchHistoryData();
+        
+        // 기존 데이터에서 이모지 제거 (마이그레이션)
+        historyData = this.cleanupHistoryData(historyData);
         
         // 기존 히스토리 아이템 제거 (placeholder 제외)
         const existingItems = this.searchHistory.querySelectorAll('.search-history-item');
@@ -204,11 +223,11 @@ class HistoryManager {
             
             // 진행 과정 데이터가 있는지 확인
             const hasProcessData = entry.searchResult && entry.searchResult.searchProcess && entry.searchResult.searchProcess.length > 0;
-            const processIcon = hasProcessData ? '<span class="process-icon" title="검색 진행 과정 포함">⚙️</span>' : '';
+            const processIcon = '';
             
             // AI 답변 포함 여부 확인
             const hasAiAnswer = entry.searchResult && entry.searchResult.aiAnswer && entry.searchResult.aiAnswer.final_answer;
-            const aiAnswerIcon = hasAiAnswer ? '<span class="ai-answer-icon" title="AI 답변 포함">🤖</span>' : '';
+            const aiAnswerIcon = '';
             
             // 검색 타입 표시 (기존 modality 대신 또는 추가로)
             const searchTypeText = this.getSearchTypeDisplay(entry.searchType || 'search_only');
@@ -619,7 +638,16 @@ class HistoryManager {
         }
     }
     
+    clearAllHistory() {
+        // localStorage에서 검색 히스토리 완전 삭제
+        localStorage.removeItem('searchHistory');
+        console.log('🗑️ All search history cleared');
+    }
+    
     initialize() {
+        // 개발용: localStorage 완전 초기화 (이모지 문제 해결)
+        this.clearAllHistory();
+        
         // 페이지 로드 시 히스토리 복원
         this.updateSearchHistoryUI();
         

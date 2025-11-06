@@ -205,6 +205,9 @@ class SearchStepRenderer {
         // 결과 보강 데이터
         content += this.renderResultEnrichmentData(data);
         
+        // 답변 생성 관련 데이터
+        content += this.renderAnswerGenerationData(data);
+        
         // 최종 결과 데이터
         content += this.renderFinalResultData(data);
         
@@ -234,12 +237,9 @@ class SearchStepRenderer {
                 Object.entries(data.file_info).forEach(([fileType, fileData]) => {
                     if (fileData && fileData.filename) {
                         hasValidFiles = true;
-                        const emoji = fileType === 'image' ? '📷' : 
-                                     fileType === 'video' ? '🎥' : 
-                                     fileType === 'audio' ? '🎵' : '📄';
                         const truncatedFilename = SearchDataProcessor.truncateText(fileData.filename, 40);
                         fileList += `<div class="data-item file-info">
-                            ${emoji} <span title="${fileData.filename}">${truncatedFilename}</span>
+                            <span title="${fileData.filename}">${truncatedFilename}</span>
                         </div>`;
                     }
                 });
@@ -751,6 +751,184 @@ class SearchStepRenderer {
                     <div class="summary-stat"><strong>최종 결과:</strong> ${data.results.length}개</div>
                     <div class="summary-stat"><strong>총 처리 시간:</strong> ${Math.round(data.total_time_ms / 1000)}초</div>
                     <div class="summary-stat"><strong>처리 단계:</strong> ${data.processing_steps}단계</div>
+                </div>
+            `;
+        }
+        
+        return content;
+    }
+    
+    renderAnswerGenerationData(data) {
+        let content = '';
+        
+        // 답변 생성 시작 데이터
+        if (data.step === 'answer_generation_start') {
+            content += `
+                <div class="data-section">
+                    <h4>🤖 AI 답변 생성 시작</h4>
+                    <div class="data-item">
+                        <strong>검색 결과 기반 답변 생성을 시작합니다</strong>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 초안 생성 중 데이터
+        if (data.step === 'draft_generation') {
+            content += `
+                <div class="data-section">
+                    <h4>📝 답변 초안 생성 중</h4>
+                    ${data.attempt_number ? `<div class="data-item"><strong>시도 번호:</strong> ${data.attempt_number}회차</div>` : ''}
+                    <div class="data-item">
+                        <strong>상태:</strong> 검색 결과를 분석하여 답변 초안을 생성하고 있습니다
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 초안 생성 완료 데이터
+        if (data.step === 'draft_generated' && data.data) {
+            const draftData = data.data;
+            content += `
+                <div class="data-section">
+                    <h4>✅ 답변 초안 생성 완료</h4>
+                    <div class="generation-summary">
+                        <div class="data-item"><strong>시도 번호:</strong> ${draftData.attempt_number}회차</div>
+                        <div class="data-item"><strong>답변 길이:</strong> ${draftData.answer_length}자</div>
+                        <div class="data-item"><strong>Temperature:</strong> ${draftData.temperature}</div>
+                        <div class="data-item"><strong>참고 문서:</strong> ${draftData.search_context_size}개</div>
+                    </div>
+                    ${draftData.draft_preview ? `
+                        <div class="draft-preview">
+                            <strong>생성된 답변 초안:</strong>
+                            <div class="draft-preview-text">${draftData.draft_preview}</div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        // 품질 검토 중 데이터
+        if (data.step === 'reflection') {
+            content += `
+                <div class="data-section">
+                    <h4>🔍 답변 품질 검토 중</h4>
+                    ${data.attempt_number ? `<div class="data-item"><strong>검토 대상:</strong> ${data.attempt_number}회차 답변</div>` : ''}
+                    <div class="data-item">
+                        <strong>상태:</strong> 생성된 답변의 정확성, 완성도, 명확성을 검토하고 있습니다
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 품질 검토 완료 데이터
+        if (data.step === 'reflection_completed' && data.data) {
+            const reflectionData = data.data;
+            content += `
+                <div class="data-section">
+                    <h4>📊 품질 검토 완료</h4>
+                    <div class="reflection-summary">
+                        <div class="data-item"><strong>검토 대상:</strong> ${reflectionData.attempt_number}회차 답변</div>
+                        <div class="data-item"><strong>총 점수:</strong> ${reflectionData.total_score}/50점</div>
+                        <div class="data-item"><strong>답변 품질:</strong> ${reflectionData.answer_quality}</div>
+                        <div class="data-item"><strong>허용 여부:</strong> ${reflectionData.is_acceptable ? '✅ 승인' : '❌ 재생성 필요'}</div>
+                    </div>
+                    
+                    ${reflectionData.scores ? `
+                        <div class="scores-breakdown">
+                            <strong>세부 점수:</strong>
+                            <div class="scores-grid">
+                                ${Object.entries(reflectionData.scores).map(([criterion, score]) => {
+                                    const criterionName = {
+                                        'accuracy': '정확성',
+                                        'completeness': '완성도', 
+                                        'clarity': '명확성',
+                                        'structure': '구조',
+                                        'relevance': '관련성'
+                                    }[criterion] || criterion;
+                                    return `<div class="score-item">${criterionName}: ${score}/10</div>`;
+                                }).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                    
+                    ${reflectionData.improvement_suggestions && reflectionData.improvement_suggestions.length > 0 ? `
+                        <div class="improvement-suggestions">
+                            <strong>개선 제안:</strong>
+                            <ul>
+                                ${reflectionData.improvement_suggestions.map(suggestion => 
+                                    `<li>${suggestion}</li>`
+                                ).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        // 재생성 중 데이터
+        if (data.step === 'regenerating') {
+            content += `
+                <div class="data-section">
+                    <h4>🔄 답변 재생성 중</h4>
+                    <div class="data-item">
+                        <strong>이유:</strong> 품질 개선을 위해 답변을 재생성하고 있습니다
+                    </div>
+                    <div class="data-item">
+                        <strong>상태:</strong> 이전 피드백을 반영하여 더 나은 답변을 생성합니다
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 답변 생성 완료 데이터
+        if (data.step === 'answer_completed' && data.data) {
+            const completionData = data.data;
+            content += `
+                <div class="data-section">
+                    <h4>🎯 AI 답변 생성 완료</h4>
+                    <div class="completion-summary">
+                        <div class="data-item"><strong>성공 여부:</strong> ${completionData.success ? '✅ 성공' : '❌ 실패'}</div>
+                        <div class="data-item"><strong>총 시도 횟수:</strong> ${completionData.total_attempts}회</div>
+                        ${completionData.best_attempt ? `<div class="data-item"><strong>선택된 답변:</strong> ${completionData.best_attempt}회차</div>` : ''}
+                        ${completionData.best_score ? `<div class="data-item"><strong>최종 점수:</strong> ${completionData.best_score}/50점</div>` : ''}
+                        <div class="data-item"><strong>완료 사유:</strong> ${completionData.completion_reason === 'quality_accepted' ? '품질 승인' : '최고 점수 선택'}</div>
+                    </div>
+                    
+                    ${completionData.search_context ? `
+                        <div class="context-info">
+                            <strong>검색 컨텍스트:</strong>
+                            <div class="data-item">참고 결과: ${completionData.search_context.total_results}개</div>
+                            ${completionData.search_context.element_types ? `
+                                <div class="data-item">
+                                    요소 타입: ${completionData.search_context.element_types.join(', ')}
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        // 취소 또는 타임아웃 데이터
+        if (data.step === 'answer_generation_cancelled') {
+            content += `
+                <div class="data-section">
+                    <h4>⚠️ 답변 생성 취소</h4>
+                    <div class="data-item">
+                        <strong>상태:</strong> 사용자 요청에 의해 답변 생성이 취소되었습니다
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (data.step === 'answer_generation_timeout') {
+            content += `
+                <div class="data-section">
+                    <h4>⏰ 답변 생성 시간 초과</h4>
+                    <div class="data-item">
+                        <strong>상태:</strong> 설정된 시간 내에 답변 생성을 완료하지 못했습니다
+                    </div>
                 </div>
             `;
         }

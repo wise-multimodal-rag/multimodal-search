@@ -3,7 +3,8 @@
  */
 class SearchResultRenderer {
     constructor() {
-        this.apiKey = 'your-api-key-here'; // TODO: 실제 API 키로 변경 필요
+        // API 키는 더 이상 필요하지 않음 (서버에서 인증 처리)
+        // 필요한 경우 appConfig에서 가져오기
     }
     
     renderFinalResults(data, searchProcessData, progressManager) {
@@ -188,9 +189,24 @@ class SearchResultRenderer {
         const hybridScore = score.toFixed(3);
         const originalScore = result.original_score ? result.original_score.toFixed(3) : null;
         
-        // 이미지 경로 추출
-        const imagePath = SearchDataProcessor.extractImagePath(element.content);
-        const imageUrl = imagePath ? `http://internal.example.com/image/proxy/${imagePath}` : null;
+        // 새로운 이미지 URL 감지 로직 사용
+        let imageUrl = null;
+        
+        // 1. 새로운 이미지 URL 감지 방식 우선 시도
+        if (SearchDataProcessor.isImageElement(element)) {
+            const detectedUrl = SearchDataProcessor.detectImageUrl(element.content);
+            if (detectedUrl) {
+                imageUrl = detectedUrl;
+            }
+        }
+        
+        // 2. 기존 이미지 경로 추출 방식으로 폴백
+        if (!imageUrl) {
+            const imagePath = SearchDataProcessor.extractImagePath(element.content);
+            if (imagePath) {
+                imageUrl = `http://internal.example.com/image/proxy/${imagePath}`;
+            }
+        }
         
         // 기본 메타데이터 정보
         const basicMetaInfo = this.renderBasicMetaInfo(result);
@@ -209,7 +225,7 @@ class SearchResultRenderer {
                     <div class="search-result-score">${scoreDisplay}</div>
                 </div>
                 <div class="search-result-content">
-                    ${imageUrl ? this.renderImagePreview(imageUrl, imagePath) : ''}
+                    ${imageUrl ? this.renderImagePreview(imageUrl, element.content) : ''}
                     <div class="content-text">
                         ${element.content ? (typeof element.content === 'string' ? SearchDataProcessor.cleanContentIndentation(element.content) : JSON.stringify(element.content, null, 2)) : 'No content'}
                     </div>
@@ -286,20 +302,23 @@ class SearchResultRenderer {
         return scoreDisplay;
     }
     
-    renderImagePreview(imageUrl, imagePath) {
+    renderImagePreview(imageUrl, originalContent) {
+        // 표시용 경로 결정 (기존 imagePath 또는 전체 URL)
+        const displayPath = originalContent.startsWith('origins/') ? originalContent : imageUrl;
+        
         return `
             <div class="image-preview">
-                <img data-image-url="${imageUrl}" data-image-path="${imagePath}" alt="Image preview" class="result-image" 
+                <img data-image-url="${imageUrl}" data-original-content="${originalContent}" alt="Image preview" class="result-image" 
                      style="display: none;"
-                     onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
-                     onload="this.style.display='block';">
+                     onerror="this.style.display='none'; this.nextElementSibling.nextElementSibling.style.display='block';"
+                     onload="this.style.display='block'; this.nextElementSibling.style.display='none';">
                 <div class="image-loading" style="padding: 20px; background: #f8f9fa; border: 1px solid #e5e7eb; text-align: center; color: #666; border-radius: 8px;">
                     이미지 로딩 중...<br>
-                    <small>경로: ${imagePath}</small>
+                    <small style="word-break: break-all; font-size: 11px;">URL: ${SearchDataProcessor.truncateText(displayPath, 60)}</small>
                 </div>
                 <div class="image-error" style="display: none; padding: 20px; background: #f8f9fa; border: 1px dashed #ccc; text-align: center; color: #666; border-radius: 8px;">
                     이미지를 불러올 수 없습니다<br>
-                    <small>경로: ${imagePath}</small>
+                    <small style="word-break: break-all; font-size: 11px;">URL: ${SearchDataProcessor.truncateText(displayPath, 60)}</small>
                 </div>
             </div>
         `;
@@ -310,37 +329,45 @@ class SearchResultRenderer {
         
         for (const img of imageElements) {
             const imageUrl = img.getAttribute('data-image-url');
-            const imagePath = img.getAttribute('data-image-path');
+            const originalContent = img.getAttribute('data-original-content');
             const loadingDiv = img.nextElementSibling;
             const errorDiv = loadingDiv.nextElementSibling;
             
             try {
-                // 이미지 프록시 API 호출 (헤더에 API 키 포함)
-                const response = await fetch(imageUrl, {
-                    method: 'GET',
-                    headers: {
-                        'X-API-Key': this.apiKey
-                    }
-                });
-                
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const objectUrl = URL.createObjectURL(blob);
-                    
-                    img.src = objectUrl;
+                // 직접 URL인 경우와 프록시 URL인 경우 구분 처리
+                if (imageUrl.startsWith('http://internal.example.com/') ||
+                    imageUrl.includes('internal.example.com')) {
+                    // 직접 이미지 URL인 경우 - 바로 사용
+                    img.src = imageUrl;
                     loadingDiv.style.display = 'none';
-                    
-                    // 메모리 해제를 위해 이미지 로드 완료 후 URL 해제
-                    img.onload = () => {
-                        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-                    };
                 } else {
-                    console.warn(`Failed to load image: ${response.status} ${response.statusText}`);
-                    loadingDiv.style.display = 'none';
-                    errorDiv.style.display = 'block';
+                    // 프록시 API 호출이 필요한 경우
+                    const response = await fetch(imageUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'image/*'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        const objectUrl = URL.createObjectURL(blob);
+                        
+                        img.src = objectUrl;
+                        loadingDiv.style.display = 'none';
+                        
+                        // 메모리 해제를 위해 이미지 로드 완료 후 URL 해제
+                        img.onload = () => {
+                            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+                        };
+                    } else {
+                        console.warn(`Failed to load image: ${response.status} ${response.statusText}`);
+                        loadingDiv.style.display = 'none';
+                        errorDiv.style.display = 'block';
+                    }
                 }
             } catch (error) {
-                console.error('Image loading error:', error);
+                console.error('Image loading error:', error, 'for URL:', imageUrl);
                 loadingDiv.style.display = 'none';
                 errorDiv.style.display = 'block';
             }

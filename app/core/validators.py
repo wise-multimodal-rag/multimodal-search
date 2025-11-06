@@ -253,5 +253,3 @@ class InputValidator:
         return validated
 
 
-# 전역 검증 인스턴스
-input_validator = InputValidator()

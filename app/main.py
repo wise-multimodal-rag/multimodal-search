@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from app.api.routes import generation, search
+from app.api.routes import config, generation, search
 from app.core.config import settings
 from app.core.dependencies import get_opensearch_service
 from app.core.exceptions import ExceptionHandlerMiddleware
@@ -48,6 +48,7 @@ templates = Jinja2Templates(directory="templates")
 # Include routers
 app.include_router(search.router, prefix="/api/v1", tags=["search"])
 app.include_router(generation.router, prefix="/api/v1", tags=["generation"])
+app.include_router(config.router, prefix="/api/v1", tags=["config"])
 
 
 # Global exception handlers
