@@ -235,22 +235,17 @@ class SearchService:
             # Step 1: 입력 처리
             modalities_data = None
             async for step_data in self._stream_step_1_input_processing(text_query, processed_files):
-                if step_data.get("step") == "input_processed":
-                    # modalities_data는 실제로는 메서드에서 반환되어야 하지만, 여기서는 다시 호출
-                    modalities_data = await self.input_processor.process_multimodal_inputs_from_processed(
-                        text_query, processed_files
-                    )
+                if step_data.get("step") == "modalities_data":
+                    modalities_data = step_data.get("data")
                 yield step_data
 
             # Step 2: 쿼리 확장 및 의도 분석
             query_analysis, expanded_queries = None, None
             async for step_data in self._stream_step_2_query_analysis(text_query, modalities_data):
-                if step_data.get("step") == "query_analyzed":
-                    # 결과 추출을 위해 다시 호출 (임시 해결책)
-                    input_modalities = self._extract_input_modalities(modalities_data) if modalities_data else None
-                    query_analysis, expanded_queries = await self.query_analyzer.process_query_analysis(
-                        text_query, self.available_element_types, input_modalities
-                    )
+                if step_data.get("step") == "query_analysis_result":
+                    result_data = step_data.get("data", {})
+                    query_analysis = result_data.get("query_analysis")
+                    expanded_queries = result_data.get("expanded_queries")
                 yield step_data
 
             # Step 3: 특징 추출
@@ -793,7 +788,7 @@ class SearchService:
 
         # 분석 결과 데이터 생성
         element_weights = query_analysis.get("element_type_weights", {})
-        analysis_data = self._prepare_query_analysis_data(query_analysis, expanded_queries, element_weights, text_query)
+        analysis_data = self._prepare_query_analysis_data(query_analysis, expanded_queries, element_weights, text_query, modalities_data)
         
         yield {
             "step": "query_analyzed",
@@ -809,7 +804,7 @@ class SearchService:
             "data": {"query_analysis": query_analysis, "expanded_queries": expanded_queries},
         }
 
-    def _prepare_query_analysis_data(self, query_analysis, expanded_queries, element_weights, text_query):
+    def _prepare_query_analysis_data(self, query_analysis, expanded_queries, element_weights, text_query, modalities_data=None):
         """쿼리 분석 결과 데이터 준비"""
         highest_weight_type = max(element_weights.items(), key=lambda x: x[1]) if element_weights else ("none", 0.0)
         meaningful_weights = {k: v for k, v in element_weights.items() if v > 0.0}
@@ -862,7 +857,7 @@ class SearchService:
             "debug_info": {
                 "llm_success": analysis_method == "LLM Analysis",
                 "fallback_used": analysis_method == "Advanced Fallback Analysis",
-                "input_modalities": self._extract_input_modalities(None),  # Will be set properly
+                "input_modalities": self._extract_input_modalities(modalities_data) if modalities_data else None,
                 "available_element_types": self.available_element_types
             }
         }
