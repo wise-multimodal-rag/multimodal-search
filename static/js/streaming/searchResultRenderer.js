@@ -88,16 +88,16 @@ class SearchResultRenderer {
                     </div>
                     <div class="answer-header-right">
                         <button class="preview-toggle-btn" onclick="toggleAnswerPreview('${answerId}')">
-                            Preview
+                            Text
                         </button>
                     </div>
                 `;
                 
-                // 답변 내용 추가
+                // 답변 내용 추가 - 기본 뷰는 마크다운, Text 뷰는 원문
                 aiAnswerContent.innerHTML = `
                     <div class="answer-text-container">
-                        <div class="answer-text plain-text" id="${answerId}-plain">${TextFormatter.formatAnswerText(data.final_answer)}</div>
-                        <div class="answer-text markdown-preview" id="${answerId}-preview" style="display: none;">${TextFormatter.renderMarkdown(data.final_answer)}</div>
+                        <div class="answer-text markdown-preview" id="${answerId}-plain">${TextFormatter.renderMarkdown(data.final_answer)}</div>
+                        <div class="answer-text raw-text" id="${answerId}-preview" style="display: none;">${TextFormatter.formatRawText(data.final_answer)}</div>
                     </div>
                 `;
                 // AI 답변 레이어 표시
