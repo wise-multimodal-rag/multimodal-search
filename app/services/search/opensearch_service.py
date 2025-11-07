@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 from opensearchpy import AsyncOpenSearch
 
-from app.core.config import settings
+from app.core.config import settings, weighting_config
 from app.core.index_mappings import (get_chunk_meta_mapping, get_elements_mapping,
                                      get_media_meta_mapping)
 from app.services.embeddings.embedding_service import EmbeddingService
@@ -160,7 +160,7 @@ class OpenSearchService:
             # 가중치 기반 element_type 필터링 (should 쿼리로 변경)
             element_type_queries = []
             for element_type in element_types:
-                weight = element_type_weights.get(element_type, 1.0)
+                weight = element_type_weights.get(element_type, weighting_config.OPENSEARCH_DEFAULT_WEIGHT)
                 if weight > 0:  # 가중치가 0인 타입은 제외하지 않고 낮은 boost 적용
                     boost = max(0.1, weight * 10)  # 0.1~10 범위로 변환
                     element_type_queries.append({
@@ -206,7 +206,7 @@ class OpenSearchService:
                         # Create element_type should query with weights for vector search too
                         element_type_queries = []
                         for element_type in element_types:
-                            weight = element_type_weights.get(element_type, 1.0)
+                            weight = element_type_weights.get(element_type, weighting_config.OPENSEARCH_DEFAULT_WEIGHT)
                             if weight > 0:
                                 boost = max(0.1, weight * 10)
                                 element_type_queries.append({

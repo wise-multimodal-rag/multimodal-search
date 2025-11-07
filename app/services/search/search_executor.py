@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
+from app.core.config import weighting_config
 from app.services.analysis.query_analyzer import QueryAnalyzer
 from app.services.search.opensearch_service import OpenSearchService
 
@@ -111,7 +112,7 @@ class SearchExecutor:
         element_type_weights: Optional[Dict[str, float]] = None,
     ) -> Any:
         """단일 쿼리 검색 실행"""
-        weight = 1.0 - (query_index * 0.1)  # 0.1씩 감소
+        weight = 1.0 - (query_index * weighting_config.QUERY_WEIGHT_DECAY)  # 설정값에 따라 감소
         search_size = max_results // total_queries + (max_results % total_queries if query_index == 0 else 0)
 
         search_results = await self.opensearch_service.search_elements(

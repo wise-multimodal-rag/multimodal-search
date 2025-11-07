@@ -4,6 +4,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from fastapi import UploadFile
 from loguru import logger
 
+from app.core.config import weighting_config
 from app.models.opensearch import SearchResponse
 from app.services.analysis.multimodal_feature_extractor import \
     MultimodalFeatureExtractor
@@ -300,10 +301,10 @@ class SearchService:
             
             # 가중치 분포 세부 정보
             weight_distribution_details = {
-                "high_priority": {k: v for k, v in meaningful_weights.items() if v >= 0.8},
-                "medium_priority": {k: v for k, v in meaningful_weights.items() if 0.5 <= v < 0.8},
-                "low_priority": {k: v for k, v in meaningful_weights.items() if 0.0 < v < 0.5},
-                "excluded": {k: v for k, v in element_weights.items() if v == 0.0}
+                "high_priority": {k: v for k, v in meaningful_weights.items() if v >= weighting_config.HIGH_PRIORITY_THRESHOLD},
+                "medium_priority": {k: v for k, v in meaningful_weights.items() if weighting_config.MEDIUM_PRIORITY_THRESHOLD <= v < weighting_config.HIGH_PRIORITY_THRESHOLD},
+                "low_priority": {k: v for k, v in meaningful_weights.items() if weighting_config.LOW_PRIORITY_THRESHOLD < v < weighting_config.MEDIUM_PRIORITY_THRESHOLD},
+                "excluded": {k: v for k, v in element_weights.items() if v == weighting_config.LOW_PRIORITY_THRESHOLD}
             }
             
             yield {
@@ -567,7 +568,7 @@ class SearchService:
             # 검색 실행 상세 통계
             executed_queries_info = []
             for i, query in enumerate(expanded_queries):
-                weight = 1.0 - (i * 0.1)
+                weight = 1.0 - (i * weighting_config.QUERY_WEIGHT_DECAY)
                 executed_queries_info.append({"index": i + 1, "query": query, "weight": weight, "priority": i + 1})
 
             # OpenSearch 쿼리 정보 (예시 - 실제로는 더 복잡)

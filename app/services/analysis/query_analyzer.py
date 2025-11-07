@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from loguru import logger
 
 from app.clients.llm_client import LLMClient
+from app.core.config import weighting_config
 
 
 class QueryAnalyzer:
@@ -72,21 +73,21 @@ class QueryAnalyzer:
             if summary_score > 0:
                 # 요약 관련 쿼리 - summary 우선
                 if "summary" in relevant_available_types:
-                    element_weights["summary"] = min(1.0, 0.8 + (summary_score * 0.1))
+                    element_weights["summary"] = min(1.0, weighting_config.TEXT_SUMMARY_BASE_WEIGHT + (summary_score * weighting_config.TEXT_SUMMARY_BOOST))
                 if "paragraph" in relevant_available_types:
-                    element_weights["paragraph"] = max(0.4, 0.7 - (summary_score * 0.1))
+                    element_weights["paragraph"] = max(weighting_config.TEXT_MIN_WEIGHT, weighting_config.TEXT_PARAGRAPH_BASE_WEIGHT - (summary_score * weighting_config.TEXT_PARAGRAPH_PENALTY))
             elif content_score > 0:
                 # 일반 텍스트 내용 관련 쿼리 - paragraph 우선
                 if "paragraph" in relevant_available_types:
-                    element_weights["paragraph"] = min(1.0, 0.8 + (content_score * 0.1))
+                    element_weights["paragraph"] = min(1.0, weighting_config.TEXT_SUMMARY_BASE_WEIGHT + (content_score * weighting_config.TEXT_SUMMARY_BOOST))
                 if "summary" in relevant_available_types:
-                    element_weights["summary"] = max(0.4, 0.7 - (content_score * 0.1))
+                    element_weights["summary"] = max(weighting_config.TEXT_MIN_WEIGHT, weighting_config.TEXT_PARAGRAPH_BASE_WEIGHT - (content_score * weighting_config.TEXT_PARAGRAPH_PENALTY))
             else:
                 # 키워드가 없으면 균등하게 분배하되 paragraph 약간 우선
                 if "paragraph" in relevant_available_types:
-                    element_weights["paragraph"] = 0.8
+                    element_weights["paragraph"] = weighting_config.TEXT_PARAGRAPH_DEFAULT
                 if "summary" in relevant_available_types:
-                    element_weights["summary"] = 0.6
+                    element_weights["summary"] = weighting_config.TEXT_SUMMARY_DEFAULT
 
         if input_modalities and "image" in input_modalities:
             # 이미지 설명/캡션 관련 키워드들
@@ -101,40 +102,35 @@ class QueryAnalyzer:
             if caption_score > 0:
                 # 이미지 설명/캡션 관련 쿼리 - 하지만 여전히 origin을 더 우선시
                 if "origin" in relevant_available_types:
-                    element_weights["origin"] = 1.0  # origin을 항상 최고 우선순위로
+                    element_weights["origin"] = weighting_config.IMAGE_ORIGIN_WEIGHT  # origin을 항상 최고 우선순위로
                 if "caption" in relevant_available_types:
-                    element_weights["caption"] = min(0.4, 0.3 + (caption_score * 0.05))  # caption 가중치 대폭 감소
+                    element_weights["caption"] = min(weighting_config.IMAGE_CAPTION_MAX_WEIGHT, weighting_config.IMAGE_CAPTION_BASE_WEIGHT + (caption_score * weighting_config.IMAGE_CAPTION_BOOST))  # caption 가중치 대폭 감소
             elif image_score > 0:
                 # 이미지 자체 관련 쿼리 - origin 강력히 우선
                 if "origin" in relevant_available_types:
-                    element_weights["origin"] = 1.0  # 최대 가중치
+                    element_weights["origin"] = weighting_config.IMAGE_ORIGIN_WEIGHT  # 최대 가중치
                 if "caption" in relevant_available_types:
-                    element_weights["caption"] = 0.2  # 매우 낮은 가중치
+                    element_weights["caption"] = weighting_config.IMAGE_CAPTION_MIN_WEIGHT  # 매우 낮은 가중치
             else:
                 # 키워드가 없으면 origin을 강력히 우선시 (이미지 검색의 기본 목적)
                 if "origin" in relevant_available_types:
-                    element_weights["origin"] = 1.0  # 최대 가중치
+                    element_weights["origin"] = weighting_config.IMAGE_ORIGIN_WEIGHT  # 최대 가중치
                 if "caption" in relevant_available_types:
-                    element_weights["caption"] = 0.3  # 낮은 가중치
+                    element_weights["caption"] = weighting_config.IMAGE_CAPTION_BASE_WEIGHT  # 낮은 가중치
 
         # 모달리티 정보가 없거나 가중치가 설정되지 않은 경우 기본값 설정
         meaningful_weights = {k: v for k, v in element_weights.items() if v > 0.0}
         if not meaningful_weights:
             if input_modalities:
-                if "text" in input_modalities:
-                    if "paragraph" in available_element_types:
-                        element_weights["paragraph"] = 0.8
-                    if "summary" in available_element_types:
-                        element_weights["summary"] = 0.5
-                if "image" in input_modalities:
-                    if "origin" in available_element_types:
-                        element_weights["origin"] = 1.0  # 기본값도 origin 최우선
-                    if "caption" in available_element_types:
-                        element_weights["caption"] = 0.3  # caption 기본값도 낮게
+                for modality in input_modalities:
+                    if modality in weighting_config.MODALITY_FALLBACK_WEIGHTS:
+                        for element_type, weight in weighting_config.MODALITY_FALLBACK_WEIGHTS[modality].items():
+                            if element_type in available_element_types:
+                                element_weights[element_type] = weight
             else:
                 # 모달리티 정보가 없으면 모든 타입에 균등한 중간 가중치
                 for element_type in available_element_types:
-                    element_weights[element_type] = 0.6
+                    element_weights[element_type] = weighting_config.UNIVERSAL_DEFAULT_WEIGHT
 
         # Get selected types for backward compatibility
         selected_types = [k for k, v in element_weights.items() if v > 0.0]
@@ -151,7 +147,7 @@ class QueryAnalyzer:
     ) -> Dict[str, Any]:
         """텍스트 쿼리가 없을 때 기본 쿼리 분석 생성 - 가중치 기반"""
         # 모든 타입에 동일한 중간 가중치 부여
-        element_weights = {element_type: 0.6 for element_type in available_element_types}
+        element_weights = {element_type: weighting_config.UNIVERSAL_DEFAULT_WEIGHT for element_type in available_element_types}
         
         return {
             "element_type_weights": element_weights,

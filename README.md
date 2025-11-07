@@ -242,6 +242,77 @@ flowchart TD
 - **External APIs**: Embedding & Feature Extraction Services
 - **Deployment**: Docker + GitLab CI/CD
 
+## ⚖️ 가중치 시스템 (Weight System)
+
+멀티모달 검색의 정확도와 관련성을 제어하는 핵심 시스템입니다. 모든 가중치는 환경변수로 설정 가능합니다.
+
+### 📊 Element Type별 가중치
+
+검색 대상이 되는 콘텐츠 타입별 중요도를 설정합니다:
+
+| Element Type | 설명 | 기본 가중치 | 환경변수 |
+|-------------|------|-----------|---------|
+| **origin** | 원본 이미지 | 1.0 | `WEIGHT_ORIGIN_DEFAULT` |
+| **paragraph** | 일반 문단 (본문) | 0.8 | `WEIGHT_PARAGRAPH_DEFAULT` |
+| **summary** | AI 요약문 | 0.6 | `WEIGHT_SUMMARY_DEFAULT` |
+| **caption** | 이미지 캡션 | 0.3 | `WEIGHT_CAPTION_DEFAULT` |
+
+### 🔗 쿼리별 가중치
+
+여러 확장 쿼리의 중요도를 조절합니다:
+
+```
+첫 번째 쿼리: 1.0 (원본 쿼리)
+두 번째 쿼리: 0.9 (확장 쿼리)
+세 번째 쿼리: 0.8 (추가 확장)
+```
+
+**설정**: `WEIGHT_QUERY_DECAY=0.1` (각 쿼리마다 0.1씩 감소)
+
+### 🎯 동적 가중치 계산
+
+쿼리 내용에 따라 가중치가 자동으로 조정됩니다:
+
+#### 텍스트 검색 예시
+```
+쿼리: "문서 요약해주세요"
+→ summary: 0.9 (요약 키워드 감지로 상승)
+→ paragraph: 0.6 (상대적으로 감소)
+```
+
+#### 이미지 검색 예시
+```
+쿼리: "헤드폰 이미지" + 이미지 첨부
+→ origin: 1.0 (이미지 자체가 최우선)
+→ caption: 0.2 (보조 정보)
+→ paragraph: 0.0 (검색에서 제외)
+```
+
+### 🔧 커스터마이징
+
+`.env` 파일에서 가중치를 조정할 수 있습니다:
+
+```env
+# 이미지 검색 강화
+WEIGHT_IMAGE_ORIGIN=1.0
+WEIGHT_IMAGE_CAPTION_BASE=0.5
+
+# 본문 중심 검색
+WEIGHT_TEXT_PARAGRAPH_DEFAULT=0.9
+WEIGHT_TEXT_SUMMARY_DEFAULT=0.4
+
+# 원본 쿼리 중심 (확장 효과 감소)
+WEIGHT_QUERY_DECAY=0.2
+```
+
+### 📈 성능 튜닝 가이드
+
+**정확도 향상**: 관련성 높은 타입의 가중치 증가
+**다양성 증가**: 여러 타입에 균등한 가중치 부여  
+**속도 개선**: 불필요한 타입은 0.0으로 제외
+
+> 💡 **자세한 설명**: `app/core/config.py`의 `WeightingConfig` 클래스 docstring 참조
+
 ## 🚀 빠른 시작
 
 ### 1. 환경 설정
