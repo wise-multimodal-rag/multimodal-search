@@ -27,7 +27,7 @@ class MultimodalStreamService:
         processed_files: Dict[str, Any],
         include_chunk_meta: bool = True,
         include_media_meta: bool = True,
-        max_results: int = 5,
+        max_results: int = 10,
         files_were_provided: bool = False,
         generate_answer: bool = False,
         temperature: float = 0.7,

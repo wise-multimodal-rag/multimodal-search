@@ -51,7 +51,7 @@ class StateManager {
             
             // 설정 관련 상태
             settings: {
-                maxResults: 5,
+                maxResults: 10,
                 includeChunkMeta: true,
                 includeMediaMeta: true,
                 temperature: 0.7,
@@ -369,7 +369,7 @@ class StateManager {
                 isVisible: false
             },
             settings: {
-                maxResults: 5,
+                maxResults: 10,
                 includeChunkMeta: true,
                 includeMediaMeta: true,
                 temperature: 0.7,
