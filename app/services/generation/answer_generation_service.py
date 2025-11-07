@@ -36,7 +36,7 @@ class AnswerGenerationService:
         logger.info(f"Starting answer generation for query: {query}")
         
         # 검색 결과를 컨텍스트로 변환
-        context = self._prepare_context(search_results)
+        context = await self._prepare_context(search_results)
         
         generation_attempts = []
         
@@ -153,13 +153,24 @@ class AnswerGenerationService:
                 "error": "No generation attempts completed"
             }
 
-    def _prepare_context(self, search_results: SearchResponse) -> str:
+    async def _prepare_context(self, search_results: SearchResponse) -> str:
         """검색 결과를 LLM이 사용할 수 있는 컨텍스트로 변환"""
         if not search_results.results:
             return "검색 결과가 없습니다."
         
         context_parts = []
         context_parts.append(f"검색 결과 (총 {search_results.total_hits}개):")
+        
+        # origin 타입 element들의 chunk_id 수집
+        origin_chunk_ids = []
+        for result in search_results.results[:10]:
+            if result.element.element_type == "origin":
+                origin_chunk_ids.append(result.element.chunk_id)
+        
+        # origin 이미지들의 caption 검색
+        origin_captions = {}
+        if origin_chunk_ids:
+            origin_captions = await self._get_captions_for_origins(origin_chunk_ids)
         
         for i, result in enumerate(search_results.results[:10], 1):  # 상위 10개만 사용
             element = result.element
@@ -176,9 +187,16 @@ class AnswerGenerationService:
             # 텍스트 전처리: 공백 정리 및 특수문자 처리
             cleaned_content = self._clean_content_text(element.content)
             
+            # origin 타입인 경우 관련 캡션 추가
+            context_content = cleaned_content
+            if element.element_type == "origin" and element.chunk_id in origin_captions:
+                caption = origin_captions[element.chunk_id]
+                cleaned_caption = self._clean_content_text(caption)
+                context_content += f"\n   관련 이미지 설명: {cleaned_caption}"
+            
             context_parts.append(
                 f"{i}. {element_info}{media_info} (점수: {score:.3f})\n"
-                f"   내용: {cleaned_content}"
+                f"   내용: {context_content}"
             )
         
         # 첨부된 이미지의 캡션 (외부 API로 생성) 추가
@@ -197,6 +215,57 @@ class AnswerGenerationService:
             logger.info(f"✅ Added attached image caption to context")
         
         return "\n\n".join(context_parts)
+
+    async def _get_captions_for_origins(self, chunk_ids: List[str]) -> Dict[str, str]:
+        """origin element들의 chunk_id로 해당하는 caption을 OpenSearch에서 검색"""
+        if not chunk_ids:
+            return {}
+        
+        try:
+            # OpenSearch 서비스에 접근하기 위해 dependency injection 사용
+            from app.core.dependencies import get_opensearch_service
+            opensearch_service = get_opensearch_service()
+            
+            # chunk_id들로 caption element 검색
+            query = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"terms": {"chunk_id": chunk_ids}},
+                            {"term": {"element_type": "caption"}},
+                            {"term": {"modality": "text"}}
+                        ]
+                    }
+                },
+                "size": len(chunk_ids),
+                "_source": ["chunk_id", "content"]
+            }
+            
+            logger.info(f"🔍 Searching captions for {len(chunk_ids)} origin chunks")
+            
+            response = await opensearch_service.client.search(
+                index=opensearch_service.elements_index,
+                body=query
+            )
+            
+            # chunk_id별로 caption 매핑
+            captions = {}
+            if response and "hits" in response:
+                for hit in response["hits"]["hits"]:
+                    source = hit["_source"]
+                    chunk_id = source["chunk_id"]
+                    content = source["content"]
+                    captions[chunk_id] = content
+                    
+                logger.info(f"✅ Found {len(captions)} captions for origin images")
+            else:
+                logger.info("🔍 No captions found for origin images")
+            
+            return captions
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get captions for origins: {e}")
+            return {}
 
     def _clean_content_text(self, content: str) -> str:
         """텍스트 내용 전처리: 불필요한 공백, 특수문자 정리"""
@@ -386,7 +455,7 @@ JSON 형식으로만 응답하세요:
         logger.info(f"🚀 Starting streaming answer generation for query: {query} (max_retries={max_retries})")
         
         # 검색 결과를 컨텍스트로 변환
-        context = self._prepare_context(search_results)
+        context = await self._prepare_context(search_results)
         logger.debug(f"🗂️ Prepared context: {context}")
         
         # 답변 생성 시작 신호

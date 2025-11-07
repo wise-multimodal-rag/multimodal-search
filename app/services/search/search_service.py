@@ -1,5 +1,5 @@
 import time
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import UploadFile
 from loguru import logger
@@ -114,8 +114,15 @@ class SearchService:
             # Step 5: 확장 쿼리 검색 실행 (SearchExecutor 사용)
             expansion_result = query_analysis.get("expansion_analysis") if "expansion_analysis" in query_analysis else None
             element_type_weights = query_analysis.get("element_type_weights")
+            
+            # 가중치가 0인 element types는 검색에서 제외 (단, 캡션은 무조건 생성했지만 검색엔 가중치에 따라)
+            filtered_element_types = self._filter_element_types_by_weight(
+                query_analysis["selected_element_types"], 
+                element_type_weights
+            )
+            
             search_results = await self.search_executor.execute_expanded_search(
-                expanded_queries, query_analysis["selected_element_types"], embeddings, max_results, expansion_result, element_type_weights
+                expanded_queries, filtered_element_types, embeddings, max_results, expansion_result, element_type_weights
             )
 
             # Step 6: 결과 enrichment
@@ -148,6 +155,26 @@ class SearchService:
             input_modalities.append("text_file")
 
         return input_modalities
+
+    def _filter_element_types_by_weight(
+        self, selected_element_types: List[str], element_type_weights: Optional[Dict[str, float]]
+    ) -> List[str]:
+        """가중치가 0인 element types를 검색에서 제외"""
+        if not element_type_weights:
+            return selected_element_types
+        
+        # 가중치가 0보다 큰 element types만 필터링
+        filtered_types = [
+            element_type for element_type in selected_element_types
+            if element_type_weights.get(element_type, 0.0) > 0.0
+        ]
+        
+        if len(filtered_types) != len(selected_element_types):
+            excluded_types = [t for t in selected_element_types if t not in filtered_types]
+            logger.info(f"🚫 Excluding element types with zero weight from search: {excluded_types}")
+            logger.info(f"✅ Using element types for search: {filtered_types}")
+        
+        return filtered_types
 
     def _generate_search_response(
         self, text_query, input_types, expanded_queries, query_analysis, enriched_results, search_results, start_time, extracted_features=None
@@ -526,8 +553,15 @@ class SearchService:
 
             expansion_result = query_analysis.get("expansion_analysis")
             element_type_weights = query_analysis.get("element_type_weights")
+            
+            # 가중치가 0인 element types는 검색에서 제외 (단, 캡션은 무조건 생성했지만 검색엔 가중치에 따라)
+            filtered_element_types = self._filter_element_types_by_weight(
+                query_analysis["selected_element_types"], 
+                element_type_weights
+            )
+            
             search_results = await self.search_executor.execute_expanded_search(
-                expanded_queries, query_analysis["selected_element_types"], embeddings, max_results, expansion_result, element_type_weights
+                expanded_queries, filtered_element_types, embeddings, max_results, expansion_result, element_type_weights
             )
 
             # 검색 실행 상세 통계

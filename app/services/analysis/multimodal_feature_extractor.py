@@ -97,13 +97,8 @@ class MultimodalFeatureExtractor:
             return None
 
     async def _extract_image_features(self, image_data: Dict[str, Any], element_types: List[str]) -> Optional[ImageFeatures]:
-        """이미지 모달리티에서 특징 추출 - element_type별로 개별 처리"""
+        """이미지 모달리티에서 특징 추출 - 이미지가 첨부되면 무조건 캡션 생성"""
         try:
-            # 이미지 관련 element_types가 선택된 경우에만 분석 수행 (현재 활성: caption, origin)
-            if not any(t in element_types for t in ["caption", "origin"]):
-                # 비활성화된 타입: "cropped", "detected_object", "chart", "diagram"
-                return None
-
             if "base64_data" not in image_data:
                 return None
 
@@ -112,28 +107,22 @@ class MultimodalFeatureExtractor:
 
             image_bytes = base64.b64decode(base64_image)
 
-            # element_type별로 개별 feature 추출
+            # 이미지가 첨부되면 무조건 캡션 생성 (검색 사용 여부는 별도 결정)
             caption_text = None
-            origin_data = None
+            logger.info(f"🖼️ Image attached - generating caption unconditionally")
+            
+            caption_result = await self.embedding_client.generate_image_caption(image_bytes)
+            if caption_result and "caption" in caption_result:
+                caption_text = caption_result["caption"]
+                logger.info(f"✅ Image caption generated: {caption_text[:100]}...")
+            else:
+                logger.warning(f"🚫 Image caption generation failed or returned no caption")
 
-            # caption: 이미지 캡션 생성
-            if "caption" in element_types:
-                caption_result = await self.embedding_client.generate_image_caption(image_bytes)
-                if caption_result and "caption" in caption_result:
-                    caption_text = caption_result["caption"]
-
-            # origin: OpenSearch에서 검색용이므로 별도 임베딩 불필요 (원본 image 임베딩 사용)
-            # if "origin" in element_types:
-            #     origin_data = base64_image  # 원본 base64 데이터
-
-            # 비활성화된 기능들:
-            # 객체 탐지 (detected_object), 잘린 이미지 (cropped), 차트 (chart), 다이어그램 (diagram)
-
-            # 추출된 feature가 있는 경우만 반환
+            # 캡션이 생성된 경우 ImageFeatures 반환
             if caption_text:
                 return ImageFeatures(
                     caption=caption_text,
-                    objects=None,  # origin은 원본 image와 동일하므로 중복 제거
+                    objects=None,
                 )
             return None
 
