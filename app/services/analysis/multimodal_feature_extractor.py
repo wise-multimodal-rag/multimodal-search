@@ -237,75 +237,9 @@ class MultimodalFeatureExtractor:
             return None
 
     async def _analyze_video_with_llm(self, base64_video: str, content_type: str) -> Optional[Dict[str, Any]]:
-        """LLM을 통한 비디오 분석"""
-        try:
-            VIDEO_ANALYSIS_PROMPT = """이 비디오를 분석하여 다음 정보를 JSON 형식으로 제공하세요:
-{
-    "description": "비디오에 대한 간단한 설명",
-    "key_scenes": ["장면1 설명", "장면2 설명"],
-    "detected_objects": ["객체1", "객체2"],
-    "activities": ["활동1", "활동2"],
-    "dominant_colors": ["색상1", "색상2"],
-    "estimated_duration": "추정 길이(초)"
-}"""
-
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": VIDEO_ANALYSIS_PROMPT},
-                        {"type": "video_url", "video_url": {"url": f"data:{content_type};base64,{base64_video}"}},
-                    ],
-                }
-            ]
-
-            response = await self.llm_client.complete(messages, temperature=0.3, max_tokens=1000)
-            if response:
-                import json
-
-                try:
-                    return json.loads(response.strip())
-                except json.JSONDecodeError:
-                    return {"description": response, "analysis_type": "text_only"}
-            return None
-
-        except Exception as e:
-            logger.error(f"Video analysis with LLM failed: {e}")
-            return None
+        """LLM을 통한 비디오 분석 - llm_client로 통합됨"""
+        return await self.llm_client.analyze_video_features(base64_video, content_type)
 
     async def _analyze_audio_with_llm(self, base64_audio: str, content_type: str) -> Optional[Dict[str, Any]]:
-        """LLM을 통한 오디오 분석"""
-        try:
-            AUDIO_ANALYSIS_PROMPT = """이 오디오를 분석하여 다음 정보를 JSON 형식으로 제공하세요:
-{
-    "transcription": "음성 내용 (있다면)",
-    "type": "speech|music|sound_effect|ambient|mixed",
-    "detected_sounds": ["소리1", "소리2"],
-    "language": "언어 (있다면)",
-    "quality": "음질 평가",
-    "duration_estimate": "추정 길이(초)"
-}"""
-
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": AUDIO_ANALYSIS_PROMPT},
-                        {"type": "audio_url", "audio_url": {"url": f"data:{content_type};base64,{base64_audio}"}},
-                    ],
-                }
-            ]
-
-            response = await self.llm_client.complete(messages, temperature=0.3, max_tokens=1000)
-            if response:
-                import json
-
-                try:
-                    return json.loads(response.strip())
-                except json.JSONDecodeError:
-                    return {"description": response, "analysis_type": "text_only"}
-            return None
-
-        except Exception as e:
-            logger.error(f"Audio analysis with LLM failed: {e}")
-            return None
+        """LLM을 통한 오디오 분석 - llm_client로 통합됨"""
+        return await self.llm_client.analyze_audio_features(base64_audio, content_type)

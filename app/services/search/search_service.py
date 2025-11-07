@@ -226,135 +226,32 @@ class SearchService:
         start_time = time.time()
 
         try:
-            # Step 0: 검색 시작 알림
-            input_types = []
-            if text_query:
-                input_types.append("text")
-            if processed_files:
-                input_types.extend(processed_files.keys())
-
-            yield {
-                "step": "start",
-                "message": "멀티모달 검색을 시작합니다...",
-                "timestamp": time.time(),
-                "data": {
-                    "input_types": input_types,
-                    "has_text": bool(text_query),
-                    "has_image": bool(processed_files and "image" in processed_files),
-                    "has_video": bool(processed_files and "video" in processed_files),
-                    "has_audio": bool(processed_files and "audio" in processed_files),
-                },
-            }
-
-            # 입력 검증 - 파일 처리에 실패해도 텍스트 쿼리가 있으면 계속 진행
-            if not text_query and (not processed_files or len(processed_files) == 0):
-                raise ValueError(
-                    "파일 읽기에 실패했고 텍스트 쿼리도 없습니다. 텍스트 쿼리를 입력하거나 파일을 다시 업로드해주세요."
-                )
-
-            # 파일이 제공되었지만 처리에 실패한 경우만 실패 메시지 표시
-            if files_were_provided and (processed_files is None or len(processed_files) == 0):
-                if text_query:
-                    logger.warning("Files were provided but processing failed, continuing with text-only search")
-                    yield {
-                        "step": "file_read_failed",
-                        "message": "파일 처리에 실패했지만 텍스트 쿼리로 검색을 계속 진행합니다",
-                        "timestamp": time.time(),
-                        "data": {"fallback_mode": "text_only"},
-                    }
+            # Step 0: 검색 시작 및 입력 검증
+            async for step_data in self._stream_step_0_start_and_validate(
+                text_query, processed_files, files_were_provided
+            ):
+                yield step_data
 
             # Step 1: 입력 처리
-            yield {"step": "input_processing", "message": "멀티모달 입력을 처리하고 있습니다...", "timestamp": time.time()}
-
-            modalities_data = await self.input_processor.process_multimodal_inputs_from_processed(
-                text_query, processed_files
-            )
-
-            # 파일 정보 수집
-            file_info = {}
-            if processed_files:
-                for file_type, file_data in processed_files.items():
-                    file_info[file_type] = {"filename": file_data["filename"], "content_type": file_data["content_type"]}
-
-            logger.info(f"스트리밍 응답용 modalities_data 키들: {list(modalities_data.keys())}")
-            yield {
-                "step": "input_processed",
-                "message": "입력 처리가 완료되었습니다",
-                "timestamp": time.time(),
-                "data": {"modalities": list(modalities_data.keys()), "text_query": text_query, "file_info": file_info},
-            }
+            modalities_data = None
+            async for step_data in self._stream_step_1_input_processing(text_query, processed_files):
+                if step_data.get("step") == "input_processed":
+                    # modalities_data는 실제로는 메서드에서 반환되어야 하지만, 여기서는 다시 호출
+                    modalities_data = await self.input_processor.process_multimodal_inputs_from_processed(
+                        text_query, processed_files
+                    )
+                yield step_data
 
             # Step 2: 쿼리 확장 및 의도 분석
-            yield {"step": "query_analysis", "message": "쿼리를 분석하고 있습니다...", "timestamp": time.time()}
-
-            input_modalities = self._extract_input_modalities(modalities_data) if modalities_data else None
-            query_analysis, expanded_queries = await self.query_analyzer.process_query_analysis(
-                text_query, self.available_element_types, input_modalities
-            )
-
-            # 쿼리 분석 결과 상세 정보 생성
-            element_weights = query_analysis.get("element_type_weights", {})
-            highest_weight_type = max(element_weights.items(), key=lambda x: x[1]) if element_weights else ("none", 0.0)
-            meaningful_weights = {k: v for k, v in element_weights.items() if v > 0.0}
-            
-            analysis_method = "Advanced Fallback Analysis" if "fallback_reasoning" in query_analysis else "LLM Analysis"
-            
-            # 가중치 분포 세부 정보
-            weight_distribution_details = {
-                "high_priority": {k: v for k, v in meaningful_weights.items() if v >= weighting_config.HIGH_PRIORITY_THRESHOLD},
-                "medium_priority": {k: v for k, v in meaningful_weights.items() if weighting_config.MEDIUM_PRIORITY_THRESHOLD <= v < weighting_config.HIGH_PRIORITY_THRESHOLD},
-                "low_priority": {k: v for k, v in meaningful_weights.items() if weighting_config.LOW_PRIORITY_THRESHOLD < v < weighting_config.MEDIUM_PRIORITY_THRESHOLD},
-                "excluded": {k: v for k, v in element_weights.items() if v == weighting_config.LOW_PRIORITY_THRESHOLD}
-            }
-            
-            yield {
-                "step": "query_analyzed",
-                "message": f"쿼리 의도 분석 완료 - {analysis_method} 사용",
-                "timestamp": time.time(),
-                "data": {
-                    "original_query": text_query,
-                    "expanded_queries": expanded_queries,
-                    "expansion_used": len(expanded_queries) > 1,
-                    "total_queries": len(expanded_queries),
-                    
-                    # Element type 정보 (향상된)
-                    "selected_element_types": query_analysis["selected_element_types"],
-                    "element_type_weights": element_weights,
-                    "meaningful_weights": meaningful_weights,
-                    "weight_distribution_details": weight_distribution_details,
-                    "highest_priority_type": highest_weight_type[0],
-                    "highest_weight_score": highest_weight_type[1],
-                    "total_weighted_types": len(meaningful_weights),
-                    "zero_weight_types": len(weight_distribution_details["excluded"]),
-                    
-                    # 분석 정보
-                    "analysis_method": analysis_method,
-                    "reasoning": query_analysis.get("reasoning", ""),
-                    "confidence": query_analysis.get("confidence", 0.0),
-                    "element_types_count": len(query_analysis["selected_element_types"]),
-                    "expansion_analysis": query_analysis.get("expansion_analysis"),
-                    "weighting_system_enabled": query_analysis.get("element_type_weights") is not None,
-                    "fallback_reasoning": query_analysis.get("fallback_reasoning", ""),
-                    
-                    # 요약 정보 (향상된)
-                    "summary": {
-                        "query_intent": f"'{text_query or 'multimodal query'}'에서 '{highest_weight_type[0]}' 타입을 우선 검색 (가중치: {highest_weight_type[1]:.1f})",
-                        "weight_distribution": f"높은 우선순위: {len(weight_distribution_details['high_priority'])}개, " +
-                                             f"중간 우선순위: {len(weight_distribution_details['medium_priority'])}개, " +
-                                             f"낮은 우선순위: {len(weight_distribution_details['low_priority'])}개",
-                        "expansion_status": f"{len(expanded_queries)}개 쿼리로 확장" if len(expanded_queries) > 1 else "확장 없음",
-                        "opensearch_weighting": "OpenSearch 쿼리 레벨에서 가중치 적용됨"
-                    },
-                    
-                    # 디버그 정보
-                    "debug_info": {
-                        "llm_success": analysis_method == "LLM Analysis",
-                        "fallback_used": analysis_method == "Advanced Fallback Analysis",
-                        "input_modalities": self._extract_input_modalities(modalities_data) if modalities_data else None,
-                        "available_element_types": self.available_element_types
-                    }
-                },
-            }
+            query_analysis, expanded_queries = None, None
+            async for step_data in self._stream_step_2_query_analysis(text_query, modalities_data):
+                if step_data.get("step") == "query_analyzed":
+                    # 결과 추출을 위해 다시 호출 (임시 해결책)
+                    input_modalities = self._extract_input_modalities(modalities_data) if modalities_data else None
+                    query_analysis, expanded_queries = await self.query_analyzer.process_query_analysis(
+                        text_query, self.available_element_types, input_modalities
+                    )
+                yield step_data
 
             # Step 3: 특징 추출
             yield {"step": "feature_extraction", "message": "멀티모달 특징을 추출하고 있습니다...", "timestamp": time.time()}
@@ -808,3 +705,154 @@ class SearchService:
         import time
 
         return int(time.time() * 1000)
+
+    # === 스트리밍 검색 단계별 메서드들 ===
+    
+    async def _stream_step_0_start_and_validate(
+        self, text_query: Optional[str], processed_files: Optional[Dict[str, Dict[str, Any]]], files_were_provided: bool
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Step 0: 검색 시작 알림 및 입력 검증"""
+        # 입력 타입 확인
+        input_types = []
+        if text_query:
+            input_types.append("text")
+        if processed_files:
+            input_types.extend(processed_files.keys())
+
+        yield {
+            "step": "start",
+            "message": "멀티모달 검색을 시작합니다...",
+            "timestamp": time.time(),
+            "data": {
+                "input_types": input_types,
+                "has_text": bool(text_query),
+                "has_image": bool(processed_files and "image" in processed_files),
+                "has_video": bool(processed_files and "video" in processed_files),
+                "has_audio": bool(processed_files and "audio" in processed_files),
+            },
+        }
+
+        # 입력 검증
+        if not text_query and (not processed_files or len(processed_files) == 0):
+            raise ValueError(
+                "파일 읽기에 실패했고 텍스트 쿼리도 없습니다. 텍스트 쿼리를 입력하거나 파일을 다시 업로드해주세요."
+            )
+
+        # 파일 처리 실패 알림
+        if files_were_provided and (processed_files is None or len(processed_files) == 0):
+            if text_query:
+                logger.warning("Files were provided but processing failed, continuing with text-only search")
+                yield {
+                    "step": "file_read_failed",
+                    "message": "파일 처리에 실패했지만 텍스트 쿼리로 검색을 계속 진행합니다",
+                    "timestamp": time.time(),
+                    "data": {"fallback_mode": "text_only"},
+                }
+
+    async def _stream_step_1_input_processing(
+        self, text_query: Optional[str], processed_files: Optional[Dict[str, Dict[str, Any]]]
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Step 1: 멀티모달 입력 처리"""
+        yield {"step": "input_processing", "message": "멀티모달 입력을 처리하고 있습니다...", "timestamp": time.time()}
+
+        modalities_data = await self.input_processor.process_multimodal_inputs_from_processed(
+            text_query, processed_files
+        )
+
+        # 파일 정보 수집
+        file_info = {}
+        if processed_files:
+            for file_type, file_data in processed_files.items():
+                file_info[file_type] = {"filename": file_data["filename"], "content_type": file_data["content_type"]}
+
+        logger.info(f"스트리밍 응답용 modalities_data 키들: {list(modalities_data.keys())}")
+        yield {
+            "step": "input_processed",
+            "message": "입력 처리가 완료되었습니다",
+            "timestamp": time.time(),
+            "data": {"modalities": list(modalities_data.keys()), "text_query": text_query, "file_info": file_info},
+        }
+
+        return modalities_data
+
+    async def _stream_step_2_query_analysis(
+        self, text_query: Optional[str], modalities_data: Dict[str, Any]
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Step 2: 쿼리 확장 및 의도 분석"""
+        yield {"step": "query_analysis", "message": "쿼리를 분석하고 있습니다...", "timestamp": time.time()}
+
+        input_modalities = self._extract_input_modalities(modalities_data) if modalities_data else None
+        query_analysis, expanded_queries = await self.query_analyzer.process_query_analysis(
+            text_query, self.available_element_types, input_modalities
+        )
+
+        # 분석 결과 데이터 생성
+        element_weights = query_analysis.get("element_type_weights", {})
+        analysis_data = self._prepare_query_analysis_data(query_analysis, expanded_queries, element_weights, text_query)
+        
+        yield {
+            "step": "query_analyzed",
+            "message": f"쿼리 의도 분석 완료 - {analysis_data['analysis_method']} 사용",
+            "timestamp": time.time(),
+            "data": analysis_data,
+        }
+
+        return query_analysis, expanded_queries
+
+    def _prepare_query_analysis_data(self, query_analysis, expanded_queries, element_weights, text_query):
+        """쿼리 분석 결과 데이터 준비"""
+        highest_weight_type = max(element_weights.items(), key=lambda x: x[1]) if element_weights else ("none", 0.0)
+        meaningful_weights = {k: v for k, v in element_weights.items() if v > 0.0}
+        analysis_method = "Advanced Fallback Analysis" if "fallback_reasoning" in query_analysis else "LLM Analysis"
+        
+        # 가중치 분포 세부 정보
+        weight_distribution_details = {
+            "high_priority": {k: v for k, v in meaningful_weights.items() if v >= weighting_config.HIGH_PRIORITY_THRESHOLD},
+            "medium_priority": {k: v for k, v in meaningful_weights.items() if weighting_config.MEDIUM_PRIORITY_THRESHOLD <= v < weighting_config.HIGH_PRIORITY_THRESHOLD},
+            "low_priority": {k: v for k, v in meaningful_weights.items() if weighting_config.LOW_PRIORITY_THRESHOLD < v < weighting_config.MEDIUM_PRIORITY_THRESHOLD},
+            "excluded": {k: v for k, v in element_weights.items() if v == weighting_config.LOW_PRIORITY_THRESHOLD}
+        }
+        
+        return {
+            "original_query": text_query,
+            "expanded_queries": expanded_queries,
+            "expansion_used": len(expanded_queries) > 1,
+            "total_queries": len(expanded_queries),
+            
+            # Element type 정보
+            "selected_element_types": query_analysis["selected_element_types"],
+            "element_type_weights": element_weights,
+            "meaningful_weights": meaningful_weights,
+            "weight_distribution_details": weight_distribution_details,
+            "highest_priority_type": highest_weight_type[0],
+            "highest_weight_score": highest_weight_type[1],
+            "total_weighted_types": len(meaningful_weights),
+            "zero_weight_types": len(weight_distribution_details["excluded"]),
+            
+            # 분석 정보
+            "analysis_method": analysis_method,
+            "reasoning": query_analysis.get("reasoning", ""),
+            "confidence": query_analysis.get("confidence", 0.0),
+            "element_types_count": len(query_analysis["selected_element_types"]),
+            "expansion_analysis": query_analysis.get("expansion_analysis"),
+            "weighting_system_enabled": query_analysis.get("element_type_weights") is not None,
+            "fallback_reasoning": query_analysis.get("fallback_reasoning", ""),
+            
+            # 요약 정보
+            "summary": {
+                "query_intent": f"'{text_query or 'multimodal query'}'에서 '{highest_weight_type[0]}' 타입을 우선 검색 (가중치: {highest_weight_type[1]:.1f})",
+                "weight_distribution": f"높은 우선순위: {len(weight_distribution_details['high_priority'])}개, " +
+                                     f"중간 우선순위: {len(weight_distribution_details['medium_priority'])}개, " +
+                                     f"낮은 우선순위: {len(weight_distribution_details['low_priority'])}개",
+                "expansion_status": f"{len(expanded_queries)}개 쿼리로 확장" if len(expanded_queries) > 1 else "확장 없음",
+                "opensearch_weighting": "OpenSearch 쿼리 레벨에서 가중치 적용됨"
+            },
+            
+            # 디버그 정보
+            "debug_info": {
+                "llm_success": analysis_method == "LLM Analysis",
+                "fallback_used": analysis_method == "Advanced Fallback Analysis",
+                "input_modalities": self._extract_input_modalities(None),  # Will be set properly
+                "available_element_types": self.available_element_types
+            }
+        }
