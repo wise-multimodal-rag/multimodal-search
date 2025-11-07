@@ -773,7 +773,12 @@ class SearchService:
             "data": {"modalities": list(modalities_data.keys()), "text_query": text_query, "file_info": file_info},
         }
 
-        return modalities_data
+        yield {
+            "step": "modalities_data",
+            "message": "모달리티 데이터 준비 완료",
+            "timestamp": time.time(),
+            "data": modalities_data,
+        }
 
     async def _stream_step_2_query_analysis(
         self, text_query: Optional[str], modalities_data: Dict[str, Any]
@@ -797,7 +802,12 @@ class SearchService:
             "data": analysis_data,
         }
 
-        return query_analysis, expanded_queries
+        yield {
+            "step": "query_analysis_result",
+            "message": "쿼리 분석 결과",
+            "timestamp": time.time(),
+            "data": {"query_analysis": query_analysis, "expanded_queries": expanded_queries},
+        }
 
     def _prepare_query_analysis_data(self, query_analysis, expanded_queries, element_weights, text_query):
         """쿼리 분석 결과 데이터 준비"""
