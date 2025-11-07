@@ -173,12 +173,69 @@ class AnswerGenerationService:
             # 요소 정보
             element_info = f"[{element.element_type}]"
             
+            # 텍스트 전처리: 공백 정리 및 특수문자 처리
+            cleaned_content = self._clean_content_text(element.content)
+            
             context_parts.append(
                 f"{i}. {element_info}{media_info} (점수: {score:.3f})\n"
-                f"   내용: {element.content[:500]}{'...' if len(element.content) > 500 else ''}"
+                f"   내용: {cleaned_content}"
             )
         
+        # 첨부된 이미지의 캡션 (외부 API로 생성) 추가
+        attached_caption = None
+        if search_results.query_analysis and "attached_image_caption" in search_results.query_analysis:
+            attached_caption = search_results.query_analysis["attached_image_caption"]
+            logger.info(f"🖼️ Found attached image caption: {attached_caption[:100]}...")
+        else:
+            logger.info(f"🚫 No attached image caption found. query_analysis keys: {list(search_results.query_analysis.keys()) if search_results.query_analysis else 'None'}")
+        
+        if attached_caption:
+            context_parts.append("\n=== 첨부 이미지 정보 ===")
+            context_parts.append("🖼️ 첨부된 이미지 설명:")
+            cleaned_attached_caption = self._clean_content_text(attached_caption)
+            context_parts.append(f"  - {cleaned_attached_caption}")
+            logger.info(f"✅ Added attached image caption to context")
+        
         return "\n\n".join(context_parts)
+
+    def _clean_content_text(self, content: str) -> str:
+        """텍스트 내용 전처리: 불필요한 공백, 특수문자 정리"""
+        if not content:
+            return ""
+        
+        import re
+        
+        # 1. 여러 개의 연속된 공백을 하나로 통합
+        content = re.sub(r'\s+', ' ', content)
+        
+        # 2. 여러 개의 연속된 줄바꿈을 최대 2개로 제한
+        content = re.sub(r'\n{3,}', '\n\n', content)
+        
+        # 3. 탭 문자를 공백으로 변환
+        content = content.replace('\t', ' ')
+        
+        # 4. 특수 구분자들 정리 (표 형태의 구분자들)
+        content = re.sub(r'\s*\|\s*\|\s*', ' | ', content)  # | | | -> |
+        content = re.sub(r'\s*\|\s*$', '', content, flags=re.MULTILINE)  # 줄 끝의 |
+        content = re.sub(r'^\s*\|\s*', '', content, flags=re.MULTILINE)  # 줄 시작의 |
+        
+        # 5. 반복되는 특수문자들 정리
+        content = re.sub(r'-{3,}', '---', content)  # 긴 대시들
+        content = re.sub(r'={3,}', '===', content)  # 긴 등호들
+        content = re.sub(r'_{3,}', '___', content)  # 긴 언더스코어들
+        
+        # 6. 문장 간 공백 정리 (문장 끝 . 후 공백)
+        content = re.sub(r'\.\s+', '. ', content)
+        content = re.sub(r',\s+', ', ', content)
+        
+        # 7. 시작과 끝의 공백 제거
+        content = content.strip()
+        
+        # 8. 한글과 영문 사이의 불필요한 공백 정리
+        content = re.sub(r'([가-힣])\s+([A-Za-z])', r'\1 \2', content)
+        content = re.sub(r'([A-Za-z])\s+([가-힣])', r'\1 \2', content)
+        
+        return content
 
     async def _generate_draft(self, query: str, context: str, temperature: float) -> Optional[str]:
         """초안 답변 생성"""
@@ -192,8 +249,12 @@ class AnswerGenerationService:
 4. **구조화**: 논리적 순서와 명확한 구조로 답변 구성
 5. **출처 표시**: 검색 결과의 어떤 부분을 참고했는지 명시
 
+**중요**: 검색 결과에 "=== 추가 이미지 정보 ===" 섹션이 있다면, 이는 실제 검색된 이미지들에 대한 AI 생성 캡션입니다. 
+사용자가 "이 이미지", "사진", "그림" 등을 언급할 때는 이 캡션들을 참고하여 구체적인 이미지 내용을 설명할 수 있습니다.
+
 답변 형식:
 - 질문에 직접적으로 답변하는 내용으로 시작
+- 이미지 관련 질문이면 캡션 정보를 활용하여 구체적으로 설명
 - 필요시 배경 설명이나 맥락 정보 제공
 - 구체적인 예시나 세부사항 포함
 - 관련된 추가 정보나 주의사항 언급
@@ -326,6 +387,7 @@ JSON 형식으로만 응답하세요:
         
         # 검색 결과를 컨텍스트로 변환
         context = self._prepare_context(search_results)
+        logger.debug(f"🗂️ Prepared context: {context}")
         
         # 답변 생성 시작 신호
         yield {

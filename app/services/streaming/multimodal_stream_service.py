@@ -148,6 +148,13 @@ class MultimodalStreamService:
     ) -> AsyncGenerator[str, None]:
         """답변 생성 과정을 스트리밍으로 처리"""
         try:
+            # query_analysis에서 첨부 이미지 캡션 확인
+            query_analysis = search_results.get('query_analysis', {})
+            if 'attached_image_caption' in query_analysis:
+                logger.info(f"🖼️ [STREAM] Found attached_image_caption in search_results: {query_analysis['attached_image_caption'][:100]}...")
+            else:
+                logger.info(f"🚫 [STREAM] No attached_image_caption in search_results. query_analysis keys: {list(query_analysis.keys())}")
+            
             # 검색 결과를 SearchResponse 형태로 변환
             search_response = SearchResponse(
                 query=text_query or "",
@@ -155,7 +162,8 @@ class MultimodalStreamService:
                 max_score=search_results.get('search_stats', {}).get('max_score', 0.0),
                 results=search_results.get('results', []),
                 took_ms=search_results.get('search_stats', {}).get('took_ms', 0),
-                element_types_used=search_results.get('query_analysis', {}).get('selected_element_types', [])
+                element_types_used=query_analysis.get('selected_element_types', []),
+                query_analysis=query_analysis  # query_analysis 전체 전달
             )
 
             # 실제 스트리밍 답변 생성

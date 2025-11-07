@@ -123,9 +123,9 @@ class SearchService:
                 search_results, include_chunk_meta, include_media_meta
             )
 
-            # Step 7: 응답 생성
+            # Step 7: 응답 생성 (첨부 이미지 캡션 포함)
             return self._generate_search_response(
-                text_query, input_types, expanded_queries, query_analysis, enriched_results, search_results, start_time
+                text_query, input_types, expanded_queries, query_analysis, enriched_results, search_results, start_time, extracted_features
             )
 
         except Exception as e:
@@ -150,7 +150,7 @@ class SearchService:
         return input_modalities
 
     def _generate_search_response(
-        self, text_query, input_types, expanded_queries, query_analysis, enriched_results, search_results, start_time
+        self, text_query, input_types, expanded_queries, query_analysis, enriched_results, search_results, start_time, extracted_features=None
     ):
         """Step 7: 응답 생성"""
         end_time = self._get_current_time_ms()
@@ -163,10 +163,17 @@ class SearchService:
         if len(expanded_queries) > 1:
             display_query += f" (expanded to {len(expanded_queries)} queries)"
 
-        # query_analysis에 확장 정보 추가
+        # query_analysis에 확장 정보 및 첨부 이미지 캡션 추가
         if query_analysis:
             query_analysis["expanded_queries"] = expanded_queries
             query_analysis["expansion_used"] = len(expanded_queries) > 1
+            
+            # 첨부된 이미지의 캡션 정보 추가
+            if extracted_features and extracted_features.image and extracted_features.image.caption:
+                query_analysis["attached_image_caption"] = extracted_features.image.caption
+                logger.info(f"🖼️ Added attached image caption to query_analysis: {extracted_features.image.caption[:100]}...")
+            else:
+                logger.info(f"🚫 No image caption found in extracted_features. Image features: {extracted_features.image is not None if extracted_features else 'No features'}")
 
         return SearchResponse(
             query=display_query,
@@ -647,6 +654,14 @@ class SearchService:
             try:
                 logger.info("🔄 Creating completed data...")
 
+                # 첨부 이미지 캡션 추가
+                attached_image_caption = None
+                if extracted_features and extracted_features.image and extracted_features.image.caption:
+                    attached_image_caption = extracted_features.image.caption
+                    logger.info(f"🖼️ [STREAM] Found attached image caption: {attached_image_caption[:100]}...")
+                else:
+                    logger.info(f"🚫 [STREAM] No image caption found. Image features: {extracted_features.image is not None if extracted_features else 'No features'}")
+
                 # 데이터 크기 체크를 위한 임시 생성
                 temp_completed_data = {
                     "results": results_data,
@@ -660,6 +675,7 @@ class SearchService:
                     "query_analysis": {
                         "selected_element_types": query_analysis.get("selected_element_types", []),
                         "confidence": query_analysis.get("confidence", 0.0),
+                        "attached_image_caption": attached_image_caption,
                     },
                     "expanded_queries": [
                         q.get("query", str(q)) if isinstance(q, dict) else str(q) for q in expanded_queries

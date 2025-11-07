@@ -471,94 +471,44 @@ class SearchStepRenderer {
                     </div>`;
                 }
                 
-                // 가중치별 그룹화 표시
-                if (weightDetails.high_priority && Object.keys(weightDetails.high_priority).length > 0) {
-                    content += `<div class="weight-group high-priority">
-                        <h5>높은 우선순위 (0.8 이상)</h5>
-                        <div class="element-types">
-                            ${Object.entries(weightDetails.high_priority).map(([type, weight]) => 
-                                `<span class="element-type-tag high-priority" title="가중치: ${weight}">${type} <strong>${weight.toFixed(1)}</strong></span>`
-                            ).join('')}
-                        </div>
-                    </div>`;
-                }
-                
-                if (weightDetails.medium_priority && Object.keys(weightDetails.medium_priority).length > 0) {
-                    content += `<div class="weight-group medium-priority">
-                        <h5>중간 우선순위 (0.5 - 0.7)</h5>
-                        <div class="element-types">
-                            ${Object.entries(weightDetails.medium_priority).map(([type, weight]) => 
-                                `<span class="element-type-tag medium-priority" title="가중치: ${weight}">${type} <strong>${weight.toFixed(1)}</strong></span>`
-                            ).join('')}
-                        </div>
-                    </div>`;
-                }
-                
-                if (weightDetails.low_priority && Object.keys(weightDetails.low_priority).length > 0) {
-                    content += `<div class="weight-group low-priority">
-                        <h5>낮은 우선순위 (0.1 - 0.4)</h5>
-                        <div class="element-types">
-                            ${Object.entries(weightDetails.low_priority).map(([type, weight]) => 
-                                `<span class="element-type-tag low-priority" title="가중치: ${weight}">${type} <strong>${weight.toFixed(1)}</strong></span>`
-                            ).join('')}
-                        </div>
-                    </div>`;
-                }
-                
-                if (weightDetails.excluded && Object.keys(weightDetails.excluded).length > 0) {
-                    content += `<div class="weight-group excluded">
-                        <h5>제외된 타입들 (가중치: 0.0)</h5>
-                        <div class="element-types">
-                            ${Object.entries(weightDetails.excluded).map(([type, weight]) => 
-                                `<span class="element-type-tag excluded" title="가중치: ${weight}">${type}</span>`
-                            ).join('')}
-                        </div>
-                    </div>`;
-                }
-                
-                // 전체 가중치 테이블 (접힌 상태로)
-                content += `<div class="weight-details-toggle">
-                    <button class="toggle-btn" onclick="toggleWeightDetails(this)">
-                        전체 가중치 상세보기 ▼
-                    </button>
-                    <div class="weight-details-table" style="display: none;">
-                        <table class="weights-table">
-                            <thead>
-                                <tr>
-                                    <th>Element Type</th>
-                                    <th>가중치</th>
-                                    <th>우선순위</th>
-                                    <th>OpenSearch Boost</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${Object.entries(weights).sort(([,a], [,b]) => b - a).map(([type, weight]) => {
-                                    let priorityLevel = '';
-                                    let priorityClass = '';
-                                    if (weight >= 0.8) {
-                                        priorityLevel = '높음';
-                                        priorityClass = 'high';
-                                    } else if (weight >= 0.5) {
-                                        priorityLevel = '중간';
-                                        priorityClass = 'medium';
-                                    } else if (weight > 0) {
-                                        priorityLevel = '낮음';
-                                        priorityClass = 'low';
-                                    } else {
-                                        priorityLevel = '제외';
-                                        priorityClass = 'excluded';
-                                    }
-                                    const boost = weight > 0 ? Math.max(0.1, weight * 10).toFixed(1) : '0.0';
-                                    return `<tr class="weight-row ${priorityClass}">
-                                        <td>${type}</td>
-                                        <td><strong>${weight.toFixed(1)}</strong></td>
-                                        <td class="priority-${priorityClass}">${priorityLevel}</td>
-                                        <td>${boost}</td>
-                                    </tr>`;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                // 전체 가중치 테이블 (바로 표시)
+                content += `<div class="weight-details-table">
+                    <table class="weights-table">
+                        <thead>
+                            <tr>
+                                <th>Element Type</th>
+                                <th>가중치</th>
+                                <th>우선순위</th>
+                                <th>OpenSearch Boost</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${Object.entries(weights).sort(([,a], [,b]) => b - a).map(([type, weight]) => {
+                                let priorityLevel = '';
+                                let priorityClass = '';
+                                if (weight >= 0.8) {
+                                    priorityLevel = '높음';
+                                    priorityClass = 'high';
+                                } else if (weight >= 0.5) {
+                                    priorityLevel = '중간';
+                                    priorityClass = 'medium';
+                                } else if (weight > 0) {
+                                    priorityLevel = '낮음';
+                                    priorityClass = 'low';
+                                } else {
+                                    priorityLevel = '제외';
+                                    priorityClass = 'excluded';
+                                }
+                                const boost = weight > 0 ? Math.max(0.1, weight * 10).toFixed(1) : '0.0';
+                                return `<tr class="weight-row ${priorityClass}">
+                                    <td>${type}</td>
+                                    <td><strong>${weight.toFixed(1)}</strong></td>
+                                    <td class="priority-${priorityClass}">${priorityLevel}</td>
+                                    <td>${boost}</td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
                 </div>`;
             }
             // 기존 방식 (가중치 정보가 없는 경우)
