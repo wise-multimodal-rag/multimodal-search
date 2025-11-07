@@ -170,8 +170,9 @@ class SearchResultRenderer {
         
         searchResultsContent.innerHTML = resultsHtml;
         
-        // 이미지 로딩 처리
+        // 미디어 로딩 처리
         this.loadImages();
+        this.loadVideos();
         
         // 검색 결과 컨테이너 표시
         const searchResultsContainer = document.querySelector('.search-results-container');
@@ -189,22 +190,40 @@ class SearchResultRenderer {
         const hybridScore = score.toFixed(3);
         const originalScore = result.original_score ? result.original_score.toFixed(3) : null;
         
-        // 새로운 이미지 URL 감지 로직 사용
-        let imageUrl = null;
+        // content_type과 modality 기반 미디어 처리
+        let mediaContent = '';
+        let shouldShowContent = true;
         
-        // 1. 새로운 이미지 URL 감지 방식 우선 시도
-        if (SearchDataProcessor.isImageElement(element)) {
-            const detectedUrl = SearchDataProcessor.detectImageUrl(element.content);
+        // 1. content_type이 uri이고 modality가 image인 경우
+        if (element.content_type === 'uri' && element.modality === 'image') {
+            mediaContent = this.renderImagePreview(element.content, element.content);
+            shouldShowContent = false; // URI는 별도로 표시하지 않음
+        }
+        // 2. content_type이 uri이고 modality가 video인 경우
+        else if (element.content_type === 'uri' && element.modality === 'video') {
+            mediaContent = this.renderVideoPreview(element.content, element.content);
+            shouldShowContent = false; // URI는 별도로 표시하지 않음
+        }
+        // 3. 기존 방식: 이미지 URL 감지
+        else if (SearchDataProcessor.isImageElement(element)) {
+            const detectedUrl = SearchDataProcessor.detectImageUrl(element.content) || 
+                                SearchDataProcessor.detectMediaUrl(element.content);
             if (detectedUrl) {
-                imageUrl = detectedUrl;
+                mediaContent = this.renderImagePreview(detectedUrl, element.content);
+            } else {
+                // 기존 이미지 경로 추출 방식으로 폴백
+                const imagePath = SearchDataProcessor.extractImagePath(element.content);
+                if (imagePath) {
+                    const imageUrl = `http://internal.example.com/image/proxy/${imagePath}`;
+                    mediaContent = this.renderImagePreview(imageUrl, element.content);
+                }
             }
         }
-        
-        // 2. 기존 이미지 경로 추출 방식으로 폴백
-        if (!imageUrl) {
-            const imagePath = SearchDataProcessor.extractImagePath(element.content);
-            if (imagePath) {
-                imageUrl = `http://internal.example.com/image/proxy/${imagePath}`;
+        // 4. 비디오 요소 처리
+        else if (SearchDataProcessor.isVideoElement(element)) {
+            const detectedUrl = SearchDataProcessor.detectMediaUrl(element.content);
+            if (detectedUrl) {
+                mediaContent = this.renderVideoPreview(detectedUrl, element.content);
             }
         }
         
@@ -218,17 +237,20 @@ class SearchResultRenderer {
         // 점수 표시
         const scoreDisplay = this.renderScoreDisplay(hybridScore, originalScore);
         
+        // content_type 정보 추가
+        const contentTypeInfo = element.content_type ? ` [${element.content_type}]` : '';
+        
         return `
             <div class="search-result-card">
                 <div class="search-result-header">
-                    <div class="search-result-type">${element.element_type || 'Unknown'} (${element.modality || 'text'})</div>
+                    <div class="search-result-type">${element.element_type || 'Unknown'} (${element.modality || 'text'})${contentTypeInfo}</div>
                     <div class="search-result-score">${scoreDisplay}</div>
                 </div>
                 <div class="search-result-content">
-                    ${imageUrl ? this.renderImagePreview(imageUrl, element.content) : ''}
-                    <div class="content-text">
+                    ${mediaContent}
+                    ${shouldShowContent ? `<div class="content-text">
                         ${element.content ? (typeof element.content === 'string' ? SearchDataProcessor.cleanContentIndentation(element.content) : JSON.stringify(element.content, null, 2)) : 'No content'}
-                    </div>
+                    </div>` : ''}
                 </div>
                 ${basicMetaInfo ? `<div class="search-result-meta">${basicMetaInfo}</div>` : ''}
                 ${detailedMetaSection}
@@ -324,6 +346,37 @@ class SearchResultRenderer {
         `;
     }
     
+    renderVideoPreview(videoUrl, originalContent) {
+        // 표시용 경로 결정
+        const displayPath = originalContent;
+        
+        return `
+            <div class="video-preview">
+                <video data-video-url="${videoUrl}" data-original-content="${originalContent}" class="result-video" 
+                       controls preload="metadata" style="display: none; max-width: 100%; height: auto; border-radius: 8px;"
+                       onerror="this.style.display='none'; this.nextElementSibling.nextElementSibling.style.display='block';"
+                       onloadedmetadata="this.style.display='block'; this.nextElementSibling.style.display='none';">
+                    <source src="${videoUrl}" type="video/mp4">
+                    <source src="${videoUrl}" type="video/webm">
+                    <source src="${videoUrl}" type="video/ogg">
+                    브라우저가 비디오를 지원하지 않습니다.
+                </video>
+                <div class="video-loading" style="padding: 20px; background: #f8f9fa; border: 1px solid #e5e7eb; text-align: center; color: #666; border-radius: 8px;">
+                    🎥 비디오 로딩 중...<br>
+                    <small style="word-break: break-all; font-size: 11px;">URL: ${SearchDataProcessor.truncateText(displayPath, 60)}</small>
+                </div>
+                <div class="video-error" style="display: none; padding: 20px; background: #f8f9fa; border: 1px dashed #ccc; text-align: center; color: #666; border-radius: 8px;">
+                    🎥 비디오를 불러올 수 없습니다<br>
+                    <small style="word-break: break-all; font-size: 11px;">URL: ${SearchDataProcessor.truncateText(displayPath, 60)}</small>
+                    <br><br>
+                    <a href="${videoUrl}" target="_blank" style="color: #007bff; text-decoration: none;">
+                        🔗 새 탭에서 열기
+                    </a>
+                </div>
+            </div>
+        `;
+    }
+    
     async loadImages() {
         const imageElements = document.querySelectorAll('.result-image[data-image-url]');
         
@@ -336,8 +389,10 @@ class SearchResultRenderer {
             try {
                 // 직접 URL인 경우와 프록시 URL인 경우 구분 처리
                 if (imageUrl.startsWith('http://internal.example.com/') ||
-                    imageUrl.includes('internal.example.com')) {
+                    imageUrl.includes('internal.example.com') ||
+                    imageUrl.includes('minio.storage-system')) {
                     // 직접 이미지 URL인 경우 - 바로 사용
+                    console.log('Loading direct image URL:', imageUrl);
                     img.src = imageUrl;
                     loadingDiv.style.display = 'none';
                 } else {
@@ -368,6 +423,51 @@ class SearchResultRenderer {
                 }
             } catch (error) {
                 console.error('Image loading error:', error, 'for URL:', imageUrl);
+                loadingDiv.style.display = 'none';
+                errorDiv.style.display = 'block';
+            }
+        }
+    }
+    
+    async loadVideos() {
+        const videoElements = document.querySelectorAll('.result-video[data-video-url]');
+        
+        for (const video of videoElements) {
+            const videoUrl = video.getAttribute('data-video-url');
+            const originalContent = video.getAttribute('data-original-content');
+            const loadingDiv = video.nextElementSibling;
+            const errorDiv = loadingDiv.nextElementSibling;
+            
+            try {
+                // 비디오 URL을 직접 설정
+                video.src = videoUrl;
+                
+                // 메타데이터 로드 완료 이벤트 리스너
+                video.addEventListener('loadedmetadata', () => {
+                    video.style.display = 'block';
+                    loadingDiv.style.display = 'none';
+                });
+                
+                // 에러 이벤트 리스너
+                video.addEventListener('error', () => {
+                    console.warn(`Failed to load video: ${videoUrl}`);
+                    video.style.display = 'none';
+                    loadingDiv.style.display = 'none';
+                    errorDiv.style.display = 'block';
+                });
+                
+                // 로딩 시간이 너무 길면 타임아웃
+                setTimeout(() => {
+                    if (video.readyState === 0) { // HAVE_NOTHING
+                        console.warn(`Video loading timeout: ${videoUrl}`);
+                        video.style.display = 'none';
+                        loadingDiv.style.display = 'none';
+                        errorDiv.style.display = 'block';
+                    }
+                }, 10000); // 10초 타임아웃
+                
+            } catch (error) {
+                console.error('Video loading error:', error, 'for URL:', videoUrl);
                 loadingDiv.style.display = 'none';
                 errorDiv.style.display = 'block';
             }

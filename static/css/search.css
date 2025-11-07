@@ -917,6 +917,40 @@ body {
     border: 1px dashed #ccc;
     text-align: center;
     color: #666;
+}
+
+/* Video preview styles */
+.video-preview {
+    margin-bottom: 12px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.result-video {
+    max-width: 100%;
+    height: auto;
+    max-height: 400px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    display: block;
+    margin: 0 auto;
+    background-color: #000;
+}
+
+.video-error {
+    padding: 20px;
+    background: #f8f9fa;
+    border: 1px dashed #ccc;
+    text-align: center;
+    color: #666;
+}
+
+.video-loading {
+    padding: 20px;
+    background: #f8f9fa;
+    border: 1px solid #e5e7eb;
+    text-align: center;
+    color: #666;
     border-radius: 8px;
     font-size: 13px;
 }

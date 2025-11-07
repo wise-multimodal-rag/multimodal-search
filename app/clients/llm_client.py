@@ -116,24 +116,27 @@ class LLMClient:
         # Define modality-specific element types
         modality_element_mapping = {"text": ["paragraph", "summary"], "image": ["caption", "origin"]}
 
-        # Filter available_element_types based on input modalities
-        if input_modalities:
-            relevant_types = set()
-            for modality in input_modalities:
-                if modality in modality_element_mapping:
-                    relevant_types.update(modality_element_mapping[modality])
-            # Only keep element types that are both relevant and available
-            available_element_types = [t for t in available_element_types if t in relevant_types]
+        # 모달리티 제약을 완화 - 텍스트 쿼리에서도 이미지 콘텐츠 검색 가능
+        # 예: "헤드폰 이미지"라는 텍스트 쿼리로 이미지 관련 타입 검색 허용
+        original_available_types = available_element_types.copy()
+        
+        # 강제 필터링 제거 - LLM이 쿼리 내용에 따라 자유롭게 가중치 결정
+        # if input_modalities:
+        #     relevant_types = set()
+        #     for modality in input_modalities:
+        #         if modality in modality_element_mapping:
+        #             relevant_types.update(modality_element_mapping[modality])
+        #     # Only keep element types that are both relevant and available
+        #     available_element_types = [t for t in available_element_types if t in relevant_types]
 
         element_types_desc = {
             # Currently active types
-            "paragraph": "일반 문단 - 문서의 본문 내용 (텍스트 전용)",
-            "summary": "AI 요약 - 자동 생성된 요약문 (텍스트 전용)",
-            "caption": "이미지 설명 - AI가 생성한 이미지 캡션 (이미지 전용)",
-            "origin": "원본 이미지 - 최초 업로드된 이미지 (이미지 전용)",
+            "paragraph": "일반 문단 - 문서의 본문 내용",
+            "summary": "AI 요약 - 자동 생성된 요약문",
+            "caption": "이미지 설명 - AI가 생성한 이미지 캡션",
+            "origin": "원본 이미지 - 최초 업로드된 이미지",
             # Temporarily disabled element types (for future use)
             # Text 모달리티:
-            # "title": "제목 - 문서/섹션 제목",
             # "stt": "음성→텍스트 - 음성인식 결과",
             # "scene": "비디오 장면 설명 - 비디오 장면에 대한 텍스트 설명",
             # "ocr": "이미지→텍스트 - OCR로 추출한 텍스트",
@@ -166,31 +169,45 @@ class LLMClient:
         if input_modalities:
             modality_context = f"""
 입력 모달리티: {", ".join(input_modalities)}
-- 텍스트 입력시: paragraph, summary 타입만 사용 가능
-- 이미지 입력시: caption, origin 타입만 사용 가능
 """
 
-        system_message = f"""검색 쿼리를 분석하여 관련성이 높은 element_type들을 선택하세요.
-현재 활성화된 타입만 사용 가능하고, 입력 모달리티에 맞는 타입만 선택하세요.
+        system_message = f"""쿼리 내용을 분석하여 검색에 적합한 element_type별 가중치를 계산하세요.
 {modality_context}
 사용 가능한 타입:
 {element_list}
 
-중요한 제약사항:
-- 텍스트만 입력된 경우: paragraph와 summary 중에서만 선택
-- 이미지가 포함된 경우: caption과 origin 중에서만 선택
-- 모달리티별 전용 타입을 우선 선택하세요.
+**중요한 우선순위 규칙**:
+- 이미지 관련 쿼리 ("이미지", "사진", "그림" 등):
+  → origin (원본 이미지): 1.0 (최고 우선순위)
+  → caption (이미지 설명): 0.2-0.3 (매우 낮은 우선순위)
+- 요약 관련 쿼리 ("요약", "정리" 등):
+  → summary: 1.0, paragraph: 0.5-0.7
+- 일반 텍스트 쿼리 ("내용", "문서", "텍스트" 등):
+  → paragraph: 1.0, summary: 0.5-0.7
 
-쿼리 의도에 맞는 1-3개 타입을 선택하고, JSON으로만 답변하세요:
+가중치 (0.0~1.0):
+- 1.0: 핵심 요구사항 (최고 우선순위)
+- 0.7: 관련 높음
+- 0.5: 보통 관련
+- 0.3: 약간 관련
+- 0.2: 매우 낮은 관련성
+- 0.0: 관련 없음
+
+JSON만 출력:
 {{
-    "selected_element_types": ["type1", "type2", "type3"],
-    "reasoning": "선택 이유",
-    "confidence": 0.85
+    "element_type_weights": {{
+        "paragraph": 0.3,
+        "summary": 0.5, 
+        "caption": 0.2,
+        "origin": 1.0
+    }},
+    "reasoning": "이미지 검색이므로 origin을 최우선으로, caption은 매우 낮게 설정",
+    "confidence": 0.9
 }}"""
 
         messages = [{"role": "system", "content": system_message}, {"role": "user", "content": f"검색 쿼리: {query}"}]
 
-        response = await self.complete(messages, temperature=0.2, max_tokens=2000, force_json=True)
+        response = await self.complete(messages, temperature=0.2, max_tokens=1500, force_json=False)
 
         if response:
             try:
@@ -198,6 +215,7 @@ class LLMClient:
 
                 # Try to extract JSON from response if it contains additional text
                 response_cleaned = response.strip()
+                logger.debug(f"Cleaning LLM response for JSON parsing: {response_cleaned=}")
 
                 # Look for JSON block between ```json and ``` or { and }
                 if "```json" in response_cleaned:
@@ -205,31 +223,78 @@ class LLMClient:
                     end = response_cleaned.find("```", start)
                     if end != -1:
                         response_cleaned = response_cleaned[start:end].strip()
-                elif response_cleaned.startswith("{") and response_cleaned.endswith("}"):
-                    # Already looks like pure JSON
-                    pass
+                elif response_cleaned.startswith("{"):
+                    # Find the complete JSON object, even if truncated
+                    brace_count = 0
+                    json_end = -1
+                    for i, char in enumerate(response_cleaned):
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                json_end = i + 1
+                                break
+                    
+                    if json_end > 0:
+                        response_cleaned = response_cleaned[:json_end]
+                    else:
+                        # JSON is incomplete, try to fix it
+                        response_cleaned = response_cleaned.rstrip(',\n ') + '}'
                 else:
                     # Try to find JSON-like structure
                     start = response_cleaned.find("{")
-                    end = response_cleaned.rfind("}") + 1
-                    if start != -1 and end > start:
-                        response_cleaned = response_cleaned[start:end]
+                    if start != -1:
+                        # Find matching closing brace
+                        brace_count = 0
+                        json_end = -1
+                        for i in range(start, len(response_cleaned)):
+                            char = response_cleaned[i]
+                            if char == '{':
+                                brace_count += 1
+                            elif char == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    json_end = i + 1
+                                    break
+                        
+                        if json_end > start:
+                            response_cleaned = response_cleaned[start:json_end]
+                        else:
+                            # Incomplete JSON, try to fix
+                            response_cleaned = response_cleaned[start:].rstrip(',\n ') + '}'
 
                 logger.debug(f"Attempting to parse JSON, length: {len(response_cleaned)} chars")
                 result = json.loads(response_cleaned)
 
-                # Validate selected types are in available types
-                selected = result.get("selected_element_types", [])
-                valid_selected = [t for t in selected if t in available_element_types]
+                # Validate element type weights
+                element_weights = result.get("element_type_weights", {})
+                
+                # Filter only available element types and validate weights
+                valid_weights = {}
+                for element_type, weight in element_weights.items():
+                    if element_type in original_available_types:  # 원래 available types 사용
+                        # Ensure weight is between 0.0 and 1.0
+                        weight = max(0.0, min(1.0, float(weight) if isinstance(weight, (int, float)) else 0.0))
+                        valid_weights[element_type] = weight
 
-                if not valid_selected:
-                    logger.warning(f"No valid element types found in LLM response: {selected}")
+                # Add missing element types with 0.0 weight
+                for element_type in original_available_types:  # 원래 available types 사용
+                    if element_type not in valid_weights:
+                        valid_weights[element_type] = 0.0
+
+                # Check if any meaningful weights exist (> 0.0)
+                meaningful_weights = {k: v for k, v in valid_weights.items() if v > 0.0}
+                if not meaningful_weights:
+                    logger.warning(f"No meaningful element type weights found in LLM response: {element_weights}")
                     return None
 
                 return {
-                    "selected_element_types": valid_selected,
+                    "element_type_weights": valid_weights,
                     "reasoning": result.get("reasoning", "LLM analysis completed"),
                     "confidence": min(1.0, max(0.0, result.get("confidence", 0.7))),
+                    # For backward compatibility, also provide selected_element_types
+                    "selected_element_types": [k for k, v in meaningful_weights.items()],
                 }
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse LLM response as JSON: {e}")

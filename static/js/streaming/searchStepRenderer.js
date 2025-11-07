@@ -264,7 +264,7 @@ class SearchStepRenderer {
         // === 1. 쿼리 확장 섹션 ===
         if (data.expanded_queries || data.expansion_used !== undefined) {
             content += `<div class="data-section">
-                <h4>🔍 쿼리 확장</h4>`;
+                <h4>쿼리 확장</h4>`;
             
             if (data.expansion_used !== undefined) {
                 const expansionText = data.expansion_used ? 
@@ -439,11 +439,130 @@ class SearchStepRenderer {
         let content = '';
         
         // === 3. 쿼리 의도 분석 섹션 ===
-        if (data.selected_element_types || data.confidence !== undefined || data.reasoning) {
+        if (data.selected_element_types || data.element_type_weights || data.confidence !== undefined || data.reasoning) {
             content += `<div class="data-section">
-                <h4>🎯 쿼리 의도 분석</h4>`;
+                <h4>쿼리 의도 분석</h4>`;
             
-            if (data.selected_element_types && data.selected_element_types.length > 0) {
+            // 분석 방법 표시
+            if (data.analysis_method) {
+                content += `<div class="data-item">
+                    <strong>분석 방법:</strong> ${data.analysis_method}
+                </div>`;
+            }
+            
+            // Element Type 가중치 정보 (향상된 표시)
+            if (data.element_type_weights) {
+                const weights = data.element_type_weights;
+                const meaningfulWeights = data.meaningful_weights || {};
+                const weightDetails = data.weight_distribution_details || {};
+                
+                content += `<div class="data-item">
+                    <strong>Element Type 가중치 분석:</strong>
+                </div>`;
+                
+                // 가중치 분포 요약
+                if (Object.keys(meaningfulWeights).length > 0) {
+                    content += `<div class="weight-summary">
+                        <div class="summary-stats">
+                            <span class="stat-item">가중치 적용: ${Object.keys(meaningfulWeights).length}개 타입</span>
+                            <span class="stat-item">제외된 타입: ${data.zero_weight_types || 0}개</span>
+                            <span class="stat-item">최우선: ${data.highest_priority_type} (${(data.highest_weight_score || 0).toFixed(1)})</span>
+                        </div>
+                    </div>`;
+                }
+                
+                // 가중치별 그룹화 표시
+                if (weightDetails.high_priority && Object.keys(weightDetails.high_priority).length > 0) {
+                    content += `<div class="weight-group high-priority">
+                        <h5>높은 우선순위 (0.8 이상)</h5>
+                        <div class="element-types">
+                            ${Object.entries(weightDetails.high_priority).map(([type, weight]) => 
+                                `<span class="element-type-tag high-priority" title="가중치: ${weight}">${type} <strong>${weight.toFixed(1)}</strong></span>`
+                            ).join('')}
+                        </div>
+                    </div>`;
+                }
+                
+                if (weightDetails.medium_priority && Object.keys(weightDetails.medium_priority).length > 0) {
+                    content += `<div class="weight-group medium-priority">
+                        <h5>중간 우선순위 (0.5 - 0.7)</h5>
+                        <div class="element-types">
+                            ${Object.entries(weightDetails.medium_priority).map(([type, weight]) => 
+                                `<span class="element-type-tag medium-priority" title="가중치: ${weight}">${type} <strong>${weight.toFixed(1)}</strong></span>`
+                            ).join('')}
+                        </div>
+                    </div>`;
+                }
+                
+                if (weightDetails.low_priority && Object.keys(weightDetails.low_priority).length > 0) {
+                    content += `<div class="weight-group low-priority">
+                        <h5>낮은 우선순위 (0.1 - 0.4)</h5>
+                        <div class="element-types">
+                            ${Object.entries(weightDetails.low_priority).map(([type, weight]) => 
+                                `<span class="element-type-tag low-priority" title="가중치: ${weight}">${type} <strong>${weight.toFixed(1)}</strong></span>`
+                            ).join('')}
+                        </div>
+                    </div>`;
+                }
+                
+                if (weightDetails.excluded && Object.keys(weightDetails.excluded).length > 0) {
+                    content += `<div class="weight-group excluded">
+                        <h5>제외된 타입들 (가중치: 0.0)</h5>
+                        <div class="element-types">
+                            ${Object.entries(weightDetails.excluded).map(([type, weight]) => 
+                                `<span class="element-type-tag excluded" title="가중치: ${weight}">${type}</span>`
+                            ).join('')}
+                        </div>
+                    </div>`;
+                }
+                
+                // 전체 가중치 테이블 (접힌 상태로)
+                content += `<div class="weight-details-toggle">
+                    <button class="toggle-btn" onclick="toggleWeightDetails(this)">
+                        전체 가중치 상세보기 ▼
+                    </button>
+                    <div class="weight-details-table" style="display: none;">
+                        <table class="weights-table">
+                            <thead>
+                                <tr>
+                                    <th>Element Type</th>
+                                    <th>가중치</th>
+                                    <th>우선순위</th>
+                                    <th>OpenSearch Boost</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${Object.entries(weights).sort(([,a], [,b]) => b - a).map(([type, weight]) => {
+                                    let priorityLevel = '';
+                                    let priorityClass = '';
+                                    if (weight >= 0.8) {
+                                        priorityLevel = '높음';
+                                        priorityClass = 'high';
+                                    } else if (weight >= 0.5) {
+                                        priorityLevel = '중간';
+                                        priorityClass = 'medium';
+                                    } else if (weight > 0) {
+                                        priorityLevel = '낮음';
+                                        priorityClass = 'low';
+                                    } else {
+                                        priorityLevel = '제외';
+                                        priorityClass = 'excluded';
+                                    }
+                                    const boost = weight > 0 ? Math.max(0.1, weight * 10).toFixed(1) : '0.0';
+                                    return `<tr class="weight-row ${priorityClass}">
+                                        <td>${type}</td>
+                                        <td><strong>${weight.toFixed(1)}</strong></td>
+                                        <td class="priority-${priorityClass}">${priorityLevel}</td>
+                                        <td>${boost}</td>
+                                    </tr>`;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+            }
+            // 기존 방식 (가중치 정보가 없는 경우)
+            else if (data.selected_element_types && data.selected_element_types.length > 0) {
                 content += `<div class="data-item">
                     <strong>선택된 Element Types (${data.selected_element_types.length}개):</strong>
                     <div class="element-types">
@@ -454,12 +573,51 @@ class SearchStepRenderer {
                 </div>`;
             }
             
+            // 요약 정보
+            if (data.summary) {
+                content += `<div class="analysis-summary">
+                    <h5>분석 요약</h5>`;
+                
+                if (data.summary.query_intent) {
+                    content += `<div class="data-item"><strong>쿼리 의도:</strong> ${data.summary.query_intent}</div>`;
+                }
+                if (data.summary.weight_distribution) {
+                    content += `<div class="data-item"><strong>가중치 분포:</strong> ${data.summary.weight_distribution}</div>`;
+                }
+                if (data.summary.expansion_status) {
+                    content += `<div class="data-item"><strong>확장 상태:</strong> ${data.summary.expansion_status}</div>`;
+                }
+                if (data.summary.opensearch_weighting) {
+                    content += `<div class="data-item"><strong>적용 방식:</strong> ${data.summary.opensearch_weighting}</div>`;
+                }
+                
+                content += `</div>`;
+            }
+            
             if (data.confidence !== undefined) {
-                content += `<div class="data-item"><strong>신뢰도:</strong> ${(data.confidence * 100).toFixed(1)}%</div>`;
+                const confidenceLevel = data.confidence >= 0.8 ? '높음' : data.confidence >= 0.6 ? '보통' : '낮음';
+                content += `<div class="data-item">
+                    <strong>신뢰도:</strong> ${(data.confidence * 100).toFixed(1)}% (${confidenceLevel})
+                </div>`;
             }
             
             if (data.reasoning) {
                 content += `<div class="data-item"><strong>분석 근거:</strong> ${data.reasoning}</div>`;
+            }
+            
+            // 디버그 정보 (접힌 상태로)
+            if (data.debug_info) {
+                content += `<div class="debug-info-toggle">
+                    <button class="toggle-btn debug" onclick="toggleDebugInfo(this)">
+                        디버그 정보 ▼
+                    </button>
+                    <div class="debug-info-content" style="display: none;">
+                        <div class="data-item"><strong>LLM 성공:</strong> ${data.debug_info.llm_success ? '예' : '아니오'}</div>
+                        <div class="data-item"><strong>폴백 사용:</strong> ${data.debug_info.fallback_used ? '예' : '아니오'}</div>
+                        ${data.debug_info.input_modalities ? `<div class="data-item"><strong>입력 모달리티:</strong> ${data.debug_info.input_modalities.join(', ')}</div>` : ''}
+                        <div class="data-item"><strong>사용 가능한 타입:</strong> ${data.debug_info.available_element_types.join(', ')}</div>
+                    </div>
+                </div>`;
             }
             
             content += `</div>`;
@@ -476,26 +634,26 @@ class SearchStepRenderer {
             const successCount = Object.values(data.extraction_success).filter(val => val === "success").length;
             content += `<div class="data-item"><strong>특징 추출 성공:</strong> ${successCount}/4 모달리티</div>`;
             
-            // 이모지 설명 추가
+            // 상태 설명 추가
             content += `
                 <div class="extraction-legend" style="margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 4px; font-size: 0.85em;">
                     <strong>상태 표시:</strong> 
-                    <span title="특징 추출 성공">✅ 성공</span> · 
-                    <span title="데이터 없어서 진행하지 않음">➖ 데이터 없음</span> · 
-                    <span title="데이터는 있었지만 처리 실패">⚠️ 처리 실패</span>
+                    <span title="특징 추출 성공">성공</span> · 
+                    <span title="데이터 없어서 진행하지 않음">데이터 없음</span> · 
+                    <span title="데이터는 있었지만 처리 실패">처리 실패</span>
                 </div>
             `;
             
             Object.entries(data.extraction_success).forEach(([modality, status]) => {
-                let icon;
+                let statusText;
                 if (status === "success") {
-                    icon = '✅'; // 성공
+                    statusText = '성공';
                 } else if (status === "failed") {
-                    icon = '⚠️'; // 실패 (데이터는 있었지만 처리 실패)
+                    statusText = '실패';
                 } else {
-                    icon = '➖'; // 데이터 없음/진행 안 함
+                    statusText = '데이터 없음';
                 }
-                content += `<div class="data-item">${icon} ${modality.toUpperCase()}</div>`;
+                content += `<div class="data-item">${statusText} - ${modality.toUpperCase()}</div>`;
             });
         }
         
@@ -686,7 +844,9 @@ class SearchStepRenderer {
                             <div class="data-item"><strong>Element Types:</strong> ${osQuery.element_types_filter.join(', ')}</div>
                             <div class="data-item"><strong>벡터 검색:</strong> ${osQuery.has_vector_search ? '활성화' : '비활성화'}</div>
                             ${osQuery.has_vector_search ? `<div class="data-item"><strong>벡터 모달리티:</strong> ${osQuery.vector_modalities.join(', ')}</div>` : ''}
+                            ${osQuery.modality_matching ? `<div class="data-item"><strong>모달리티 매칭:</strong> ${osQuery.modality_matching}</div>` : ''}
                             <div class="data-item"><strong>Fuzziness:</strong> ${osQuery.fuzziness}</div>
+                            ${osQuery.weighting_applied ? `<div class="data-item"><strong>가중치 적용:</strong> ${osQuery.weighting_applied}</div>` : ''}
                         </div>
                     </div>
                 `;
@@ -765,7 +925,7 @@ class SearchStepRenderer {
         if (data.step === 'answer_generation_start') {
             content += `
                 <div class="data-section">
-                    <h4>🤖 AI 답변 생성 시작</h4>
+                    <h4>AI 답변 생성 시작</h4>
                     <div class="data-item">
                         <strong>검색 결과 기반 답변 생성을 시작합니다</strong>
                     </div>
@@ -777,7 +937,7 @@ class SearchStepRenderer {
         if (data.step === 'draft_generation') {
             content += `
                 <div class="data-section">
-                    <h4>📝 답변 초안 생성 중</h4>
+                    <h4>답변 초안 생성 중</h4>
                     ${data.attempt_number ? `<div class="data-item"><strong>시도 번호:</strong> ${data.attempt_number}회차</div>` : ''}
                     <div class="data-item">
                         <strong>상태:</strong> 검색 결과를 분석하여 답변 초안을 생성하고 있습니다
@@ -791,7 +951,7 @@ class SearchStepRenderer {
             const draftData = data.data;
             content += `
                 <div class="data-section">
-                    <h4>✅ 답변 초안 생성 완료</h4>
+                    <h4>답변 초안 생성 완료</h4>
                     <div class="generation-summary">
                         <div class="data-item"><strong>시도 번호:</strong> ${draftData.attempt_number}회차</div>
                         <div class="data-item"><strong>답변 길이:</strong> ${draftData.answer_length}자</div>
@@ -812,7 +972,7 @@ class SearchStepRenderer {
         if (data.step === 'reflection') {
             content += `
                 <div class="data-section">
-                    <h4>🔍 답변 품질 검토 중</h4>
+                    <h4>답변 품질 검토 중</h4>
                     ${data.attempt_number ? `<div class="data-item"><strong>검토 대상:</strong> ${data.attempt_number}회차 답변</div>` : ''}
                     <div class="data-item">
                         <strong>상태:</strong> 생성된 답변의 정확성, 완성도, 명확성을 검토하고 있습니다
@@ -826,12 +986,12 @@ class SearchStepRenderer {
             const reflectionData = data.data;
             content += `
                 <div class="data-section">
-                    <h4>📊 품질 검토 완료</h4>
+                    <h4>품질 검토 완료</h4>
                     <div class="reflection-summary">
                         <div class="data-item"><strong>검토 대상:</strong> ${reflectionData.attempt_number}회차 답변</div>
                         <div class="data-item"><strong>총 점수:</strong> ${reflectionData.total_score}/50점</div>
                         <div class="data-item"><strong>답변 품질:</strong> ${reflectionData.answer_quality}</div>
-                        <div class="data-item"><strong>허용 여부:</strong> ${reflectionData.is_acceptable ? '✅ 승인' : '❌ 재생성 필요'}</div>
+                        <div class="data-item"><strong>허용 여부:</strong> ${reflectionData.is_acceptable ? '승인' : '재생성 필요'}</div>
                     </div>
                     
                     ${reflectionData.scores ? `
@@ -870,7 +1030,7 @@ class SearchStepRenderer {
         if (data.step === 'regenerating') {
             content += `
                 <div class="data-section">
-                    <h4>🔄 답변 재생성 중</h4>
+                    <h4>답변 재생성 중</h4>
                     <div class="data-item">
                         <strong>이유:</strong> 품질 개선을 위해 답변을 재생성하고 있습니다
                     </div>
@@ -886,9 +1046,9 @@ class SearchStepRenderer {
             const completionData = data.data;
             content += `
                 <div class="data-section">
-                    <h4>🎯 AI 답변 생성 완료</h4>
+                    <h4>AI 답변 생성 완료</h4>
                     <div class="completion-summary">
-                        <div class="data-item"><strong>성공 여부:</strong> ${completionData.success ? '✅ 성공' : '❌ 실패'}</div>
+                        <div class="data-item"><strong>성공 여부:</strong> ${completionData.success ? '성공' : '실패'}</div>
                         <div class="data-item"><strong>총 시도 횟수:</strong> ${completionData.total_attempts}회</div>
                         ${completionData.best_attempt ? `<div class="data-item"><strong>선택된 답변:</strong> ${completionData.best_attempt}회차</div>` : ''}
                         ${completionData.best_score ? `<div class="data-item"><strong>최종 점수:</strong> ${completionData.best_score}/50점</div>` : ''}
@@ -914,7 +1074,7 @@ class SearchStepRenderer {
         if (data.step === 'answer_generation_cancelled') {
             content += `
                 <div class="data-section">
-                    <h4>⚠️ 답변 생성 취소</h4>
+                    <h4>답변 생성 취소</h4>
                     <div class="data-item">
                         <strong>상태:</strong> 사용자 요청에 의해 답변 생성이 취소되었습니다
                     </div>
@@ -925,7 +1085,7 @@ class SearchStepRenderer {
         if (data.step === 'answer_generation_timeout') {
             content += `
                 <div class="data-section">
-                    <h4>⏰ 답변 생성 시간 초과</h4>
+                    <h4>답변 생성 시간 초과</h4>
                     <div class="data-item">
                         <strong>상태:</strong> 설정된 시간 내에 답변 생성을 완료하지 못했습니다
                     </div>
@@ -939,4 +1099,4 @@ class SearchStepRenderer {
 
 // 전역 사용을 위한 export
 window.SearchStepRenderer = SearchStepRenderer;
-console.log('✅ SearchStepRenderer loaded');
+console.log('SearchStepRenderer loaded');

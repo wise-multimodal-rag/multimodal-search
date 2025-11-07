@@ -91,29 +91,40 @@ class OpenSearchService:
         size: int = 10,
         from_: int = 0,
         filters: Optional[Dict[str, Any]] = None,
+        element_type_weights: Optional[Dict[str, float]] = None,
     ) -> Dict[str, Any]:
         """Search elements with unified query filtering by element_types"""
         try:
-            # Select appropriate embedding for the query
-            # For now, use text embedding as primary, can be enhanced later
-            selected_embedding = embeddings.get("text") if embeddings else None
-
-            # Build unified search query
+            # Pass all embeddings to the search query builder
             search_query = self._build_search_query(
-                query, element_types, {"text": selected_embedding} if selected_embedding else None, filters
+                query, element_types, embeddings, filters, element_type_weights
             )
 
             if not self.client:
                 raise RuntimeError("OpenSearch client not initialized")
 
-            response = await self.client.search(
-                index=self.elements_index, body={"query": search_query, "size": size, "from": from_, "_source": True}
-            )
+            # Build search body with KNN and query sections
+            search_body = {
+                "query": search_query, 
+                "size": size, 
+                "from": from_, 
+                "_source": True
+            }
+            
+            # Add KNN section for better vector search performance if embeddings exist
+            # Note: Using the query-level KNN approach instead of top-level knn section
+            # because OpenSearch may not support multiple KNN searches in array format
+
+            response = await self.client.search(index=self.elements_index, body=search_body)
 
             # Log unified query results
             hits_count = len(response["hits"]["hits"])
             max_score = response["hits"]["max_score"] if response["hits"]["hits"] else 0.0
-            logger.info(f"[{','.join(element_types)}] unified query → {hits_count} hits (max: {max_score:.4f})")
+            
+            # 가중치 및 모달리티 매칭 정보 표시
+            weight_info = "weighted" if element_type_weights else "standard"
+            modality_info = f"modalities: {','.join(embeddings.keys())}" if embeddings else "text-only"
+            logger.info(f"OpenSearch [{','.join(element_types)}] {weight_info} ({modality_info}) → {hits_count} hits (max: {max_score:.4f})")
 
             # Convert to standard format (score 정보 보존)
             results = []
@@ -140,37 +151,158 @@ class OpenSearchService:
         element_types: List[str],
         embeddings: Optional[Dict[str, List[float]]],
         filters: Optional[Dict[str, Any]],
+        element_type_weights: Optional[Dict[str, float]] = None,
     ) -> Dict[str, Any]:
-        """Build hybrid search query combining text and vector search"""
-        # Base bool query
-        bool_query = {"bool": {"must": [], "filter": [{"terms": {"element_type": element_types}}]}}
+        """Build hybrid search query combining text and vector search with element_type weights"""
+        
+        # element_type별 가중치가 있으면 가중치 기반 쿼리 구성, 없으면 기존 방식
+        if element_type_weights:
+            # 가중치 기반 element_type 필터링 (should 쿼리로 변경)
+            element_type_queries = []
+            for element_type in element_types:
+                weight = element_type_weights.get(element_type, 1.0)
+                if weight > 0:  # 가중치가 0인 타입은 제외하지 않고 낮은 boost 적용
+                    boost = max(0.1, weight * 10)  # 0.1~10 범위로 변환
+                    element_type_queries.append({
+                        "term": {
+                            "element_type": {
+                                "value": element_type,
+                                "boost": boost
+                            }
+                        }
+                    })
+            
+            # Base bool query with weighted element_type matching
+            bool_query = {
+                "bool": {
+                    "must": [],
+                    "should": element_type_queries,
+                    "minimum_should_match": 1
+                }
+            }
+        else:
+            # 기존 방식: 필터로 element_type 제한
+            bool_query = {"bool": {"must": [], "filter": [{"terms": {"element_type": element_types}}]}}
 
         # Add text search
         if query.strip():
             bool_query["bool"]["must"].append(
-                {"multi_match": {"query": query, "fields": ["content^2"], "type": "best_fields", "fuzziness": "AUTO"}}
+                {"multi_match": {"query": query, "fields": ["content"], "type": "best_fields", "fuzziness": "AUTO"}}
             )
 
         # Add vector search if embeddings provided
         if embeddings:
-            knn_queries = []
+            # Create modality-specific vector queries using bool/should structure
+            # This is more compatible across different OpenSearch versions
+            vector_queries = []
+            
             for modality, embedding_vector in embeddings.items():
-                if embedding_vector:
-                    knn_queries.append({"knn": {f"embeddings.{modality}": {"vector": embedding_vector, "k": 10}}})
+                if embedding_vector and len(embedding_vector) > 0:
+                    # Use script_score query for vector similarity with element_type filtering
+                    base_query = {"term": {"modality": modality}}
+                    
+                    # Add element_type filtering to vector search as well
+                    if element_type_weights:
+                        # Create element_type should query with weights for vector search too
+                        element_type_queries = []
+                        for element_type in element_types:
+                            weight = element_type_weights.get(element_type, 1.0)
+                            if weight > 0:
+                                boost = max(0.1, weight * 10)
+                                element_type_queries.append({
+                                    "term": {
+                                        "element_type": {
+                                            "value": element_type,
+                                            "boost": boost
+                                        }
+                                    }
+                                })
+                        
+                        if element_type_queries:
+                            base_query = {
+                                "bool": {
+                                    "must": [{"term": {"modality": modality}}],
+                                    "should": element_type_queries,
+                                    "minimum_should_match": 1
+                                }
+                            }
+                    
+                    # Apply element_type boost to the final script score
+                    if element_type_weights:
+                        script_source = """
+                        double similarity = cosineSimilarity(params.query_vector, doc['embeddings.{modality}']) + 1.0;
+                        double element_boost = 1.0;
+                        if (params.element_weights.containsKey(doc['element_type'].value)) {{
+                            element_boost = params.element_weights[doc['element_type'].value];
+                        }}
+                        return similarity * Math.max(0.05, element_boost);
+                        """.format(modality=modality)
+                        
+                        vector_query = {
+                            "script_score": {
+                                "query": {"term": {"modality": modality}},
+                                "script": {
+                                    "source": script_source,
+                                    "params": {
+                                        "query_vector": embedding_vector,
+                                        "element_weights": element_type_weights
+                                    }
+                                }
+                            }
+                        }
+                    else:
+                        vector_query = {
+                            "script_score": {
+                                "query": base_query,
+                                "script": {
+                                    "source": "cosineSimilarity(params.query_vector, doc['embeddings." + modality + "']) + 1.0",
+                                    "params": {"query_vector": embedding_vector}
+                                }
+                            }
+                        }
+                    vector_queries.append(vector_query)
 
-            # Combine text and vector queries
-            if knn_queries:
-                if len(knn_queries) == 1:
-                    # Single vector query
-                    search_query = {"bool": {"should": [bool_query, knn_queries[0]], "minimum_should_match": 1}}
+            # Combine text search with vector searches
+            if vector_queries:
+                # Configure search type weights based on modalities
+                has_image_embedding = any('image' in str(vq) for vq in vector_queries)
+                
+                if has_image_embedding:
+                    # 이미지 검색 시: 이미지 임베딩을 강력히 우선시
+                    text_search_boost = 0.3      # BM25 텍스트 검색 가중치 대폭 감소
+                    embedding_search_boost = 3.0  # 이미지 임베딩 검색 가중치 대폭 증가 (10배 차이)
                 else:
-                    # Multiple vector queries
-                    search_query = {
+                    # 텍스트만 검색 시: 기존 가중치 유지
+                    text_search_boost = 1.0      # BM25 텍스트 검색 가중치
+                    embedding_search_boost = 1.5  # 임베딩 벡터 검색 가중치
+                
+                # Create hybrid query with configurable boosting
+                text_query_with_boost = {
+                    "bool": {
+                        **bool_query["bool"],
+                        "boost": text_search_boost
+                    }
+                }
+                
+                # Apply embedding boost by wrapping script_score in a bool query with boost
+                boosted_vector_queries = []
+                for vector_query in vector_queries:
+                    boosted_vector_query = {
                         "bool": {
-                            "should": [bool_query, {"bool": {"should": knn_queries, "minimum_should_match": 1}}],
-                            "minimum_should_match": 1,
+                            "must": [vector_query],
+                            "boost": embedding_search_boost
                         }
                     }
+                    boosted_vector_queries.append(boosted_vector_query)
+                
+                all_queries = [text_query_with_boost] + boosted_vector_queries
+                
+                search_query = {
+                    "bool": {
+                        "should": all_queries,
+                        "minimum_should_match": 1
+                    }
+                }
             else:
                 search_query = bool_query
         else:
@@ -186,7 +318,133 @@ class OpenSearchService:
                     # Use term query for single values
                     bool_query["bool"]["filter"].append({"term": {key: value}})
 
+        # Log the complete query structure for debugging
+        self._log_search_query(search_query, embeddings, query, element_types, element_type_weights)
+        
         return search_query
+
+    def _log_search_query(self, search_query: Dict[str, Any], embeddings: Optional[Dict[str, List[float]]], 
+                         text_query: str, element_types: List[str], element_type_weights: Optional[Dict[str, float]]):
+        """Log the complete OpenSearch query with embedding descriptions"""
+        import json
+        import copy
+        
+        # Create a copy of the query for logging
+        log_query = copy.deepcopy(search_query)
+        
+        # Replace embedding vectors with descriptions
+        if embeddings:
+            self._replace_embeddings_with_descriptions(log_query, embeddings)
+        
+        # Create query summary
+        query_summary = {
+            "text_query": text_query or "None",
+            "element_types": element_types,
+            "element_type_weights": element_type_weights,
+            "embeddings_provided": list(embeddings.keys()) if embeddings else [],
+            "query_structure": "hybrid_search" if embeddings else "text_only"
+        }
+        
+        logger.info("=" * 80)
+        logger.info("COMPLETE OPENSEARCH QUERY")
+        logger.info("=" * 80)
+        logger.info("Query Summary:")
+        logger.info(json.dumps(query_summary, indent=2, ensure_ascii=False))
+        logger.info("-" * 40)
+        logger.info("Full OpenSearch Query:")
+        logger.info(json.dumps(log_query, indent=2, ensure_ascii=False))
+        logger.info("=" * 80)
+    
+    def _replace_embeddings_with_descriptions(self, query_dict: Dict[str, Any], embeddings: Dict[str, List[float]]):
+        """Recursively replace embedding vectors with descriptions"""
+        if isinstance(query_dict, dict):
+            for key, value in query_dict.items():
+                if key == "vector" and isinstance(value, list) and len(value) > 10:
+                    # Find the embedding field from the parent context
+                    embedding_description = self._find_embedding_context(query_dict, embeddings)
+                    query_dict[key] = f"[EMBEDDING_VECTOR: {embedding_description}]"
+                elif key == "query_vector" and isinstance(value, list) and len(value) > 10:
+                    # Handle script_score query_vector parameter
+                    vector_length = len(value)
+                    if vector_length == 384:
+                        description = "텍스트 임베딩 (384차원)"
+                    elif vector_length == 1152:
+                        description = "이미지 임베딩 (1152차원)"
+                    else:
+                        description = f"임베딩 ({vector_length}차원)"
+                    query_dict[key] = f"[EMBEDDING_VECTOR: {description}]"
+                elif isinstance(value, (dict, list)):
+                    self._replace_embeddings_with_descriptions(value, embeddings)
+        elif isinstance(query_dict, list):
+            for item in query_dict:
+                if isinstance(item, (dict, list)):
+                    self._replace_embeddings_with_descriptions(item, embeddings)
+    
+    def _find_embedding_context(self, current_dict: Dict[str, Any], embeddings: Dict[str, List[float]]) -> str:
+        """Find embedding context from the current dictionary context"""
+        # Look for embeddings.* keys in the current context
+        for key in current_dict.keys():
+            if key.startswith("embeddings."):
+                modality = key.split(".")[-1]
+                vector_length = len(embeddings.get(modality, []))
+                if vector_length == 384:
+                    return "텍스트 임베딩 (384차원)"
+                elif vector_length == 1152:
+                    return "이미지 임베딩 (1152차원)"
+                else:
+                    return f"{modality} 임베딩 ({vector_length}차원)"
+        
+        # Fallback: use the first available embedding and infer from dimension
+        if embeddings:
+            first_modality = list(embeddings.keys())[0]
+            vector_length = len(embeddings[first_modality])
+            if vector_length == 384:
+                return "텍스트 임베딩 (384차원)"
+            elif vector_length == 1152:
+                return "이미지 임베딩 (1152차원)"
+            else:
+                return f"{first_modality} 임베딩 ({vector_length}차원)"
+        
+        return "임베딩 벡터 (차원 정보 없음)"
+    
+    def _get_embedding_description_by_dimension(self, declared_modality: str, vector_length: int) -> str:
+        """Get embedding description based on vector dimension and declared modality"""
+        # Simple dimension-based description for cleaner logs
+        if vector_length == 384:
+            return "텍스트 임베딩 (384차원)"
+        elif vector_length == 1152:
+            return "이미지 임베딩 (1152차원)"
+        else:
+            return f"{declared_modality} 임베딩 ({vector_length}차원)"
+    
+    def _get_embedding_description(self, knn_query: Dict[str, Any], embeddings: Dict[str, List[float]]) -> str:
+        """Get description for embedding based on the KNN query structure"""
+        # Recursively search for embedding field name in nested structure
+        def find_embedding_field(obj, path=""):
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    current_path = f"{path}.{key}" if path else key
+                    if key.startswith("embeddings."):
+                        return key
+                    result = find_embedding_field(value, current_path)
+                    if result:
+                        return result
+            return None
+        
+        embedding_field = find_embedding_field(knn_query)
+        
+        if embedding_field:
+            declared_modality = embedding_field.split(".")[-1]  # Extract modality from "embeddings.text" or "embeddings.image"
+            vector_length = len(embeddings.get(declared_modality, []))
+            return self._get_embedding_description_by_dimension(declared_modality, vector_length)
+        
+        # Fallback: try to guess from available embeddings
+        if embeddings:
+            first_modality = list(embeddings.keys())[0]
+            vector_length = len(embeddings[first_modality])
+            return self._get_embedding_description_by_dimension(first_modality, vector_length)
+        
+        return "임베딩 벡터 (차원 정보 없음)"
 
     async def get_chunk_meta(self, chunk_id: str) -> Optional[Dict[str, Any]]:
         """Get chunk metadata by chunk_id"""

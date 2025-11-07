@@ -113,8 +113,9 @@ class SearchService:
 
             # Step 5: 확장 쿼리 검색 실행 (SearchExecutor 사용)
             expansion_result = query_analysis.get("expansion_analysis") if "expansion_analysis" in query_analysis else None
+            element_type_weights = query_analysis.get("element_type_weights")
             search_results = await self.search_executor.execute_expanded_search(
-                expanded_queries, query_analysis["selected_element_types"], embeddings, max_results, expansion_result
+                expanded_queries, query_analysis["selected_element_types"], embeddings, max_results, expansion_result, element_type_weights
             )
 
             # Step 6: 결과 enrichment
@@ -256,20 +257,67 @@ class SearchService:
                 text_query, self.available_element_types, input_modalities
             )
 
+            # 쿼리 분석 결과 상세 정보 생성
+            element_weights = query_analysis.get("element_type_weights", {})
+            highest_weight_type = max(element_weights.items(), key=lambda x: x[1]) if element_weights else ("none", 0.0)
+            meaningful_weights = {k: v for k, v in element_weights.items() if v > 0.0}
+            
+            analysis_method = "Advanced Fallback Analysis" if "fallback_reasoning" in query_analysis else "LLM Analysis"
+            
+            # 가중치 분포 세부 정보
+            weight_distribution_details = {
+                "high_priority": {k: v for k, v in meaningful_weights.items() if v >= 0.8},
+                "medium_priority": {k: v for k, v in meaningful_weights.items() if 0.5 <= v < 0.8},
+                "low_priority": {k: v for k, v in meaningful_weights.items() if 0.0 < v < 0.5},
+                "excluded": {k: v for k, v in element_weights.items() if v == 0.0}
+            }
+            
             yield {
                 "step": "query_analyzed",
-                "message": "쿼리 분석이 완료되었습니다",
+                "message": f"쿼리 의도 분석 완료 - {analysis_method} 사용",
                 "timestamp": time.time(),
                 "data": {
                     "original_query": text_query,
                     "expanded_queries": expanded_queries,
                     "expansion_used": len(expanded_queries) > 1,
                     "total_queries": len(expanded_queries),
+                    
+                    # Element type 정보 (향상된)
                     "selected_element_types": query_analysis["selected_element_types"],
+                    "element_type_weights": element_weights,
+                    "meaningful_weights": meaningful_weights,
+                    "weight_distribution_details": weight_distribution_details,
+                    "highest_priority_type": highest_weight_type[0],
+                    "highest_weight_score": highest_weight_type[1],
+                    "total_weighted_types": len(meaningful_weights),
+                    "zero_weight_types": len(weight_distribution_details["excluded"]),
+                    
+                    # 분석 정보
+                    "analysis_method": analysis_method,
                     "reasoning": query_analysis.get("reasoning", ""),
                     "confidence": query_analysis.get("confidence", 0.0),
                     "element_types_count": len(query_analysis["selected_element_types"]),
                     "expansion_analysis": query_analysis.get("expansion_analysis"),
+                    "weighting_system_enabled": query_analysis.get("element_type_weights") is not None,
+                    "fallback_reasoning": query_analysis.get("fallback_reasoning", ""),
+                    
+                    # 요약 정보 (향상된)
+                    "summary": {
+                        "query_intent": f"'{text_query or 'multimodal query'}'에서 '{highest_weight_type[0]}' 타입을 우선 검색 (가중치: {highest_weight_type[1]:.1f})",
+                        "weight_distribution": f"높은 우선순위: {len(weight_distribution_details['high_priority'])}개, " +
+                                             f"중간 우선순위: {len(weight_distribution_details['medium_priority'])}개, " +
+                                             f"낮은 우선순위: {len(weight_distribution_details['low_priority'])}개",
+                        "expansion_status": f"{len(expanded_queries)}개 쿼리로 확장" if len(expanded_queries) > 1 else "확장 없음",
+                        "opensearch_weighting": "OpenSearch 쿼리 레벨에서 가중치 적용됨"
+                    },
+                    
+                    # 디버그 정보
+                    "debug_info": {
+                        "llm_success": analysis_method == "LLM Analysis",
+                        "fallback_used": analysis_method == "Advanced Fallback Analysis",
+                        "input_modalities": self._extract_input_modalities(modalities_data) if modalities_data else None,
+                        "available_element_types": self.available_element_types
+                    }
                 },
             }
 
@@ -470,8 +518,9 @@ class SearchService:
             }
 
             expansion_result = query_analysis.get("expansion_analysis")
+            element_type_weights = query_analysis.get("element_type_weights")
             search_results = await self.search_executor.execute_expanded_search(
-                expanded_queries, query_analysis["selected_element_types"], embeddings, max_results, expansion_result
+                expanded_queries, query_analysis["selected_element_types"], embeddings, max_results, expansion_result, element_type_weights
             )
 
             # 검색 실행 상세 통계
@@ -484,11 +533,13 @@ class SearchService:
             opensearch_query_info = {
                 "index_used": "elements",
                 "query_type": "hybrid_search",
-                "search_fields": ["content^2"],
+                "search_fields": ["content"],
                 "element_types_filter": query_analysis["selected_element_types"],
                 "has_vector_search": bool(embeddings),
                 "vector_modalities": list(embeddings.keys()) if embeddings else [],
+                "modality_matching": "Each element's modality matched with appropriate embedding" if embeddings else "N/A",
                 "fuzziness": "AUTO",
+                "weighting_applied": "element_type weights applied directly to OpenSearch query",
             }
 
             search_stats = {

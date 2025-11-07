@@ -123,3 +123,33 @@ class TextFormatter {
 
 // 전역 접근을 위한 export
 window.TextFormatter = TextFormatter;
+
+// 가중치 상세보기 토글 함수
+window.toggleWeightDetails = function(button) {
+    const table = button.nextElementSibling;
+    const isVisible = table.style.display !== 'none';
+    
+    if (isVisible) {
+        table.style.display = 'none';
+        button.innerHTML = '📊 전체 가중치 상세보기 ▼';
+    } else {
+        table.style.display = 'block';
+        button.innerHTML = '📊 전체 가중치 상세보기 ▲';
+    }
+};
+
+// 디버그 정보 토글 함수
+window.toggleDebugInfo = function(button) {
+    const content = button.nextElementSibling;
+    const isVisible = content.style.display !== 'none';
+    
+    if (isVisible) {
+        content.style.display = 'none';
+        button.innerHTML = '🔧 디버그 정보 ▼';
+    } else {
+        content.style.display = 'block';
+        button.innerHTML = '🔧 디버그 정보 ▲';
+    }
+};
+
+console.log('✅ TextFormatter and toggle functions loaded');

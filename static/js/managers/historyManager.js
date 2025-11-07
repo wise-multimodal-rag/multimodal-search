@@ -645,9 +645,6 @@ class HistoryManager {
     }
     
     initialize() {
-        // 개발용: localStorage 완전 초기화 (이모지 문제 해결)
-        this.clearAllHistory();
-        
         // 페이지 로드 시 히스토리 복원
         this.updateSearchHistoryUI();
         

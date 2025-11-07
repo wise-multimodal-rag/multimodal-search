@@ -199,7 +199,7 @@ class StreamingSearchController {
                     this.stepRenderer.addStep('검색 완료', message, data, 'success', timestamp);
                 } else {
                     // 검색만 모드인 경우: 최종 단계로 설정하고 완료 처리
-                    this.stepRenderer.addStep('검색 완룼', message, data, 'success', timestamp);
+                    this.stepRenderer.addStep('검색 완료', message, data, 'success', timestamp);
                     this.progressManager.currentStep = 7; // 검색 완료 = 7단계
                     this.progressManager.updateProgress();
                 }
