@@ -161,16 +161,20 @@ class AnswerGenerationService:
         context_parts = []
         context_parts.append(f"검색 결과 (총 {search_results.total_hits}개):")
         
-        # origin 타입 element들의 chunk_id 수집
+        # origin 타입 element들의 chunk_id 수집 및 이미 포함된 caption chunk_id 수집
         origin_chunk_ids = []
+        existing_caption_chunk_ids = set()
+        
         for result in search_results.results[:10]:
             if result.element.element_type == "origin":
                 origin_chunk_ids.append(result.element.chunk_id)
+            elif result.element.element_type == "caption":
+                existing_caption_chunk_ids.add(result.element.chunk_id)
         
-        # origin 이미지들의 caption 검색
+        # 이미 검색 결과에 포함된 caption은 제외하고 origin 이미지들의 caption 검색
         origin_captions = {}
         if origin_chunk_ids:
-            origin_captions = await self._get_captions_for_origins(origin_chunk_ids)
+            origin_captions = await self._get_captions_for_origins(origin_chunk_ids, existing_caption_chunk_ids)
         
         for i, result in enumerate(search_results.results[:10], 1):  # 상위 10개만 사용
             element = result.element
@@ -216,8 +220,8 @@ class AnswerGenerationService:
         
         return "\n\n".join(context_parts)
 
-    async def _get_captions_for_origins(self, chunk_ids: List[str]) -> Dict[str, str]:
-        """origin element들의 chunk_id로 해당하는 caption을 OpenSearch에서 검색"""
+    async def _get_captions_for_origins(self, chunk_ids: List[str], existing_caption_chunk_ids: set = None) -> Dict[str, str]:
+        """origin element들의 chunk_id로 해당하는 caption을 OpenSearch에서 검색 (중복 제외)"""
         if not chunk_ids:
             return {}
         
@@ -248,16 +252,24 @@ class AnswerGenerationService:
                 body=query
             )
             
-            # chunk_id별로 caption 매핑
+            # chunk_id별로 caption 매핑 (이미 검색 결과에 포함된 caption은 제외)
             captions = {}
+            excluded_count = 0
             if response and "hits" in response:
                 for hit in response["hits"]["hits"]:
                     source = hit["_source"]
                     chunk_id = source["chunk_id"]
                     content = source["content"]
+                    
+                    # 이미 검색 결과에 포함된 caption은 제외
+                    if existing_caption_chunk_ids and chunk_id in existing_caption_chunk_ids:
+                        excluded_count += 1
+                        logger.debug(f"🔄 Skipping duplicate caption for chunk_id: {chunk_id}")
+                        continue
+                    
                     captions[chunk_id] = content
                     
-                logger.info(f"✅ Found {len(captions)} captions for origin images")
+                logger.info(f"✅ Found {len(captions)} captions for origin images ({excluded_count} duplicates excluded)")
             else:
                 logger.info("🔍 No captions found for origin images")
             
