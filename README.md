@@ -155,47 +155,39 @@ flowchart TD
     LOOP -->|1차 시도| TRY1[첫 번째 시도]
     LOOP -->|2차 시도 선택적| TRY2[두 번째 시도]
     
-    %% 첫 번째 시도
-    TRY1 --> AG3A[🤖 LLM 초안 답변 생성<br/>컨텍스트 포함: 검색결과 10개 + 첨부이미지캡션 + Origin캡션들<br/>temperature: 0.7]
-    AG3A --> AG4A[🤖 LLM Reflection 평가<br/>5가지 기준 정확성 완성도 명확성 구조 관련성]
-    AG4A --> EVAL1[평가 결과 분석<br/>총점 / 50점]
-    EVAL1 --> AG5A{품질 평가<br/>35점 이상?}
+    %% 답변 생성 시도 (1차 또는 2차)
+    TRY1 --> GENERATE[🤖 LLM 답변 생성<br/>컨텍스트: 검색결과 10개 + 첨부이미지캡션 + Origin캡션들<br/>+ 2회차 improvement_suggestions<br/>temperature: 1회차 0.7 → 2회차 0.8]
+    TRY2 --> GENERATE
+    GENERATE --> REFLECT[🤖 LLM Reflection 평가<br/>5가지 기준 정확성 완성도 명확성 구조 관련성]
+    REFLECT --> EVAL[평가 결과 분석<br/>총점 / 50점]
+    EVAL --> QUALITY_CHECK{품질 평가<br/>35점 이상?}
     
-    %% 첫 번째 시도 결과 처리
-    AG5A -->|Yes, 35점 이상| ACCEPT[답변 수락<br/>생성 완료]
-    AG5A -->|No, 35점 이하| RETRY_CHECK{재시도 가능?<br/>최대 2회 제한}
+    %% 결과 처리
+    QUALITY_CHECK -->|Yes, 35점 이상| ACCEPT[답변 수락<br/>생성 완료]
+    QUALITY_CHECK -->|No, 35점 이하| RETRY_CHECK{재시도 가능?<br/>최대 2회 제한}
     RETRY_CHECK -->|Yes| IMPROVE[개선 제안 활용<br/>이전 reflection의 improvement_suggestions]
     RETRY_CHECK -->|No 2회 완료| SELECT_BEST[최고 점수 답변 선택]
     
-    %% 개선 제안 기반 재생성 재검색 없음
-    IMPROVE --> AG6[재생성 준비<br/>온도 조정 +0.1<br/>동일한 검색 컨텍스트 사용]
-    
-    %% 두 번째 시도 개선된 프롬프트
-    AG6 --> TRY2
-    TRY2 --> AG3B[🤖 LLM 재생성 답변<br/>컨텍스트: 동일한 검색결과 + 이전 improvement_suggestions<br/>temperature: 0.8 + 향상된 시스템 프롬프트]
-    AG3B --> AG4B[🤖 LLM Reflection 평가<br/>5가지 기준으로 품질 평가]
-    AG4B --> EVAL2[평가 결과 분석<br/>총점 / 50점]
-    EVAL2 --> AG5B{품질 평가<br/>35점 이상?}
-    
-    %% 두 번째 시도 결과 처리  
-    AG5B -->|Yes, 35점 이상| ACCEPT
-    AG5B -->|No, 35점 이하| SELECT_BEST
+    %% 재시도 루프
+    IMPROVE --> TRY2
     
     %% 최종 결과 처리
-    SELECT_BEST --> BEST[최고 점수 답변 선택<br/>1차 vs 2차 비교<br/>35점 이상이면 성공으로 간주]
-    ACCEPT --> GR[GenerationResponse 생성]
-    BEST --> GR
+    SELECT_BEST --> BEST[최고 점수 답변 선택<br/>1차 vs 2차 비교]
+    BEST --> FINAL_CHECK{선택된 답변<br/>35점 이상?}
+    FINAL_CHECK -->|Yes, 35점 이상| SUCCESS_GR[GenerationResponse 생성<br/>success: true]
+    FINAL_CHECK -->|No, 35점 미만| PARTIAL_GR[GenerationResponse 생성<br/>success: false<br/>but 답변 반환]
+    ACCEPT --> SUCCESS_GR
+    SUCCESS_GR --> GR[GenerationResponse 완성]
+    PARTIAL_GR --> GR
     
     %% 응답 완성
     GR --> RESPONSE[최종 응답 반환<br/>final_answer, generation_attempts, best_score, completion_reason]
     
     %% 외부 API 호출
-    AG3A -.->|🤖 LLM 호출| LLM_API[🤖 LiteLLM<br/>답변 생성]
-    AG3B -.->|🤖 LLM 호출| LLM_API
-    AG4A -.->|🤖 LLM 호출| LLM_API2[🤖 LiteLLM<br/>품질 평가 JSON 강제]
-    AG4B -.->|🤖 LLM 호출| LLM_API2
+    GENERATE -.->|🤖 LLM 호출| LLM_API[🤖 LiteLLM<br/>답변 생성]
+    REFLECT -.->|🤖 LLM 호출| LLM_API2[🤖 LiteLLM<br/>품질 평가 JSON 강제]
     AG1C -.->|OpenSearch 조회| OS_API[OpenSearch<br/>caption 자동 조회]
-    OS_API -.->|조회된 caption들이<br/>컨텍스트에 포함| AG3A
+    OS_API -.->|조회된 caption들이<br/>컨텍스트에 포함| GENERATE
     
     %% 스타일링
     classDef startClass fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
@@ -206,10 +198,10 @@ flowchart TD
     classDef apiClass fill:#fff8e1,stroke:#ff8f00,stroke-width:2px
     classDef improveClass fill:#e8f5e8,stroke:#4caf50,stroke-width:3px
     
-    class START,AG1,AG1B,AG1C,AG2,AG6,GR startClass
-    class LOOP,TRY1,TRY2,EVAL1,EVAL2,SELECT_BEST,BEST processClass
-    class AG3A,AG3B,AG4A,AG4B llmClass
-    class AG1A,AG5A,AG5B,RETRY_CHECK decisionClass
+    class START,AG1,AG1B,AG1C,AG2,SUCCESS_GR,PARTIAL_GR,GR startClass
+    class LOOP,TRY1,TRY2,EVAL,SELECT_BEST,BEST processClass
+    class GENERATE,REFLECT llmClass
+    class AG1A,QUALITY_CHECK,RETRY_CHECK,FINAL_CHECK decisionClass
     class ACCEPT,RESPONSE endClass
     class LLM_API,LLM_API2,OS_API apiClass
     class IMPROVE improveClass
