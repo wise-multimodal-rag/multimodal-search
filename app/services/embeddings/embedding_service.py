@@ -130,7 +130,7 @@ class EmbeddingService:
         if features.image:
             if features.image.caption:
                 embedding_tasks.append(self.embedding_client.get_text_embedding(features.image.caption))
-                task_keys.append("text")
+                task_keys.append("image_caption")
 
             if features.image.objects:
                 objects_text = self._extract_objects_text(features.image.objects)

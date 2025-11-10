@@ -202,8 +202,12 @@ class OpenSearchService:
             
             for modality, embedding_vector in embeddings.items():
                 if embedding_vector and len(embedding_vector) > 0:
+                    # Map embedding types to OpenSearch modalities
+                    opensearch_modality = self._map_embedding_to_modality(modality)
+                    
+                    
                     # Use script_score query for vector similarity with element_type filtering
-                    base_query = {"term": {"modality": modality}}
+                    base_query = {"term": {"modality": opensearch_modality}}
                     
                     # Add element_type filtering to vector search as well
                     if element_type_weights:
@@ -225,7 +229,7 @@ class OpenSearchService:
                         if element_type_queries:
                             base_query = {
                                 "bool": {
-                                    "must": [{"term": {"modality": modality}}],
+                                    "must": [{"term": {"modality": opensearch_modality}}],
                                     "should": element_type_queries,
                                     "minimum_should_match": 1
                                 }
@@ -240,11 +244,11 @@ class OpenSearchService:
                             element_boost = params.element_weights[doc['element_type'].value];
                         }}
                         return similarity * Math.max(0.05, element_boost);
-                        """.format(modality=modality)
+                        """.format(modality=opensearch_modality)
                         
                         vector_query = {
                             "script_score": {
-                                "query": {"term": {"modality": modality}},
+                                "query": {"term": {"modality": opensearch_modality}},
                                 "script": {
                                     "source": script_source,
                                     "params": {
@@ -259,7 +263,7 @@ class OpenSearchService:
                             "script_score": {
                                 "query": base_query,
                                 "script": {
-                                    "source": "cosineSimilarity(params.query_vector, doc['embeddings." + modality + "']) + 1.0",
+                                    "source": "cosineSimilarity(params.query_vector, doc['embeddings." + opensearch_modality + "']) + 1.0",
                                     "params": {"query_vector": embedding_vector}
                                 }
                             }
@@ -290,11 +294,14 @@ class OpenSearchService:
                 
                 # Apply embedding boost by wrapping script_score in a bool query with boost
                 boosted_vector_queries = []
-                for vector_query in vector_queries:
+                for i, (vector_query, (embedding_type, _)) in enumerate(zip(vector_queries, embeddings.items())):
+                    # Calculate modality-specific boost based on element_type_weights
+                    modality_boost = self._calculate_modality_boost(embedding_type, element_type_weights, embedding_search_boost)
+                    
                     boosted_vector_query = {
                         "bool": {
                             "must": [vector_query],
-                            "boost": embedding_search_boost
+                            "boost": modality_boost
                         }
                     }
                     boosted_vector_queries.append(boosted_vector_query)
@@ -350,6 +357,75 @@ class OpenSearchService:
                 enhanced_query = f"{enhanced_query} {truncated_tags}"
         
         return enhanced_query
+    
+    def _map_embedding_to_modality(self, embedding_type: str) -> str:
+        """Map embedding type to OpenSearch modality"""
+        # Text-based embeddings map to 'text' modality
+        text_based_embeddings = {
+            "text", "text_summary", "text_keywords", "text_entities", 
+            "image_caption", "image_tags", "image_objects",
+            "video_description", "video_scenes", "video_activities",
+            "audio_transcription", "audio_sounds"
+        }
+        
+        if embedding_type in text_based_embeddings:
+            return "text"
+        elif embedding_type == "image":
+            return "image"
+        elif embedding_type == "video":
+            return "video"
+        elif embedding_type == "audio":
+            return "audio"
+        else:
+            # Fallback to the original embedding type
+            return embedding_type
+    
+    def _calculate_modality_boost(self, embedding_type: str, element_type_weights: Optional[Dict[str, float]], base_boost: float) -> float:
+        """Calculate modality-specific boost based on element_type_weights"""
+        if not element_type_weights:
+            return base_boost
+        
+        # Map embedding types to their corresponding element types for boost calculation
+        embedding_to_element_type = {
+            "text": ["paragraph", "summary"],  # Original text embedding targets these types
+            "image_caption": ["caption"],      # Image caption embedding targets caption type
+            "image": ["origin"],               # Image embedding targets origin type
+            # Future mappings
+            "text_summary": ["summary"],
+            "text_keywords": ["paragraph"],
+            "text_entities": ["paragraph"],
+            "image_objects": ["origin"],
+            "video_description": ["paragraph"],
+            "audio_transcription": ["paragraph"],
+        }
+        
+        relevant_element_types = embedding_to_element_type.get(embedding_type, [])
+        if not relevant_element_types:
+            return base_boost
+        
+        # Calculate weighted average of relevant element types
+        total_weight = 0.0
+        weight_sum = 0.0
+        
+        for element_type in relevant_element_types:
+            if element_type in element_type_weights:
+                weight = element_type_weights[element_type]
+                weight_sum += weight
+                total_weight += 1.0
+        
+        if total_weight == 0:
+            return base_boost
+        
+        # Calculate average weight for this embedding type
+        avg_weight = weight_sum / total_weight
+        
+        # Scale boost based on average weight (0.0 ~ 1.0 → 0.5 ~ 2.0 boost multiplier) - more conservative
+        boost_multiplier = 0.5 + (avg_weight * 1.5)  # 0.5 to 2.0 range
+        final_boost = base_boost * boost_multiplier
+        
+        logger.info(f"🎯 Modality boost calculated: {embedding_type} → avg_weight={avg_weight:.2f}, multiplier={boost_multiplier:.2f}, final_boost={final_boost:.2f}")
+        
+        return final_boost
 
     def _log_search_query(self, search_query: Dict[str, Any], embeddings: Optional[Dict[str, List[float]]], 
                          text_query: str, element_types: List[str], element_type_weights: Optional[Dict[str, float]]):
