@@ -419,8 +419,10 @@ class OpenSearchService:
         # Calculate average weight for this embedding type
         avg_weight = weight_sum / total_weight
         
-        # Scale boost based on average weight (0.0 ~ 1.0 → 0.5 ~ 2.0 boost multiplier) - more conservative
-        boost_multiplier = 0.5 + (avg_weight * 1.5)  # 0.5 to 2.0 range
+        # Scale boost based on average weight using config values
+        min_multiplier = weighting_config.MODALITY_BOOST_MIN_MULTIPLIER
+        boost_range = weighting_config.MODALITY_BOOST_RANGE
+        boost_multiplier = min_multiplier + (avg_weight * boost_range)
         final_boost = base_boost * boost_multiplier
         
         logger.info(f"🎯 Modality boost calculated: {embedding_type} → avg_weight={avg_weight:.2f}, multiplier={boost_multiplier:.2f}, final_boost={final_boost:.2f}")
