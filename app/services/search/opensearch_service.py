@@ -92,12 +92,13 @@ class OpenSearchService:
         from_: int = 0,
         filters: Optional[Dict[str, Any]] = None,
         element_type_weights: Optional[Dict[str, float]] = None,
+        image_caption_tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Search elements with unified query filtering by element_types"""
         try:
             # Pass all embeddings to the search query builder
             search_query = self._build_search_query(
-                query, element_types, embeddings, filters, element_type_weights
+                query, element_types, embeddings, filters, element_type_weights, image_caption_tags
             )
 
             if not self.client:
@@ -152,6 +153,7 @@ class OpenSearchService:
         embeddings: Optional[Dict[str, List[float]]],
         filters: Optional[Dict[str, Any]],
         element_type_weights: Optional[Dict[str, float]] = None,
+        image_caption_tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Build hybrid search query combining text and vector search with element_type weights"""
         
@@ -186,8 +188,10 @@ class OpenSearchService:
 
         # Add text search
         if query.strip():
+            # Enhance query with image caption tags if provided
+            enhanced_query = self._enhance_query_with_caption_tags(query, image_caption_tags)
             bool_query["bool"]["must"].append(
-                {"multi_match": {"query": query, "fields": ["content"], "type": "best_fields", "fuzziness": "AUTO"}}
+                {"multi_match": {"query": enhanced_query, "fields": ["content"], "type": "best_fields", "fuzziness": "AUTO"}}
             )
 
         # Add vector search if embeddings provided
@@ -322,6 +326,30 @@ class OpenSearchService:
         self._log_search_query(search_query, embeddings, query, element_types, element_type_weights)
         
         return search_query
+    
+    def _enhance_query_with_caption_tags(self, query: str, image_caption_tags: Optional[List[str]]) -> str:
+        """Enhance query by appending image caption tags while respecting 1000 character limit"""
+        if not image_caption_tags:
+            return query
+        
+        # Start with original query
+        enhanced_query = query.strip()
+        
+        # Join tags with space
+        tags_text = " ".join(image_caption_tags)
+        
+        # Check if adding tags would exceed 1000 character limit
+        if len(enhanced_query) + len(tags_text) + 1 <= 1000:  # +1 for space separator
+            enhanced_query = f"{enhanced_query} {tags_text}"
+        else:
+            # Calculate remaining space
+            remaining_space = 1000 - len(enhanced_query) - 1  # -1 for space separator
+            if remaining_space > 0:
+                # Truncate tags text to fit within limit
+                truncated_tags = tags_text[:remaining_space]
+                enhanced_query = f"{enhanced_query} {truncated_tags}"
+        
+        return enhanced_query
 
     def _log_search_query(self, search_query: Dict[str, Any], embeddings: Optional[Dict[str, List[float]]], 
                          text_query: str, element_types: List[str], element_type_weights: Optional[Dict[str, float]]):

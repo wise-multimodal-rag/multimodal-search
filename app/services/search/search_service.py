@@ -122,8 +122,14 @@ class SearchService:
                 element_type_weights
             )
             
+            # Extract image caption tags if available
+            image_caption_tags = None
+            if extracted_features and extracted_features.image and hasattr(extracted_features.image, 'tags'):
+                image_caption_tags = getattr(extracted_features.image, 'tags')
+                logger.info(f"🏷️ Using image caption tags for search enhancement: {image_caption_tags}")
+            
             search_results = await self.search_executor.execute_expanded_search(
-                expanded_queries, filtered_element_types, embeddings, max_results, expansion_result, element_type_weights
+                expanded_queries, filtered_element_types, embeddings, max_results, expansion_result, element_type_weights, image_caption_tags
             )
 
             # Step 6: 결과 enrichment
@@ -453,8 +459,14 @@ class SearchService:
                 element_type_weights
             )
             
+            # Extract image caption tags if available
+            image_caption_tags = None
+            if extracted_features and extracted_features.image and hasattr(extracted_features.image, 'tags'):
+                image_caption_tags = getattr(extracted_features.image, 'tags')
+                logger.info(f"🏷️ [STREAM] Using image caption tags for search enhancement: {image_caption_tags}")
+            
             search_results = await self.search_executor.execute_expanded_search(
-                expanded_queries, filtered_element_types, embeddings, max_results, expansion_result, element_type_weights
+                expanded_queries, filtered_element_types, embeddings, max_results, expansion_result, element_type_weights, image_caption_tags
             )
 
             # 검색 실행 상세 통계
