@@ -135,7 +135,7 @@ flowchart TD
     class IDX1,IDX2,IDX3 dbClass
 ```
 
-### 2. LLM 답변 생성 파이프라인 (품질 기반 재검색 포함)
+### 2. LLM 답변 생성 파이프라인
 
 ```mermaid
 flowchart TD
@@ -144,65 +144,58 @@ flowchart TD
     
     %% 컨텍스트 준비
     AG --> AG1[검색 결과를 컨텍스트로 변환<br/>상위 10개 결과 사용]
-    AG1 --> AG2[답변 생성 루프 시작<br/>최대 2회 시도]
+    AG1 --> AG1A{첨부 이미지 캡션<br/>존재?}
+    AG1A -->|Yes| AG1B[첨부 이미지 캡션<br/>컨텍스트에 추가]
+    AG1A -->|No| AG1C[origin element의 caption 자동 조회<br/>중복 제거 후 컨텍스트 보강]
+    AG1B --> AG1C
+    AG1C --> AG2[답변 생성 루프 시작<br/>최대 2회 시도 고정]
     
     %% 답변 생성 루프
     AG2 --> LOOP{시도 횟수 체크}
     LOOP -->|1차 시도| TRY1[첫 번째 시도]
-    LOOP -->|2차 시도| TRY2[두 번째 시도]
+    LOOP -->|2차 시도 선택적| TRY2[두 번째 시도]
     
     %% 첫 번째 시도
-    TRY1 --> AG3A[🤖 LLM 초안 답변 생성<br/>Draft Answer<br/>temperature: 0.7]
-    AG3A --> AG4A[🤖 LLM Reflection 평가<br/>5가지 기준으로 품질 평가]
+    TRY1 --> AG3A[🤖 LLM 초안 답변 생성<br/>컨텍스트 포함: 검색결과 10개 + 첨부이미지캡션 + Origin캡션들<br/>temperature: 0.7]
+    AG3A --> AG4A[🤖 LLM Reflection 평가<br/>5가지 기준 정확성 완성도 명확성 구조 관련성]
     AG4A --> EVAL1[평가 결과 분석<br/>총점 / 50점]
     EVAL1 --> AG5A{품질 평가<br/>35점 이상?}
     
     %% 첫 번째 시도 결과 처리
     AG5A -->|Yes, 35점 이상| ACCEPT[답변 수락<br/>생성 완료]
-    AG5A -->|No, 35점 이하| CHECK_RETRY{재시도 가능?}
-    CHECK_RETRY -->|Yes| FEEDBACK[🔍 피드백 기반 재검색]
-    CHECK_RETRY -->|No| SELECT_BEST[최고 점수 답변 선택]
+    AG5A -->|No, 35점 이하| RETRY_CHECK{재시도 가능?<br/>최대 2회 제한}
+    RETRY_CHECK -->|Yes| IMPROVE[개선 제안 활용<br/>이전 reflection의 improvement_suggestions]
+    RETRY_CHECK -->|No 2회 완료| SELECT_BEST[최고 점수 답변 선택]
     
-    %% 새로운 피드백 기반 재검색 로직
-    FEEDBACK --> FB1[🤖 Reflection 결과 분석<br/>문제점 추출]
-    FB1 --> FB2{문제점 유형 분석}
-    FB2 -->|관련성 부족| FB3A[검색 전략: 더 구체적<br/>구체적, 상세한 키워드 추가]
-    FB2 -->|정확성 부족| FB3B[검색 전략: 신뢰할 수 있는 소스<br/>공식, 정확한 키워드 추가]
-    FB2 -->|완전성 부족| FB3C[검색 전략: 포괄적 검색<br/>전체, 완전한, 종합 키워드 추가]
-    FB2 -->|명확성 부족| FB3D[검색 전략: 구조화된 정보<br/>체계적, 단계별 키워드 추가]
-    FB2 -->|유용성 부족| FB3E[검색 전략: 실용적 정보<br/>실용적, 활용 키워드 추가]
+    %% 개선 제안 기반 재생성 재검색 없음
+    IMPROVE --> AG6[재생성 준비<br/>온도 조정 +0.1<br/>동일한 검색 컨텍스트 사용]
     
-    FB3A --> ENHANCED_SEARCH[🔍 향상된 검색 실행<br/>SearchService 재호출]
-    FB3B --> ENHANCED_SEARCH
-    FB3C --> ENHANCED_SEARCH
-    FB3D --> ENHANCED_SEARCH
-    FB3E --> ENHANCED_SEARCH
-    
-    ENHANCED_SEARCH --> NEW_CONTEXT[개선된 검색 컨텍스트<br/>이전 실패 사유 반영]
-    NEW_CONTEXT --> AG6[재생성 준비<br/>온도 조정 +0.1 + 새 컨텍스트]
-    
-    %% 두 번째 시도 (개선된 컨텍스트)
+    %% 두 번째 시도 개선된 프롬프트
     AG6 --> TRY2
-    TRY2 --> AG3B[🤖 LLM 재생성 답변<br/>Enhanced Context + temperature: 0.8]
+    TRY2 --> AG3B[🤖 LLM 재생성 답변<br/>컨텍스트: 동일한 검색결과 + 이전 improvement_suggestions<br/>temperature: 0.8 + 향상된 시스템 프롬프트]
     AG3B --> AG4B[🤖 LLM Reflection 평가<br/>5가지 기준으로 품질 평가]
     AG4B --> EVAL2[평가 결과 분석<br/>총점 / 50점]
-    EVAL2 --> AG5B[2차 시도 완료<br/>최고 점수 답변 선택]
+    EVAL2 --> AG5B{품질 평가<br/>35점 이상?}
+    
+    %% 두 번째 시도 결과 처리  
+    AG5B -->|Yes, 35점 이상| ACCEPT
+    AG5B -->|No, 35점 이하| SELECT_BEST
     
     %% 최종 결과 처리
-    AG5B --> SELECT_BEST
-    SELECT_BEST --> BEST[최고 점수 답변 선택<br/>1차 vs 2차 비교]
+    SELECT_BEST --> BEST[최고 점수 답변 선택<br/>1차 vs 2차 비교<br/>35점 이상이면 성공으로 간주]
     ACCEPT --> GR[GenerationResponse 생성]
     BEST --> GR
     
     %% 응답 완성
-    GR --> RESPONSE[최종 응답 반환<br/>- final_answer<br/>- generation_attempts<br/>- best_score<br/>- search_enhancement_applied]
+    GR --> RESPONSE[최종 응답 반환<br/>final_answer, generation_attempts, best_score, completion_reason]
     
     %% 외부 API 호출
     AG3A -.->|🤖 LLM 호출| LLM_API[🤖 LiteLLM<br/>답변 생성]
     AG3B -.->|🤖 LLM 호출| LLM_API
-    AG4A -.->|🤖 LLM 호출| LLM_API2[🤖 LiteLLM<br/>품질 평가]
+    AG4A -.->|🤖 LLM 호출| LLM_API2[🤖 LiteLLM<br/>품질 평가 JSON 강제]
     AG4B -.->|🤖 LLM 호출| LLM_API2
-    ENHANCED_SEARCH -.->|검색 재실행| SEARCH_API[🔍 SearchService<br/>향상된 검색]
+    AG1C -.->|OpenSearch 조회| OS_API[OpenSearch<br/>caption 자동 조회]
+    OS_API -.->|조회된 caption들이<br/>컨텍스트에 포함| AG3A
     
     %% 스타일링
     classDef startClass fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
@@ -211,15 +204,15 @@ flowchart TD
     classDef decisionClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef endClass fill:#fce4ec,stroke:#c2185b,stroke-width:2px
     classDef apiClass fill:#fff8e1,stroke:#ff8f00,stroke-width:2px
-    classDef enhancedClass fill:#e8f5e8,stroke:#4caf50,stroke-width:3px
+    classDef improveClass fill:#e8f5e8,stroke:#4caf50,stroke-width:3px
     
-    class START,AG1,AG2,AG6,GR startClass
+    class START,AG1,AG1B,AG1C,AG2,AG6,GR startClass
     class LOOP,TRY1,TRY2,EVAL1,EVAL2,SELECT_BEST,BEST processClass
     class AG3A,AG3B,AG4A,AG4B llmClass
-    class AG5A,AG5B,CHECK_RETRY,FB2 decisionClass
+    class AG1A,AG5A,AG5B,RETRY_CHECK decisionClass
     class ACCEPT,RESPONSE endClass
-    class LLM_API,LLM_API2,SEARCH_API apiClass
-    class FEEDBACK,FB1,FB3A,FB3B,FB3C,FB3D,FB3E,ENHANCED_SEARCH,NEW_CONTEXT enhancedClass
+    class LLM_API,LLM_API2,OS_API apiClass
+    class IMPROVE improveClass
 ```
 
 ## 주요 특징
@@ -234,11 +227,12 @@ flowchart TD
 - **가중치 기반 결과 융합**: 확장된 쿼리별 가중치 적용 및 중복 제거
 
 ### AI 답변 생성 시스템
-- **2단계 품질 보장**: 초안 생성 → Reflection 평가 → 재생성 (최대 2회)
-- **5차원 품질 평가**: 정확성, 완성도, 명확성, 구조, 관련성 종합 평가
-- **🆕 피드백 기반 재검색**: 35점 이하 시 문제점 분석 후 개선된 검색 수행
-- **적응형 검색 전략**: 관련성/정확성/완전성 등 문제점에 따른 맞춤형 재검색
-- **스트리밍 답변 생성**: 실시간 생성 과정 모니터링 및 취소 가능
+- **간소화된 2회 시도 시스템**: 초안 생성 → Reflection 평가 → 개선 제안 기반 재생성 (고정 2회)
+- **5차원 품질 평가**: 정확성, 완성도, 명확성, 구조, 관련성 종합 평가 (총 50점)
+- **첨부 이미지 지원**: 검색 결과와 첨부 이미지 캡션을 통합한 컨텍스트 생성
+- **자동 캡션 보강**: origin element의 관련 caption 자동 조회 및 중복 제거
+- **스트리밍 답변 생성**: 실시간 생성 과정 모니터링, 취소 가능, 시간 제한 (5분)
+- **개선 제안 활용**: 이전 시도의 improvement_suggestions를 다음 시도에 반영
 
 ### 시스템 아키텍처
 - **3계층 인덱스 구조**: media_meta, chunk_meta, elements로 체계적 관리
@@ -331,7 +325,7 @@ docker-compose --profile dev up
 #### API 엔드포인트
 - **멀티모달 검색**: `POST /api/search/multimodal`
 - **AI 답변 생성**: `POST /api/generation/multimodal`
-- **스트리밍 검색**: `GET /api/search/multimodal/stream`
+- **스트리밍 검색+생성**: `POST /api/search/multimodal/stream`
 
 ## 아키텍처
 
@@ -452,14 +446,16 @@ STORAGE_PATH=/storage
 
 ## 주요 업데이트
 
-### v0.3.1 - 피드백 기반 재검색 시스템
-- **🆕 품질 피드백 기반 재검색**: 35점 이하 답변 시 문제점 분석 후 개선된 검색 수행
-- **적응형 검색 전략**: 관련성/정확성/완전성 등 문제점별 맞춤형 재검색 로직
-- **향상된 답변 품질**: 이전 실패 사유를 반영한 컨텍스트로 2차 답변 생성
+### v0.3.2 - 간소화된 답변 생성 시스템 (현재)
+- **🆕 고정 2회 시도 시스템**: 복잡한 재검색 로직 제거, 개선 제안 기반 재생성으로 단순화
+- **🆕 첨부 이미지 통합**: 검색 결과와 첨부 이미지 캡션을 통합한 컨텍스트 생성
+- **🆕 자동 캡션 보강**: origin element의 관련 caption 자동 조회 및 중복 제거
+- **스트리밍 최적화**: 실시간 모니터링, 취소 가능, 5분 시간 제한
+- **개선 제안 활용**: 이전 시도의 improvement_suggestions를 다음 시도에 반영
 
 ### v0.3.0 - AI 답변 생성 시스템
-- **Reflection 기반 품질 관리**: 5차원 평가를 통한 답변 품질 보장
-- **최대 2회 재생성**: 초안 → 평가 → 재생성 프로세스
+- **Reflection 기반 품질 관리**: 5차원 평가를 통한 답변 품질 보장 (총 50점)
+- **품질 임계값**: 35점 이상 답변 수락, 이하 시 재생성 또는 최고점 선택
 - **스트리밍 답변 생성**: 실시간 생성 과정 모니터링
 
 ### v0.2.0 - 지능형 검색 시스템  
