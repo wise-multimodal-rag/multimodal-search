@@ -44,22 +44,19 @@ flowchart TD
     H2C --> H4
     H3 --> H4
     H4 --> H4A{🤖 LLM 분석 성공?}
-    H4A -->|성공| H5[🤖 LLM 기반 element_type 선택]
+    H4A -->|성공| H5[🤖 LLM 기반 element_type 선택 + 가중치 계산]
     H4A -->|실패| H6[휴리스틱 기반 폴백 분석]
-    H5 --> I[선택된 element_types + 확장된 쿼리들 + 의존성 정보<br/>paragraph, title, image, etc.]
+    H5 --> I[선택된 element_types + 확장된 쿼리들 + element_type_weights<br/>paragraph:0.8, summary:0.6, caption:0.3, origin:1.0]
     H6 --> I
     
     %% Step 3: 특징 추출
-    G1 --> J[Step 3: 멀티모달 특징 추출<br/>MultimodalFeatureExtractor]
-    G2 --> J
-    G3 --> J
-    G4 --> J
+    G2 --> J[Step 3: 멀티모달 특징 추출<br/>MultimodalFeatureExtractor]
     I --> J
-    J --> J1{선택된 element_types 확인}
-    J1 -->|텍스트 관련 타입| J2[텍스트 특징 추출<br/>키워드, 엔티티, 요약]
-    J1 -->|이미지 관련 타입| J3[이미지 특징 추출<br/>캡션, 객체 탐지]
-    J1 -->|비디오 관련 타입| J4[🤖 비디오 특징 추출<br/>장면, 활동, 객체]
-    J1 -->|오디오 관련 타입| J5[🤖 오디오 특징 추출<br/>STT, 소리 분류]
+    J --> J1{입력 모달리티 확인}
+    J1 -->|텍스트만| J2[텍스트 특징 건너뛰기<br/>원본 텍스트 쿼리 직접 사용]
+    J1 -->|이미지 첨부| J3[이미지 특징 추출<br/>캡션 + tags 무조건 생성]
+    J1 -->|비디오 첨부| J4[🤖 비디오 특징 추출<br/>현재 비활성화됨]
+    J1 -->|오디오 첨부| J5[🤖 오디오 특징 추출<br/>현재 비활성화됨]
     
     %% Step 4: 임베딩 생성
     G1 --> K[Step 4: 임베딩 생성<br/>EmbeddingService]
@@ -71,12 +68,14 @@ flowchart TD
     J4 --> K
     J5 --> K
     K --> K1[원본 모달리티 임베딩<br/>text, image, video, audio]
-    K --> K2[특징 기반 임베딩<br/>summary, caption, keywords, etc.]
+    K --> K2[특징 기반 임베딩<br/>image_caption만 활성화]
     
-    %% Step 5: 확장 쿼리 검색 실행
+    %% Step 5: 확장 쿼리 검색 실행 + 이미지 태그 보강
     I --> L[Step 5: 확장 쿼리 검색 실행<br/>SearchExecutor]
     K1 --> L
     K2 --> L
+    J3 --> L5A[이미지 캡션 tags 추출]
+    L5A --> L
     L --> L0{의존성 확인<br/>has_dependency?}
     L0 -->|true| L1A[순차적 검색 실행<br/>Query 1 → 컨텍스트 추출 → Query 2]
     L0 -->|false| L1B[병렬 검색 실행<br/>Query 1, 2, 3 동시 실행]
@@ -89,7 +88,8 @@ flowchart TD
     L1B --> L2[각 쿼리마다<br/>element_types 필터 + 하이브리드 검색]
     L1A4 --> L3[OpenSearch 통합 쿼리<br/>OpenSearchService → multimodal_rag_element]
     L2 --> L3
-    L3 --> L4[쿼리별 가중치 적용<br/>1st-1.0 2nd-0.9 3rd-0.8]
+    L3 --> L3A[텍스트 검색: multi_match + image_caption_tags<br/>벡터 검색: modality 매핑 + 동적 boost]
+    L3A --> L4[쿼리별 가중치 적용<br/>1st-1.0 2nd-0.9 3rd-0.8]
     L4 --> L5[결과 통합 및 중복 제거<br/>점수 기준 최종 정렬]
     
     %% Step 6: 결과 강화
@@ -104,21 +104,20 @@ flowchart TD
     M2 -->|No| N
     
     %% Step 7: 검색 응답 생성
-    N --> O[Step 7: 검색 응답 생성<br/>SearchResponse]
+    N --> O[Step 7: 검색 응답 생성<br/>SearchResponse + 첨부 이미지 캡션]
     O --> O1[검색 통계 계산]
     O --> O2[실행 시간 측정]
     O --> SR[검색 결과 완료]
     
     %% 외부 API 의존성
-    J2 -.->|API 호출| API1[Feature Extraction API<br/>키워드, 엔티티, 요약]
-    J3 -.->|API 호출| API2[Feature Extraction API<br/>이미지 캡션, 객체 탐지]
-    J4 -.->|🤖 LLM 호출| API3[🤖 LiteLLM<br/>비디오 분석]
-    J5 -.->|🤖 LLM 호출| API3
-    K -.->|API 호출| API4[Embedding API<br/>텍스트/이미지/비디오/오디오 임베딩]
-    H -.->|🤖 LLM 호출| API3
+    J3 -.->|API 호출| API2[Embedding API<br/>이미지 캡션 + tags 생성]
+    J4 -.->|🤖 LLM 호출| API3[🤖 LiteLLM<br/>비디오 분석 - 비활성화]
+    J5 -.->|🤖 LLM 호출| API3[🤖 LiteLLM<br/>오디오 분석 - 비활성화]
+    K -.->|API 호출| API4[Embedding API<br/>text + image_caption 임베딩]
+    H -.->|🤖 LLM 호출| API3[🤖 LiteLLM<br/>쿼리 분석 + element_type 가중치]
     
     %% 인덱스 구조
-    L3 -.-> IDX1[(multimodal_rag_element<br/>검색 가능한 요소)]
+    L3A -.-> IDX1[(multimodal_rag_element<br/>검색 가능한 요소<br/>embeddings.text + embeddings.image)]
     M3 -.-> IDX2[(multimodal_rag_chunk<br/>청크 메타데이터)]
     M4 -.-> IDX3[(multimodal_rag_media<br/>미디어 메타데이터)]
     
@@ -127,12 +126,14 @@ flowchart TD
     classDef apiClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef dbClass fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
     classDef llmClass fill:#f3e5f5,stroke:#7b1fa2,stroke-width:3px
+    classDef enhancedClass fill:#e8f5e8,stroke:#4caf50,stroke-width:3px
     
     class G,H,J,J1,K,L,M,O stepClass
-    class API1,API2,API4 apiClass
+    class API2,API4 apiClass
     class API3 llmClass
     class H1,H1A,H2,H2A,H2B,H2C,H4,H4A,H5,J4,J5 llmClass
     class IDX1,IDX2,IDX3 dbClass
+    class L3A,L5A enhancedClass
 ```
 
 ### 2. LLM 답변 생성 파이프라인
@@ -150,44 +151,47 @@ flowchart TD
     AG1B --> AG1C
     AG1C --> AG2[답변 생성 루프 시작<br/>최대 2회 시도 고정]
     
-    %% 답변 생성 루프
-    AG2 --> LOOP{시도 횟수 체크}
-    LOOP -->|1차 시도| TRY1[첫 번째 시도]
-    LOOP -->|2차 시도 선택적| TRY2[두 번째 시도]
+    %% 답변 생성 루프 (간소화됨)
+    AG2 --> ATTEMPT1[1차 시도: 초안 생성]
+    ATTEMPT1 --> GEN1[🤖 LLM 답변 생성<br/>temperature: 0.7<br/>이전 개선 제안 없음]
+    GEN1 --> REF1[🤖 LLM Reflection 평가<br/>5차원 평가: 정확성, 완성도, 명확성, 구조, 관련성]
+    REF1 --> EVAL1[평가 점수 계산<br/>총점 / 50점]
+    EVAL1 --> CHECK1{1차 품질 평가<br/>35점 이상?}
     
-    %% 답변 생성 시도 (1차 또는 2차)
-    TRY1 --> GENERATE[🤖 LLM 답변 생성<br/>컨텍스트: 검색결과 10개 + 첨부이미지캡션 + Origin캡션들<br/>+ 2회차 improvement_suggestions<br/>temperature: 1회차 0.7 → 2회차 0.8]
-    TRY2 --> GENERATE
-    GENERATE --> REFLECT[🤖 LLM Reflection 평가<br/>5가지 기준 정확성 완성도 명확성 구조 관련성]
-    REFLECT --> EVAL[평가 결과 분석<br/>총점 / 50점]
-    EVAL --> QUALITY_CHECK{품질 평가<br/>35점 이상?}
+    %% 1차 시도 결과 처리
+    CHECK1 -->|Yes, 수락| ACCEPT1[1차 답변 수락<br/>생성 완료]
+    CHECK1 -->|No, 재시도| ATTEMPT2[2차 시도: 개선 답변]
     
-    %% 결과 처리
-    QUALITY_CHECK -->|Yes, 35점 이상| ACCEPT[답변 수락<br/>생성 완료]
-    QUALITY_CHECK -->|No, 35점 이하| RETRY_CHECK{재시도 가능?<br/>최대 2회 제한}
-    RETRY_CHECK -->|Yes| IMPROVE[개선 제안 활용<br/>이전 reflection의 improvement_suggestions]
-    RETRY_CHECK -->|No 2회 완료| SELECT_BEST[최고 점수 답변 선택]
+    %% 2차 시도 (개선 제안 활용)
+    ATTEMPT2 --> IMPROVE[이전 reflection에서<br/>improvement_suggestions 추출]
+    IMPROVE --> GEN2[🤖 LLM 답변 재생성<br/>temperature: 0.8<br/>개선 제안 반영]
+    GEN2 --> REF2[🤖 LLM Reflection 평가<br/>2차 답변 품질 평가]
+    REF2 --> EVAL2[평가 점수 계산<br/>총점 / 50점]
+    EVAL2 --> CHECK2{2차 품질 평가<br/>35점 이상?}
     
-    %% 재시도 루프
-    IMPROVE --> TRY2
+    %% 2차 시도 결과 처리
+    CHECK2 -->|Yes, 수락| ACCEPT2[2차 답변 수락<br/>개선된 답변 채택]
+    CHECK2 -->|No, 최고점 선택| SELECT_BEST[1차 vs 2차 점수 비교<br/>최고 점수 답변 선택]
     
-    %% 최종 결과 처리
-    SELECT_BEST --> BEST[최고 점수 답변 선택<br/>1차 vs 2차 비교]
-    BEST --> FINAL_CHECK{선택된 답변<br/>35점 이상?}
-    FINAL_CHECK -->|Yes, 35점 이상| SUCCESS_GR[GenerationResponse 생성<br/>success: true]
-    FINAL_CHECK -->|No, 35점 미만| PARTIAL_GR[GenerationResponse 생성<br/>success: false<br/>but 답변 반환]
-    ACCEPT --> SUCCESS_GR
-    SUCCESS_GR --> GR[GenerationResponse 완성]
-    PARTIAL_GR --> GR
+    %% 최종 결과 생성
+    ACCEPT1 --> SUCCESS_GR[GenerationResponse 생성<br/>success: true, 1차 시도]
+    ACCEPT2 --> SUCCESS_GR2[GenerationResponse 생성<br/>success: true, 2차 시도]
+    SELECT_BEST --> FINAL_CHECK{최종 선택 답변<br/>35점 이상?}
+    FINAL_CHECK -->|Yes| SUCCESS_GR3[GenerationResponse 생성<br/>success: true, best attempt]
+    FINAL_CHECK -->|No| PARTIAL_GR[GenerationResponse 생성<br/>success: false, 부분적 성공]
     
-    %% 응답 완성
-    GR --> RESPONSE[최종 응답 반환<br/>final_answer, generation_attempts, best_score, completion_reason]
+    %% 최종 응답
+    SUCCESS_GR --> RESPONSE[최종 응답 반환<br/>final_answer, generation_attempts, best_score]
+    SUCCESS_GR2 --> RESPONSE
+    SUCCESS_GR3 --> RESPONSE
+    PARTIAL_GR --> RESPONSE
     
     %% 외부 API 호출
-    GENERATE -.->|🤖 LLM 호출| LLM_API[🤖 LiteLLM<br/>답변 생성]
-    REFLECT -.->|🤖 LLM 호출| LLM_API2[🤖 LiteLLM<br/>품질 평가 JSON 강제]
-    AG1C -.->|OpenSearch 조회| OS_API[OpenSearch<br/>caption 자동 조회]
-    OS_API -.->|조회된 caption들이<br/>컨텍스트에 포함| GENERATE
+    GEN1 -.->|🤖 LLM 호출| LLM_API[🤖 LiteLLM<br/>답변 생성]
+    GEN2 -.->|🤖 LLM 호출| LLM_API
+    REF1 -.->|🤖 LLM 호출| LLM_API2[🤖 LiteLLM<br/>JSON 강제 품질 평가]
+    REF2 -.->|🤖 LLM 호출| LLM_API2
+    AG1C -.->|OpenSearch 조회| OS_API[OpenSearch<br/>origin element caption 조회]
     
     %% 스타일링
     classDef startClass fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
@@ -198,11 +202,11 @@ flowchart TD
     classDef apiClass fill:#fff8e1,stroke:#ff8f00,stroke-width:2px
     classDef improveClass fill:#e8f5e8,stroke:#4caf50,stroke-width:3px
     
-    class START,AG1,AG1B,AG1C,AG2,SUCCESS_GR,PARTIAL_GR,GR startClass
-    class LOOP,TRY1,TRY2,EVAL,SELECT_BEST,BEST processClass
-    class GENERATE,REFLECT llmClass
-    class AG1A,QUALITY_CHECK,RETRY_CHECK,FINAL_CHECK decisionClass
-    class ACCEPT,RESPONSE endClass
+    class START,AG1,AG1B,AG1C,AG2,SUCCESS_GR,SUCCESS_GR2,SUCCESS_GR3,PARTIAL_GR startClass
+    class ATTEMPT1,ATTEMPT2,EVAL1,EVAL2,SELECT_BEST processClass
+    class GEN1,GEN2,REF1,REF2 llmClass
+    class AG1A,CHECK1,CHECK2,FINAL_CHECK decisionClass
+    class ACCEPT1,ACCEPT2,RESPONSE endClass
     class LLM_API,LLM_API2,OS_API apiClass
     class IMPROVE improveClass
 ```
@@ -213,10 +217,11 @@ flowchart TD
 - **멀티모달 입력**: 텍스트, 이미지, 비디오, 오디오, 텍스트 파일 동시 지원
 - **적응형 쿼리 확장**: 쿼리 특성에 따른 선택적 기법 적용 (Decomposition, Rewriting, Expansion)
 - **지능형 의존성 처리**: LLM이 판단하는 순차/병렬 실행 방식 자동 선택
-- **하이브리드 검색**: BM25 텍스트 검색 + 벡터 유사도 검색 + 확장 쿼리 통합
-- **LLM 기반 질의 분석**: 검색 의도 파악 및 최적 element type 선택
-- **컨텍스트 전파**: 이전 검색 결과를 활용한 다음 쿼리 보강
-- **가중치 기반 결과 융합**: 확장된 쿼리별 가중치 적용 및 중복 제거
+- **하이브리드 검색**: BM25 텍스트 검색 + 벡터 유사도 검색 + 이미지 캡션 태그 보강
+- **LLM 기반 질의 분석**: 검색 의도 파악 및 최적 element type 선택 + 가중치 계산
+- **이미지 캡션 태그 통합**: 이미지 캡션의 tags를 텍스트 검색 쿼리에 자동 추가 (1000자 제한)
+- **동적 modality boost**: element_type_weights 기반 벡터 검색 가중치 동적 계산
+- **간소화된 가중치 시스템**: 3개 핵심 설정으로 모든 세부 가중치 자동 계산
 
 ### AI 답변 생성 시스템
 - **간소화된 2회 시도 시스템**: 초안 생성 → Reflection 평가 → 개선 제안 기반 재생성 (고정 2회)
@@ -247,20 +252,20 @@ flowchart TD
 
 ## ⚖️ 가중치 시스템
 
-검색 정확도를 제어하는 핵심 시스템입니다. 환경변수로 설정 가능합니다.
+검색 정확도를 제어하는 핵심 시스템입니다. 사용자는 3개의 핵심 설정만 하면 됩니다.
 
-### Element Type별 가중치
-- **origin** (원본): 1.0
-- **paragraph** (본문): 0.8  
-- **summary** (요약): 0.6
-- **caption** (캡션): 0.3
+### 핵심 사용자 설정 (3개)
+- **WEIGHT_TEXT_STRENGTH** (0.0~1.0): 텍스트 검색 강도
+- **WEIGHT_IMAGE_STRENGTH** (0.0~1.0): 이미지 검색 강도  
+- **WEIGHT_VECTOR_BOOST_STRENGTH** (0.5~3.0): 벡터 검색 가중치
 
-### 쿼리별 가중치
-- 첫 번째 쿼리: 1.0 (원본)
-- 두 번째 쿼리: 0.9 (확장)
-- 세 번째 쿼리: 0.8 (추가 확장)
+### 자동 계산되는 세부 가중치
+- **Element Type별 가중치**: origin(1.0), paragraph(0.8), summary(0.6), caption(0.3)
+- **쿼리별 가중치**: 1st(1.0), 2nd(0.9), 3rd(0.8) - QUERY_DECAY 기반
+- **Modality Boost**: element_type_weights 기반 동적 계산 (0.5~2.0 범위)
+- **텍스트/이미지 검색 균형**: 핵심 설정 기반 자동 조정
 
-자세한 설정은 `app/core/config.py` 참조
+자세한 설정은 `app/core/config.py`의 WeightingConfig 참조
 
 ## 🚀 빠른 시작
 
