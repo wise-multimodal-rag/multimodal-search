@@ -273,13 +273,13 @@ class SearchService:
                     else ("no_data" if not text_query and not has_text_elements else "failed"),
                     "image": "success"
                     if extracted_features.image is not None
-                    else ("no_data" if not modalities_data.get("image") else "failed"),
+                    else ("no_data" if not (modalities_data and modalities_data.get("image")) else "failed"),
                     "video": "success"
                     if extracted_features.video is not None
-                    else ("no_data" if not modalities_data.get("video") else "failed"),
+                    else ("no_data" if not (modalities_data and modalities_data.get("video")) else "failed"),
                     "audio": "success"
                     if extracted_features.audio is not None
-                    else ("no_data" if not modalities_data.get("audio") else "failed"),
+                    else ("no_data" if not (modalities_data and modalities_data.get("audio")) else "failed"),
                 }
             }
 
@@ -317,7 +317,7 @@ class SearchService:
                     text_feature_data = {
                         "source": "원본 텍스트 쿼리",
                         "query": text_query,
-                        "element_types": [t for t in query_analysis.get("selected_element_types", []) if query_analysis and t in text_based_types],
+                        "element_types": [t for t in (query_analysis.get("selected_element_types", []) if query_analysis else []) if t in text_based_types],
                         "note": "별도 특징 추출 없이 원본 텍스트가 임베딩 생성에 사용됨",
                     }
 

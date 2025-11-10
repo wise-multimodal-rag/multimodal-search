@@ -14,7 +14,8 @@ class InputValidator:
 
     # 제한 설정
     MAX_TEXT_LENGTH = 10000  # 10KB
-    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB (이미지, 비디오, 오디오)
+    MAX_DOCUMENT_SIZE = 512 * 1024 * 1024  # 512MB (문서 파일)
     MAX_RESULTS = 1000
     MIN_RESULTS = 1
 
@@ -82,18 +83,21 @@ class InputValidator:
         return max_results
 
     @classmethod
-    def validate_base64_file(cls, base64_data: str, file_type: str, allowed_types: List[str]) -> Tuple[bytes, int]:
+    def validate_base64_file(cls, base64_data: str, file_type: str, allowed_types: List[str], is_document: bool = False) -> Tuple[bytes, int]:
         """Base64 파일 데이터 검증"""
         try:
             # Base64 디코딩
             file_data = base64.b64decode(base64_data)
             file_size = len(file_data)
 
-            # 파일 크기 검사
-            if file_size > cls.MAX_FILE_SIZE:
+            # 파일 크기 검사 - 문서 파일과 미디어 파일 구분
+            max_size = cls.MAX_DOCUMENT_SIZE if is_document else cls.MAX_FILE_SIZE
+            max_size_mb = max_size // (1024 * 1024)
+            
+            if file_size > max_size:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"File too large. Maximum {cls.MAX_FILE_SIZE // (1024 * 1024)}MB allowed.",
+                    detail=f"File too large. Maximum {max_size_mb}MB allowed.",
                 )
 
             if file_size == 0:
@@ -222,7 +226,7 @@ class InputValidator:
             text_data = request_data["text_file"]
             if isinstance(text_data, dict) and "base64_data" in text_data and "content_type" in text_data:
                 file_data, file_size = cls.validate_base64_file(
-                    text_data["base64_data"], text_data["content_type"], cls.ALLOWED_TEXT_TYPES
+                    text_data["base64_data"], text_data["content_type"], cls.ALLOWED_TEXT_TYPES, is_document=True
                 )
                 validated["text_file"] = {
                     "base64_data": text_data["base64_data"],
