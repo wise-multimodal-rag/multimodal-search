@@ -73,8 +73,8 @@ flowchart TD
     K --> K1[원본 모달리티 임베딩<br/>text, image, video, audio]
     K --> K2[특징 기반 임베딩<br/>summary, caption, keywords, etc.]
     
-    %% Step 5: OpenSearch 검색
-    I --> L[Step 5: OpenSearch 검색<br/>OpenSearchService]
+    %% Step 5: 확장 쿼리 검색 실행
+    I --> L[Step 5: 확장 쿼리 검색 실행<br/>SearchExecutor]
     K1 --> L
     K2 --> L
     L --> L0{의존성 확인<br/>has_dependency?}
@@ -87,7 +87,7 @@ flowchart TD
     L1A3 --> L1A4[Query 2 실행<br/>보강된 쿼리로 검색]
     
     L1B --> L2[각 쿼리마다<br/>element_types 필터 + 하이브리드 검색]
-    L1A4 --> L3[OpenSearch 통합 쿼리<br/>multimodal_rag_element]
+    L1A4 --> L3[OpenSearch 통합 쿼리<br/>OpenSearchService → multimodal_rag_element]
     L2 --> L3
     L3 --> L4[쿼리별 가중치 적용<br/>1st-1.0 2nd-0.9 3rd-0.8]
     L4 --> L5[결과 통합 및 중복 제거<br/>점수 기준 최종 정렬]
@@ -135,7 +135,7 @@ flowchart TD
     class IDX1,IDX2,IDX3 dbClass
 ```
 
-### 2. LLM 답변 생성 파이프라인
+### 2. LLM 답변 생성 파이프라인 (품질 기반 재검색 포함)
 
 ```mermaid
 flowchart TD
@@ -160,12 +160,30 @@ flowchart TD
     %% 첫 번째 시도 결과 처리
     AG5A -->|Yes, 35점 이상| ACCEPT[답변 수락<br/>생성 완료]
     AG5A -->|No, 35점 이하| CHECK_RETRY{재시도 가능?}
-    CHECK_RETRY -->|Yes| AG6[재생성 준비<br/>온도 조정 +0.1]
+    CHECK_RETRY -->|Yes| FEEDBACK[🔍 피드백 기반 재검색]
     CHECK_RETRY -->|No| SELECT_BEST[최고 점수 답변 선택]
     
-    %% 두 번째 시도
+    %% 새로운 피드백 기반 재검색 로직
+    FEEDBACK --> FB1[🤖 Reflection 결과 분석<br/>문제점 추출]
+    FB1 --> FB2{문제점 유형 분석}
+    FB2 -->|관련성 부족| FB3A[검색 전략: 더 구체적<br/>구체적, 상세한 키워드 추가]
+    FB2 -->|정확성 부족| FB3B[검색 전략: 신뢰할 수 있는 소스<br/>공식, 정확한 키워드 추가]
+    FB2 -->|완전성 부족| FB3C[검색 전략: 포괄적 검색<br/>전체, 완전한, 종합 키워드 추가]
+    FB2 -->|명확성 부족| FB3D[검색 전략: 구조화된 정보<br/>체계적, 단계별 키워드 추가]
+    FB2 -->|유용성 부족| FB3E[검색 전략: 실용적 정보<br/>실용적, 활용 키워드 추가]
+    
+    FB3A --> ENHANCED_SEARCH[🔍 향상된 검색 실행<br/>SearchService 재호출]
+    FB3B --> ENHANCED_SEARCH
+    FB3C --> ENHANCED_SEARCH
+    FB3D --> ENHANCED_SEARCH
+    FB3E --> ENHANCED_SEARCH
+    
+    ENHANCED_SEARCH --> NEW_CONTEXT[개선된 검색 컨텍스트<br/>이전 실패 사유 반영]
+    NEW_CONTEXT --> AG6[재생성 준비<br/>온도 조정 +0.1 + 새 컨텍스트]
+    
+    %% 두 번째 시도 (개선된 컨텍스트)
     AG6 --> TRY2
-    TRY2 --> AG3B[🤖 LLM 재생성 답변<br/>Regenerated Answer<br/>temperature: 0.8]
+    TRY2 --> AG3B[🤖 LLM 재생성 답변<br/>Enhanced Context + temperature: 0.8]
     AG3B --> AG4B[🤖 LLM Reflection 평가<br/>5가지 기준으로 품질 평가]
     AG4B --> EVAL2[평가 결과 분석<br/>총점 / 50점]
     EVAL2 --> AG5B[2차 시도 완료<br/>최고 점수 답변 선택]
@@ -177,16 +195,14 @@ flowchart TD
     BEST --> GR
     
     %% 응답 완성
-    GR --> RESPONSE[최종 응답 반환<br/>- final_answer<br/>- generation_attempts<br/>- best_score<br/>- completion_reason]
+    GR --> RESPONSE[최종 응답 반환<br/>- final_answer<br/>- generation_attempts<br/>- best_score<br/>- search_enhancement_applied]
     
-    %% Reflection 평가 기준 (서브 플로우)
-    REFLECTION_DETAIL[🤖 Reflection 평가 기준<br/>정확성, 완성도, 명확성, 구조, 관련성<br/>각 0-10점, 총점 35점 이상 수락]
-    
-    %% 외부 LLM API 호출
+    %% 외부 API 호출
     AG3A -.->|🤖 LLM 호출| LLM_API[🤖 LiteLLM<br/>답변 생성]
     AG3B -.->|🤖 LLM 호출| LLM_API
     AG4A -.->|🤖 LLM 호출| LLM_API2[🤖 LiteLLM<br/>품질 평가]
     AG4B -.->|🤖 LLM 호출| LLM_API2
+    ENHANCED_SEARCH -.->|검색 재실행| SEARCH_API[🔍 SearchService<br/>향상된 검색]
     
     %% 스타일링
     classDef startClass fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
@@ -195,13 +211,15 @@ flowchart TD
     classDef decisionClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef endClass fill:#fce4ec,stroke:#c2185b,stroke-width:2px
     classDef apiClass fill:#fff8e1,stroke:#ff8f00,stroke-width:2px
+    classDef enhancedClass fill:#e8f5e8,stroke:#4caf50,stroke-width:3px
     
     class START,AG1,AG2,AG6,GR startClass
     class LOOP,TRY1,TRY2,EVAL1,EVAL2,SELECT_BEST,BEST processClass
     class AG3A,AG3B,AG4A,AG4B llmClass
-    class AG5A,AG5B,CHECK_RETRY decisionClass
+    class AG5A,AG5B,CHECK_RETRY,FB2 decisionClass
     class ACCEPT,RESPONSE endClass
-    class LLM_API,LLM_API2 apiClass
+    class LLM_API,LLM_API2,SEARCH_API apiClass
+    class FEEDBACK,FB1,FB3A,FB3B,FB3C,FB3D,FB3E,ENHANCED_SEARCH,NEW_CONTEXT enhancedClass
 ```
 
 ## 주요 특징
@@ -218,10 +236,9 @@ flowchart TD
 ### AI 답변 생성 시스템
 - **2단계 품질 보장**: 초안 생성 → Reflection 평가 → 재생성 (최대 2회)
 - **5차원 품질 평가**: 정확성, 완성도, 명확성, 구조, 관련성 종합 평가
-- **적응형 온도 조절**: 재생성 시 창의성 증가 (temperature +0.1)
-- **점수 기반 수락**: 35점 이상 자동 수락, 미만 시 재생성 또는 최고 점수 선택
+- **🆕 피드백 기반 재검색**: 35점 이하 시 문제점 분석 후 개선된 검색 수행
+- **적응형 검색 전략**: 관련성/정확성/완전성 등 문제점에 따른 맞춤형 재검색
 - **스트리밍 답변 생성**: 실시간 생성 과정 모니터링 및 취소 가능
-- **컨텍스트 활용**: 검색 결과를 구조화된 컨텍스트로 변환하여 답변 생성
 
 ### 시스템 아키텍처
 - **3계층 인덱스 구조**: media_meta, chunk_meta, elements로 체계적 관리
@@ -242,76 +259,22 @@ flowchart TD
 - **External APIs**: Embedding & Feature Extraction Services
 - **Deployment**: Docker + GitLab CI/CD
 
-## ⚖️ 가중치 시스템 (Weight System)
+## ⚖️ 가중치 시스템
 
-멀티모달 검색의 정확도와 관련성을 제어하는 핵심 시스템입니다. 모든 가중치는 환경변수로 설정 가능합니다.
+검색 정확도를 제어하는 핵심 시스템입니다. 환경변수로 설정 가능합니다.
 
-### 📊 Element Type별 가중치
+### Element Type별 가중치
+- **origin** (원본): 1.0
+- **paragraph** (본문): 0.8  
+- **summary** (요약): 0.6
+- **caption** (캡션): 0.3
 
-검색 대상이 되는 콘텐츠 타입별 중요도를 설정합니다:
+### 쿼리별 가중치
+- 첫 번째 쿼리: 1.0 (원본)
+- 두 번째 쿼리: 0.9 (확장)
+- 세 번째 쿼리: 0.8 (추가 확장)
 
-| Element Type | 설명 | 기본 가중치 | 환경변수 |
-|-------------|------|-----------|---------|
-| **origin** | 원본 이미지 | 1.0 | `WEIGHT_ORIGIN_DEFAULT` |
-| **paragraph** | 일반 문단 (본문) | 0.8 | `WEIGHT_PARAGRAPH_DEFAULT` |
-| **summary** | AI 요약문 | 0.6 | `WEIGHT_SUMMARY_DEFAULT` |
-| **caption** | 이미지 캡션 | 0.3 | `WEIGHT_CAPTION_DEFAULT` |
-
-### 🔗 쿼리별 가중치
-
-여러 확장 쿼리의 중요도를 조절합니다:
-
-```
-첫 번째 쿼리: 1.0 (원본 쿼리)
-두 번째 쿼리: 0.9 (확장 쿼리)
-세 번째 쿼리: 0.8 (추가 확장)
-```
-
-**설정**: `WEIGHT_QUERY_DECAY=0.1` (각 쿼리마다 0.1씩 감소)
-
-### 🎯 동적 가중치 계산
-
-쿼리 내용에 따라 가중치가 자동으로 조정됩니다:
-
-#### 텍스트 검색 예시
-```
-쿼리: "문서 요약해주세요"
-→ summary: 0.9 (요약 키워드 감지로 상승)
-→ paragraph: 0.6 (상대적으로 감소)
-```
-
-#### 이미지 검색 예시
-```
-쿼리: "헤드폰 이미지" + 이미지 첨부
-→ origin: 1.0 (이미지 자체가 최우선)
-→ caption: 0.2 (보조 정보)
-→ paragraph: 0.0 (검색에서 제외)
-```
-
-### 🔧 커스터마이징
-
-`.env` 파일에서 가중치를 조정할 수 있습니다:
-
-```env
-# 이미지 검색 강화
-WEIGHT_IMAGE_ORIGIN=1.0
-WEIGHT_IMAGE_CAPTION_BASE=0.5
-
-# 본문 중심 검색
-WEIGHT_TEXT_PARAGRAPH_DEFAULT=0.9
-WEIGHT_TEXT_SUMMARY_DEFAULT=0.4
-
-# 원본 쿼리 중심 (확장 효과 감소)
-WEIGHT_QUERY_DECAY=0.2
-```
-
-### 📈 성능 튜닝 가이드
-
-**정확도 향상**: 관련성 높은 타입의 가중치 증가
-**다양성 증가**: 여러 타입에 균등한 가중치 부여  
-**속도 개선**: 불필요한 타입은 0.0으로 제외
-
-> 💡 **자세한 설명**: `app/core/config.py`의 `WeightingConfig` 클래스 docstring 참조
+자세한 설정은 `app/core/config.py` 참조
 
 ## 🚀 빠른 시작
 
@@ -449,97 +412,21 @@ STORAGE_PATH=/storage
 - API 키는 절대 하드코딩하지 마세요
 
 ### 멀티모달 입력 지원
-
-시스템은 다음과 같은 입력 조합을 지원합니다:
 - 텍스트 + 이미지 + 비디오
-- 텍스트 + 비디오  
-- 텍스트 + 이미지
-- 단일 모달리티 입력도 가능
+- 텍스트 + 비디오/이미지
+- 단일 모달리티 입력
 
-### 적응형 쿼리 확장 예시
-
-**단순 쿼리 ("파이썬 튜토리얼")**:
-```
-적용 기법: Rewriting, Semantic Expansion
-분해 여부: ⏭️ 건너뜀 (단일 개념)
-의존성: has_dependency = false (독립적)
-확장 결과:
-  1. "Python 가이드" (재작성)
-  2. "파이썬 프로그래밍 학습" (의미 확장)
-실행 방식: 병렬 처리
-```
-
-**복합 독립 쿼리 ("파이썬 머신러닝과 데이터 시각화")**:
-```
-적용 기법: Decomposition, Rewriting, Semantic Expansion  
-분해 결과: "파이썬 머신러닝" + "데이터 시각화"
-의존성: has_dependency = false (각각 독립적)
-확장 결과:
-  1. "Python scikit-learn pandas" (기법별 통합)
-  2. "머신러닝 모델 시각화" (의미 확장)
-  3. "데이터 분석 차트 그래프" (관련 개념)
-실행 방식: 병렬 처리
-```
-
-**복합 의존 쿼리 ("최신 파이썬 라이브러리와 그 사용법")**:
-```
-적용 기법: Decomposition, Rewriting, Semantic Expansion
-분해 결과: "최신 파이썬 라이브러리" + "사용법"
-의존성: has_dependency = true (Query 2가 Query 1 결과 필요)
-확장 결과:
-  1. "최신 Python 라이브러리 2024" (1차 쿼리)
-  2. "파이썬 라이브러리 사용법" (2차 쿼리 - 컨텍스트로 보강될 예정)
-실행 방식: 순차적 처리
-  - Query 1 실행 → "FastAPI, Pandas, NumPy" 발견
-  - Query 2를 "파이썬 라이브러리 사용법 FastAPI Pandas NumPy"로 보강하여 실행
-```
-
-**구체적 쿼리 ("Matplotlib pyplot.show() 함수")**:
-```
-적용 기법: Rewriting만
-분해 여부: ⏭️ 건너뜀 (구체적 검색)
-의미 확장: ⏭️ 건너뜀 (정확한 매칭 중요)
-의존성: has_dependency = false (단일 쿼리)
-확장 결과:
-  1. "Matplotlib show 메서드" (표현 변경)
-실행 방식: 단일 실행
-```
+### 쿼리 확장 예시
+- **단순 쿼리**: "파이썬 튜토리얼" → "Python 가이드", "파이썬 프로그래밍 학습" (병렬 처리)
+- **복합 쿼리**: "파이썬 머신러닝과 시각화" → 두 개념으로 분해 후 병렬 검색
+- **의존 쿼리**: "최신 라이브러리와 사용법" → 1차 결과를 2차 쿼리에 반영하여 순차 처리
 
 ### OpenSearch 인덱스 설계
 
-#### 1. Media Meta 인덱스 (multimodal_rag_media)
-미디어 파일의 기본 정보와 메타데이터를 저장하여 필터링 및 집계 기능을 제공합니다.
-
-**주요 필드:**
-- `media_id`: 기본키
-- `media_type`: 비즈니스 도메인 분류 (video|audio|image|document)
-- `file_size_bytes`, `duration_seconds`: 기본 메타데이터
-- `width_pixels`, `height_pixels`: 해상도 정보
-- `language_primary`: 언어 필터링
-- `metadata_flat`: 확장 가능한 기술적 메타데이터 (flattened 타입)
-
-#### 2. Chunk Meta 인덱스 (multimodal_rag_chunk)
-미디어 내의 의미 단위 청크에 대한 구조적 정보를 제공합니다.
-
-**주요 필드:**
-- `chunk_id`: 기본키
-- `media_id`: 부모 미디어 참조
-- `chunk_seq`: 미디어 내 순서
-- `chunk_type`: 청크 유형 (overview|section|scene|figure|table)
-- `modality_set`: 포함된 모달리티 목록
-- `element_count`: 포함된 요소 개수
-
-#### 3. Element 인덱스 (multimodal_rag_element)
-실제 검색이 수행되는 핵심 인덱스로, 벡터 검색과 텍스트 검색을 모두 지원합니다.
-
-**주요 필드:**
-- `element_id`: 기본키
-- `chunk_id`, `media_id`: 계층 구조 참조
-- `modality`: 모달리티 구분 (text|image|video|audio)
-- `element_type`: 세부 유형 (summary|stt|caption|ocr|paragraph)
-- `content`: 검색 대상 내용 (BM25 검색용)
-- `embeddings`: 벡터 검색용 임베딩 (모달리티별)
-- `quality_scores`: 품질 점수 (리랭킹용)
+#### 3계층 인덱스 구조
+1. **Media Meta**: 미디어 파일 메타데이터 (`media_id`, `media_type`, 파일 정보)
+2. **Chunk Meta**: 청크 구조 정보 (`chunk_id`, `chunk_type`, 모달리티 정보)  
+3. **Element**: 검색 대상 요소 (`element_id`, `content`, `embeddings`, 품질 점수)
 
 ## 시스템 특징
 
@@ -563,37 +450,22 @@ STORAGE_PATH=/storage
 - **검색 로직 간소화**: 불필요한 리랭킹 과정 제거
 - **실시간 모니터링**: 외부 API 상태 및 응답 시간 추적
 
-## 최근 업데이트 (v0.3.0)
+## 주요 업데이트
 
-### AI 답변 생성 시스템 추가
-- **새로운 답변 생성 서비스**: 검색 결과를 기반으로 한 지능형 답변 생성
+### v0.3.1 - 피드백 기반 재검색 시스템
+- **🆕 품질 피드백 기반 재검색**: 35점 이하 답변 시 문제점 분석 후 개선된 검색 수행
+- **적응형 검색 전략**: 관련성/정확성/완전성 등 문제점별 맞춤형 재검색 로직
+- **향상된 답변 품질**: 이전 실패 사유를 반영한 컨텍스트로 2차 답변 생성
+
+### v0.3.0 - AI 답변 생성 시스템
 - **Reflection 기반 품질 관리**: 5차원 평가를 통한 답변 품질 보장
-- **최대 2회 재생성**: 초안 → 평가 → 재생성 프로세스로 답변 품질 향상
-- **스트리밍 답변 생성**: 실시간 생성 과정 모니터링 및 중간 취소 가능
-- **통합 스트리밍 서비스**: 검색과 답변 생성의 완전한 통합 처리
+- **최대 2회 재생성**: 초안 → 평가 → 재생성 프로세스
+- **스트리밍 답변 생성**: 실시간 생성 과정 모니터링
 
-### 이전 검색 시스템 개선사항 (v0.2.0)
-- **지능형 Query Decomposition**: LLM이 판단하는 순차/병렬 실행 방식으로 검색 정확도 대폭 향상
-- **컨텍스트 전파 시스템**: 이전 검색 결과를 활용한 다음 쿼리 보강으로 의존적 질의 처리 개선
-- **성능 최적화**: 로깅 볼륨 86% 감소, 불필요한 코드 350줄 제거
-- **시스템 안정성**: Circuit Breaker 패턴 및 재시도 메커니즘 도입
-- **보안 강화**: API 키 마스킹, 파일 시그니처 검증 개선
-- **코드 품질**: 미사용 코드 정리, 병렬 처리 최적화
-- **모니터링**: 외부 API 헬스체크 및 성능 추적
-
-### 새로운 기능
-- **멀티모달 답변 생성**: 검색된 텍스트, 이미지, 비디오 정보를 종합한 AI 답변
-- **품질 기반 재생성**: 35점 미만 답변 자동 재생성, 35점 이상 즉시 수락
-- **실시간 생성 모니터링**: 초안 생성 → 품질 평가 → 재생성 과정 실시간 추적
-- **답변 생성 API**: `/api/generation/multimodal` 엔드포인트 추가
-- **의존성 인식 검색**: "최신 기술과 그 활용법" 같은 복합 쿼리에서 1차 결과를 2차 쿼리에 반영
-- **적응형 실행 엔진**: 쿼리 특성에 따른 최적 실행 방식 자동 선택
-- **컨텍스트 추출 알고리즘**: 검색 결과에서 키워드, 엔티티, 개념 자동 추출
-
-### 삭제된 컴포넌트
-- `RRFReranker` 클래스: 불필요한 리랭킹 과정 제거
-- 미사용 임베딩 메서드들: 코드 복잡성 감소
-- 과도한 로깅: 핵심 정보만 유지하여 디버깅 효율성 향상
+### v0.2.0 - 지능형 검색 시스템  
+- **LLM 기반 쿼리 분해**: 의존성 인식 순차/병렬 실행
+- **컨텍스트 전파**: 이전 검색 결과 활용한 쿼리 보강
+- **성능 최적화**: 86% 로깅 감소, Circuit Breaker 패턴
 
 ---
 

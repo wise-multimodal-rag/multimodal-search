@@ -2,7 +2,6 @@
 
 검색과 선택적 답변 생성을 통합하여 처리하는 서비스
 """
-import asyncio
 import json
 import time
 from typing import Any, AsyncGenerator, Dict, List, Optional
@@ -22,17 +21,17 @@ class MultimodalStreamService:
         self.generation_service = generation_service
 
     async def process_multimodal_request(
-        self,
-        text_query: Optional[str],
-        processed_files: Dict[str, Any],
-        include_chunk_meta: bool = True,
-        include_media_meta: bool = True,
-        max_results: int = 10,
-        files_were_provided: bool = False,
-        generate_answer: bool = False,
-        temperature: float = 0.7,
-        max_retries: int = 2,
-        file_processing_errors: List[str] = None,
+            self,
+            text_query: Optional[str],
+            processed_files: Dict[str, Any],
+            include_chunk_meta: bool = True,
+            include_media_meta: bool = True,
+            max_results: int = 10,
+            files_were_provided: bool = False,
+            generate_answer: bool = False,
+            temperature: float = 0.7,
+            max_retries: int = 2,
+            file_processing_errors: List[str] = None,
     ) -> AsyncGenerator[str, None]:
         """멀티모달 요청을 처리하여 스트리밍 응답을 생성합니다.
         
@@ -62,12 +61,12 @@ class MultimodalStreamService:
             # 1단계: 멀티모달 검색 실행
             logger.info("🔍 Starting multimodal search")
             async for step_result in self.search_service.search_multimodal_stream(
-                text_query=text_query,
-                processed_files=processed_files,
-                include_chunk_meta=include_chunk_meta,
-                include_media_meta=include_media_meta,
-                max_results=max_results,
-                files_were_provided=files_were_provided,
+                    text_query=text_query,
+                    processed_files=processed_files,
+                    include_chunk_meta=include_chunk_meta,
+                    include_media_meta=include_media_meta,
+                    max_results=max_results,
+                    files_were_provided=files_were_provided,
             ):
                 # 검색 완료 단계에서 결과 저장
                 if step_result.get('step') == 'completed' and step_result.get('data'):
@@ -81,28 +80,30 @@ class MultimodalStreamService:
                 logger.info("🤖 Starting answer generation")
                 answer_step_count = 0
                 max_answer_steps = 50  # 무한루프 방지용 최대 스텝 수
-                
+
                 try:
                     # 직접 스트리밍 (태스크 생성 없이)
                     answer_completed = False
                     async for answer_step in self._generate_answer_stream(
-                        text_query, search_results, temperature, max_retries
+                            text_query, search_results, temperature, max_retries
                     ):
                         answer_step_count += 1
-                        logger.debug(f"📡 Answer step {answer_step_count}: {answer_step[:100] if isinstance(answer_step, str) else 'data'}")
-                        
+                        logger.debug(
+                            f"📡 Answer step {answer_step_count}: {answer_step[:100] if isinstance(answer_step, str) else 'data'}")
+
                         # answer_completed가 포함된 스텝인지 확인
                         if isinstance(answer_step, str) and 'answer_completed' in answer_step:
                             logger.info(f"🏁 STREAM Detected answer_completed in step {answer_step_count}")
                             answer_completed = True
                             yield answer_step
                             break
-                        
+
                         yield answer_step
-                        
+
                         # 무한루프 방지
                         if answer_step_count >= max_answer_steps:
-                            logger.error(f"🚨 Answer generation exceeded max steps ({max_answer_steps}), forcing termination")
+                            logger.error(
+                                f"🚨 Answer generation exceeded max steps ({max_answer_steps}), forcing termination")
                             # 강제 완료 신호 생성
                             forced_completion_data = {
                                 "step": "answer_completed",
@@ -118,16 +119,16 @@ class MultimodalStreamService:
                             yield f"data: {json.dumps(forced_completion_data, ensure_ascii=False)}\n\n"
                             answer_completed = True
                             break
-                            
+
                 except Exception as answer_error:
                     logger.error(f"🚨 Answer generation stream failed: {answer_error}")
                     error_data = {
-                        "step": "answer_generation_error", 
+                        "step": "answer_generation_error",
                         "message": f"답변 생성 중 오류 발생: {str(answer_error)}",
                         "timestamp": time.time()
                     }
                     yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
-                
+
                 logger.info(f"🏁 Answer generation completed after {answer_step_count} steps")
 
             # 스트림 완료 신호 (무조건 전송)
@@ -140,21 +141,27 @@ class MultimodalStreamService:
             yield f"data: {json.dumps(error_result, ensure_ascii=False)}\n\n"
 
     async def _generate_answer_stream(
-        self, 
-        text_query: Optional[str], 
-        search_results: Dict[str, Any], 
-        temperature: float, 
-        max_retries: int
+            self,
+            text_query: Optional[str],
+            search_results: Dict[str, Any],
+            temperature: float,
+            max_retries: int
     ) -> AsyncGenerator[str, None]:
         """답변 생성 과정을 스트리밍으로 처리"""
         try:
             # query_analysis에서 첨부 이미지 캡션 확인
-            query_analysis = search_results.get('query_analysis', {})
-            if 'attached_image_caption' in query_analysis:
-                logger.info(f"🖼️ [STREAM] Found attached_image_caption in search_results: {query_analysis['attached_image_caption'][:100]}...")
+            query_analysis = search_results.get('query_analysis', {}) or {}
+            if query_analysis and 'attached_image_caption' in query_analysis:
+                attached_caption = query_analysis.get('attached_image_caption', '')
+                if attached_caption:
+                    logger.info(
+                        f"🖼️ [STREAM] Found attached_image_caption in search_results: {attached_caption[:100]}...")
+                else:
+                    logger.info(f"🚫 [STREAM] attached_image_caption is empty")
             else:
-                logger.info(f"🚫 [STREAM] No attached_image_caption in search_results. query_analysis keys: {list(query_analysis.keys())}")
-            
+                logger.info(
+                    f"🚫 [STREAM] No attached_image_caption in search_results. query_analysis keys: {list(query_analysis.keys()) if query_analysis else 'None'}")
+
             # 검색 결과를 SearchResponse 형태로 변환
             search_response = SearchResponse(
                 query=text_query or "",
@@ -168,10 +175,11 @@ class MultimodalStreamService:
 
             # 실제 스트리밍 답변 생성
             async for step_data in self.generation_service.generate_answer_stream(
-                query=text_query or "",
-                search_results=search_response,
-                max_retries=max_retries,
-                temperature=temperature,
+                    query=text_query or "",
+                    search_results=search_response,
+                    max_retries=max_retries,
+                    temperature=temperature,
+                    search_service=self.search_service,
             ):
                 # 각 단계 결과를 SSE 형식으로 전송
                 yield f"data: {json.dumps(step_data, ensure_ascii=False)}\n\n"
@@ -179,12 +187,15 @@ class MultimodalStreamService:
             logger.info("✅ Answer generation completed")
 
         except Exception as gen_error:
+            import traceback
             logger.error(f"❌ Answer generation failed: {gen_error}")
+            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
             error_data = {
                 "step": "answer_generation_error",
                 "message": f"답변 생성 중 오류가 발생했습니다: {str(gen_error)}",
                 "timestamp": time.time(),
-                "error": str(gen_error)
+                "error": str(gen_error),
+                "traceback": traceback.format_exc()
             }
             yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
