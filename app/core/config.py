@@ -49,8 +49,7 @@ class Settings(BaseSettings):
 
 
 class WeightingConfig(BaseSettings):
-    """
-    검색 가중치 설정을 중앙화하는 설정 클래스
+    """검색 가중치 설정을 중앙화하는 설정 클래스
     
     멀티모달 검색 시스템의 모든 가중치 설정을 관리합니다.
     가중치는 검색 결과의 관련성과 우선순위를 결정하는 핵심 요소입니다.
@@ -181,12 +180,12 @@ class WeightingConfig(BaseSettings):
     def MODALITY_FALLBACK_WEIGHTS(self) -> Dict[str, Dict[str, float]]:
         return {
             "text": {
-                "paragraph": self.text_paragraph_default,
+                "paragraph": self.TEXT_PARAGRAPH_DEFAULT,
                 "summary": 0.5,  # 기본값 사용
             },
             "image": {
-                "origin": self.image_origin_weight,
-                "caption": self.image_caption_base_weight,
+                "origin": self.IMAGE_ORIGIN_WEIGHT,
+                "caption": self.IMAGE_CAPTION_BASE_WEIGHT,
             }
         }
 

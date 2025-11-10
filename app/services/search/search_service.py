@@ -106,7 +106,7 @@ class SearchService:
 
             # Step 3: 멀티모달 특징 추출
             extracted_features = await self.feature_extractor.extract_features(
-                modalities_data, query_analysis["selected_element_types"]
+                modalities_data, query_analysis.get("selected_element_types", []) if query_analysis else []
             )
 
             # Step 4: 임베딩 생성
@@ -118,7 +118,7 @@ class SearchService:
             
             # 가중치가 0인 element types는 검색에서 제외 (단, 캡션은 무조건 생성했지만 검색엔 가중치에 따라)
             filtered_element_types = self._filter_element_types_by_weight(
-                query_analysis["selected_element_types"], 
+                query_analysis.get("selected_element_types", []) if query_analysis else [], 
                 element_type_weights
             )
             
@@ -258,12 +258,12 @@ class SearchService:
             yield {"step": "feature_extraction", "message": "멀티모달 특징을 추출하고 있습니다...", "timestamp": time.time()}
 
             extracted_features = await self.feature_extractor.extract_features(
-                modalities_data, query_analysis["selected_element_types"]
+                modalities_data, query_analysis.get("selected_element_types", []) if query_analysis else []
             )
 
             # 텍스트 기반 element types 체크
             text_based_types = {"paragraph", "title", "heading", "list_item", "table_cell", "text"}
-            has_text_elements = bool(set(query_analysis["selected_element_types"]) & text_based_types)
+            has_text_elements = bool(set(query_analysis.get("selected_element_types", []) if query_analysis else []) & text_based_types)
 
             # 특징 추출 결과 데이터 준비 - 더 정확한 상태 구분
             feature_data = {
@@ -317,7 +317,7 @@ class SearchService:
                     text_feature_data = {
                         "source": "원본 텍스트 쿼리",
                         "query": text_query,
-                        "element_types": [t for t in query_analysis["selected_element_types"] if t in text_based_types],
+                        "element_types": [t for t in query_analysis.get("selected_element_types", []) if query_analysis and t in text_based_types],
                         "note": "별도 특징 추출 없이 원본 텍스트가 임베딩 생성에 사용됨",
                     }
 
@@ -450,12 +450,12 @@ class SearchService:
                 "timestamp": time.time(),
             }
 
-            expansion_result = query_analysis.get("expansion_analysis")
-            element_type_weights = query_analysis.get("element_type_weights")
+            expansion_result = query_analysis.get("expansion_analysis") if query_analysis else None
+            element_type_weights = query_analysis.get("element_type_weights") if query_analysis else None
             
             # 가중치가 0인 element types는 검색에서 제외 (단, 캡션은 무조건 생성했지만 검색엔 가중치에 따라)
             filtered_element_types = self._filter_element_types_by_weight(
-                query_analysis["selected_element_types"], 
+                query_analysis.get("selected_element_types", []) if query_analysis else [], 
                 element_type_weights
             )
             
@@ -480,7 +480,7 @@ class SearchService:
                 "index_used": "elements",
                 "query_type": "hybrid_search",
                 "search_fields": ["content"],
-                "element_types_filter": query_analysis["selected_element_types"],
+                "element_types_filter": query_analysis.get("selected_element_types", []) if query_analysis else [],
                 "has_vector_search": bool(embeddings),
                 "vector_modalities": list(embeddings.keys()) if embeddings else [],
                 "modality_matching": "Each element's modality matched with appropriate embedding" if embeddings else "N/A",
@@ -612,12 +612,12 @@ class SearchService:
                     "total_time_ms": total_time * 1000,
                     "processing_steps": 7,
                     "query_analysis": {
-                        "selected_element_types": query_analysis.get("selected_element_types", []),
-                        "confidence": query_analysis.get("confidence", 0.0),
+                        "selected_element_types": query_analysis.get("selected_element_types", []) if query_analysis else [],
+                        "confidence": query_analysis.get("confidence", 0.0) if query_analysis else 0.0,
                         "attached_image_caption": attached_image_caption,
                     },
                     "expanded_queries": [
-                        q.get("query", str(q)) if isinstance(q, dict) else str(q) for q in expanded_queries
+                        q.get("query", str(q)) if isinstance(q, dict) else str(q) for q in (expanded_queries or [])
                     ],
                 }
 

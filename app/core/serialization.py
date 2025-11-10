@@ -1,9 +1,10 @@
-"""
-공통 직렬화 유틸리티 클래스
+"""공통 직렬화 유틸리티 클래스
+
 여러 서비스에서 사용되는 직렬화 로직을 중앙화
 """
 import json
 from typing import Any, Dict, List, Optional, Union
+
 from loguru import logger
 
 
@@ -12,8 +13,7 @@ class SerializationUtils:
     
     @staticmethod
     def safely_serialize_feature(feature_value: Any) -> Any:
-        """
-        특징 값을 안전하게 직렬화 가능한 형태로 변환
+        """특징 값을 안전하게 직렬화 가능한 형태로 변환
         
         Args:
             feature_value: 직렬화할 특징 값
@@ -44,8 +44,7 @@ class SerializationUtils:
     
     @staticmethod
     def safely_serialize_model(model: Any) -> Dict[str, Any]:
-        """
-        Pydantic 모델을 안전하게 직렬화
+        """Pydantic 모델을 안전하게 직렬화
         
         Args:
             model: 직렬화할 Pydantic 모델
@@ -68,8 +67,7 @@ class SerializationUtils:
     
     @staticmethod
     def safely_serialize_results(results: List[Any], max_size_mb: float = 5.0) -> List[Dict[str, Any]]:
-        """
-        결과 리스트를 안전하게 직렬화하고 크기 제한 적용
+        """결과 리스트를 안전하게 직렬화하고 크기 제한 적용
         
         Args:
             results: 직렬화할 결과 리스트
@@ -126,8 +124,7 @@ class SerializationUtils:
     
     @staticmethod
     def sanitize_element_for_display(element: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        표시용 요소 데이터 정리 (embedding 필드 요약)
+        """표시용 요소 데이터 정리 (embedding 필드 요약)
         
         Args:
             element: 정리할 요소 딕셔너리
@@ -159,9 +156,8 @@ class SerializationUtils:
         return sanitized
     
     @staticmethod
-    def safe_json_dumps(obj: Any, indent: int = 2, default_handler: callable = str) -> str:
-        """
-        안전한 JSON 문자열 변환
+    def safe_json_dumps(obj: Any, indent: int = 2, default_handler=None) -> str:
+        """안전한 JSON 문자열 변환
         
         Args:
             obj: 변환할 객체
@@ -172,6 +168,8 @@ class SerializationUtils:
             JSON 문자열
         """
         try:
+            if default_handler is None:
+                default_handler = str
             return json.dumps(obj, indent=indent, default=default_handler, ensure_ascii=False)
         except Exception as e:
             logger.error(f"JSON serialization failed: {e}")
@@ -183,8 +181,7 @@ class SerializationUtils:
     
     @staticmethod
     def clean_incomplete_json(json_str: str) -> str:
-        """
-        불완전한 JSON 문자열을 정리
+        """불완전한 JSON 문자열을 정리
         
         Args:
             json_str: 정리할 JSON 문자열

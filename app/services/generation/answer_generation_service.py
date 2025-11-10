@@ -241,7 +241,7 @@ class AnswerGenerationService:
 
     async def _get_captions_for_origins(self, chunk_ids: List[str], existing_caption_chunk_ids: set = None) -> Dict[
         str, str]:
-        """origin element들의 chunk_id로 해당하는 caption을 OpenSearch에서 검색 (중복 제외)"""
+        """Origin element들의 chunk_id로 해당하는 caption을 OpenSearch에서 검색 (중복 제외)"""
         if not chunk_ids:
             return {}
 
@@ -267,10 +267,13 @@ class AnswerGenerationService:
 
             logger.info(f"🔍 Searching captions for {len(chunk_ids)} origin chunks")
 
-            response = await opensearch_service.client.search(
-                index=opensearch_service.elements_index,
-                body=query
-            )
+            if opensearch_service.client:
+                response = await opensearch_service.client.search(
+                    index=opensearch_service.elements_index,
+                    body=query
+                )
+            else:
+                response = None
 
             # chunk_id별로 caption 매핑 (이미 검색 결과에 포함된 caption은 제외)
             captions = {}

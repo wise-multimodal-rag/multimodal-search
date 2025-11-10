@@ -156,7 +156,6 @@ class OpenSearchService:
         image_caption_tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Build hybrid search query combining text and vector search with element_type weights"""
-        
         # element_type별 가중치가 있으면 가중치 기반 쿼리 구성, 없으면 기존 방식
         if element_type_weights:
             # 가중치 기반 element_type 필터링 (should 쿼리로 변경)
@@ -432,9 +431,9 @@ class OpenSearchService:
     def _log_search_query(self, search_query: Dict[str, Any], embeddings: Optional[Dict[str, List[float]]], 
                          text_query: str, element_types: List[str], element_type_weights: Optional[Dict[str, float]]):
         """Log the complete OpenSearch query with embedding descriptions"""
-        import json
         import copy
-        
+        import json
+
         # Create a copy of the query for logging
         log_query = copy.deepcopy(search_query)
         
