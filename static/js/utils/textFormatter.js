@@ -20,11 +20,55 @@ class TextFormatter {
     }
     
     /**
+     * 원문 텍스트 표시 (HTML 이스케이프 및 줄바꿈만 처리)
+     * @param {string} text - 원문 텍스트
+     * @returns {string} HTML 안전한 원문 텍스트
+     */
+    static formatRawText(text) {
+        if (!text) return '';
+        
+        // HTML 특수문자 이스케이프 후 줄바꿈만 <br>로 변환
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;')
+            .replace(/\n/g, '<br>');
+    }
+    
+    /**
      * 마크다운 렌더링 (Preview 모드용)
      * @param {string} text - 마크다운 텍스트
      * @returns {string} HTML로 렌더링된 마크다운
      */
     static renderMarkdown(text) {
+        if (!text) return '';
+        
+        // marked.js 라이브러리가 로드되었는지 확인
+        if (typeof marked !== 'undefined') {
+            try {
+                // marked.js를 사용한 마크다운 렌더링
+                const html = marked.parse(text);
+                console.log('✅ Markdown rendered with marked.js');
+                return html;
+            } catch (error) {
+                console.warn('⚠️ marked.js failed, falling back to custom renderer:', error);
+            }
+        } else {
+            console.warn('⚠️ marked.js not loaded, using custom renderer');
+        }
+        
+        // Fallback: 기존 커스텀 렌더러 사용
+        return this.renderMarkdownCustom(text);
+    }
+    
+    /**
+     * 커스텀 마크다운 렌더러 (fallback용)
+     * @param {string} text - 마크다운 텍스트
+     * @returns {string} HTML로 렌더링된 마크다운
+     */
+    static renderMarkdownCustom(text) {
         if (!text) return '';
         
         // 텍스트를 단락별로 분리
@@ -123,3 +167,33 @@ class TextFormatter {
 
 // 전역 접근을 위한 export
 window.TextFormatter = TextFormatter;
+
+// 가중치 상세보기 토글 함수
+window.toggleWeightDetails = function(button) {
+    const table = button.nextElementSibling;
+    const isVisible = table.style.display !== 'none';
+    
+    if (isVisible) {
+        table.style.display = 'none';
+        button.innerHTML = '📊 전체 가중치 상세보기 ▼';
+    } else {
+        table.style.display = 'block';
+        button.innerHTML = '📊 전체 가중치 상세보기 ▲';
+    }
+};
+
+// 디버그 정보 토글 함수
+window.toggleDebugInfo = function(button) {
+    const content = button.nextElementSibling;
+    const isVisible = content.style.display !== 'none';
+    
+    if (isVisible) {
+        content.style.display = 'none';
+        button.innerHTML = '🔧 디버그 정보 ▼';
+    } else {
+        content.style.display = 'block';
+        button.innerHTML = '🔧 디버그 정보 ▲';
+    }
+};
+
+console.log('✅ TextFormatter and toggle functions loaded');

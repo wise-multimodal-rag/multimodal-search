@@ -6,7 +6,7 @@
     <title>Multimodal RAG</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔍</text></svg>">
     <link rel="stylesheet" href="/static/css/search.css?v=34.0">
-    <link rel="stylesheet" href="/static/css/streaming.css?v=30.0">
+    <link rel="stylesheet" href="/static/css/streaming.css?v=32.0">
 </head>
 <body>
 <div class="header" style="text-align: center; margin-bottom: 30px; padding-top: 40px;">
@@ -69,7 +69,7 @@
             <div class="option-group">
                 <div class="settings-row">
                     <label>결과 수:</label>
-                    <input type="number" id="maxResults" value="5" min="1" max="50" style="width: 70px;">
+                    <input type="number" id="maxResults" value="10" min="1" max="50" style="width: 70px;">
                 </div>
             </div>
 
@@ -163,9 +163,12 @@
 <script src="/static/js/state/stateManager.js?v=1.0"></script>
 <script src="/static/js/state/stateHelpers.js?v=1.0"></script>
 
+<!-- External Libraries -->
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+
 <!-- Utilities (dependencies first) -->
 <script src="/static/js/utils/dataUtils.js?v=1.0"></script>
-<script src="/static/js/utils/textFormatter.js?v=1.0"></script>
+<script src="/static/js/utils/textFormatter.js?v=3.0"></script>
 <script src="/static/js/utils/metadataCreator.js?v=1.0"></script>
 <script src="/static/js/utils/searchDataProcessor.js?v=1.0"></script>
 
@@ -180,12 +183,165 @@
 <!-- Streaming modules -->
 <script src="/static/js/streaming/progressManager.js?v=5.0"></script>
 <script src="/static/js/streaming/streamingHandler.js?v=5.0"></script>
-<script src="/static/js/streaming/searchStepRenderer.js?v=5.0"></script>
-<script src="/static/js/streaming/searchResultRenderer.js?v=5.0"></script>
+<script src="/static/js/streaming/searchStepRenderer.js?v=13.0"></script>
+<script src="/static/js/streaming/searchResultRenderer.js?v=13.0"></script>
+<script>
+// EMERGENCY IMAGE FIX - 임시 이미지 표시 해결책
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🖼️ Origin image display handler loaded');
+    
+    // MutationObserver로 DOM 변경 감지
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList') {
+                // 새로 추가된 검색 결과에서 origin 타입 찾기
+                const searchCards = document.querySelectorAll('.search-result-card');
+                searchCards.forEach(function(card, index) {
+                    const typeElement = card.querySelector('.search-result-type');
+                    if (typeElement && typeElement.textContent.includes('origin')) {
+                        // 이미 처리된 카드인지 확인 (무한 루프 방지)
+                        if (card.classList.contains('emergency-processed')) {
+                            console.log('⏭️ SKIPPING ALREADY PROCESSED CARD:', index);
+                            return;
+                        }
+                        
+                        console.log('🎯 FOUND ORIGIN CARD:', index);
+                        
+                        // 처리됨 표시
+                        card.classList.add('emergency-processed');
+                        
+                        const contentDiv = card.querySelector('.search-result-content');
+                        if (contentDiv) {
+                            console.log('🔍 CONTENT DIV FOUND:', contentDiv);
+                            console.log('🔍 CONTENT DIV HTML:', contentDiv.innerHTML);
+                            
+                            // content-text에서 URL 추출
+                            const contentText = contentDiv.querySelector('.content-text');
+                            console.log('🔍 CONTENT TEXT ELEMENT:', contentText);
+                            
+                            if (contentText) {
+                                console.log('🔍 CONTENT TEXT CONTENT:', contentText.textContent);
+                                // 더 관대한 정규식 - 한글, 특수문자, 공백 모두 허용
+                                let urlMatch = contentText.textContent.match(/http[s]?:\/\/.*\.(?:png|jpg|jpeg|gif|webp)/i);
+                                console.log('🔍 URL MATCH RESULT (flexible):', urlMatch);
+                                
+                                // 첫 번째 정규식이 실패하면 더 간단한 방식 시도
+                                if (!urlMatch) {
+                                    const text = contentText.textContent.trim();
+                                    console.log('🔍 Trying simple URL detection on:', text);
+                                    if (text.includes('http') && (text.includes('.png') || text.includes('.jpg') || text.includes('.jpeg') || text.includes('.gif') || text.includes('.webp'))) {
+                                        urlMatch = [text]; // 전체 텍스트를 URL로 사용
+                                        console.log('🔍 Simple detection success:', urlMatch);
+                                    }
+                                }
+                                
+                                if (urlMatch) {
+                                    const imageUrl = urlMatch[0];
+                                    console.log('🖼️ EXTRACTED IMAGE URL:', imageUrl);
+                                    
+                                    // 기존 content-text 숨기고 이미지 추가
+                                    contentText.style.display = 'none';
+                                    
+                                    const imageHtml = `
+                                        <div class="image-preview" style="margin: 15px 0;">
+                                            <img src="${imageUrl}" alt="Origin Image" 
+                                                 class="result-image"
+                                                 style="max-width: 100%; height: auto; display: block; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"
+                                                 onload="console.log('✅ Image loaded successfully:', this.src)"
+                                                 onerror="console.error('❌ Image load failed:', this.src); this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                            <div class="image-error" style="display: none; padding: 15px; background: #f8f9fa; border: 1px dashed #ccc; text-align: center; color: #666; border-radius: 8px;">
+                                                ❌ 이미지를 불러올 수 없습니다<br>
+                                                <small style="word-break: break-all; font-size: 11px;">${imageUrl}</small><br><br>
+                                                <a href="${imageUrl}" target="_blank" style="color: #007bff; text-decoration: none;">
+                                                    🔗 새 탭에서 열기
+                                                </a>
+                                            </div>
+                                        </div>
+                                    `;
+                                    
+                                    // Observer 일시 중단
+                                    observer.disconnect();
+                                    
+                                    contentDiv.insertAdjacentHTML('afterbegin', imageHtml);
+                                    console.log('✅ Origin image inserted successfully');
+                                    
+                                    // Observer 재시작 (잠시 후)
+                                    setTimeout(function() {
+                                        observer.observe(resultsContainer, { childList: true, subtree: true });
+                                        console.log('🔄 OBSERVER RESTARTED');
+                                    }, 100);
+                                }
+                            } else {
+                                // content-text가 없으면 전체 contentDiv에서 URL 찾기
+                                console.log('⚠️ NO CONTENT-TEXT, SEARCHING IN ENTIRE CONTENT DIV');
+                                const allText = contentDiv.textContent || contentDiv.innerText;
+                                console.log('🔍 ALL CONTENT TEXT:', allText);
+                                
+                                // 더 관대한 정규식 사용
+                                let urlMatch = allText.match(/http[s]?:\/\/.*\.(?:png|jpg|jpeg|gif|webp)/i);
+                                console.log('🔍 URL MATCH IN ALL TEXT (flexible):', urlMatch);
+                                
+                                // 첫 번째 정규식이 실패하면 더 간단한 방식 시도
+                                if (!urlMatch) {
+                                    if (allText.includes('http') && (allText.includes('.png') || allText.includes('.jpg') || allText.includes('.jpeg') || allText.includes('.gif') || allText.includes('.webp'))) {
+                                        urlMatch = [allText.trim()]; // 전체 텍스트를 URL로 사용
+                                        console.log('🔍 Simple detection in all text success:', urlMatch);
+                                    }
+                                }
+                                
+                                if (urlMatch) {
+                                    const imageUrl = urlMatch[0];
+                                    console.log('🖼️ EXTRACTED IMAGE URL FROM ALL TEXT:', imageUrl);
+                                    
+                                    const imageHtml = `
+                                        <div class="image-preview" style="margin: 15px 0;">
+                                            <img src="${imageUrl}" alt="Origin Image" 
+                                                 class="result-image"
+                                                 style="max-width: 100%; height: auto; display: block; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"
+                                                 onload="console.log('✅ Image loaded successfully:', this.src)"
+                                                 onerror="console.error('❌ Image load failed:', this.src); this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                            <div class="image-error" style="display: none; padding: 15px; background: #f8f9fa; border: 1px dashed #ccc; text-align: center; color: #666; border-radius: 8px;">
+                                                ❌ 이미지를 불러올 수 없습니다<br>
+                                                <small style="word-break: break-all; font-size: 11px;">${imageUrl}</small><br><br>
+                                                <a href="${imageUrl}" target="_blank" style="color: #007bff; text-decoration: none;">
+                                                    🔗 새 탭에서 열기
+                                                </a>
+                                            </div>
+                                        </div>
+                                    `;
+                                    
+                                    // Observer 일시 중단
+                                    observer.disconnect();
+                                    
+                                    contentDiv.insertAdjacentHTML('afterbegin', imageHtml);
+                                    console.log('✅ Origin image inserted successfully (from all text)');
+                                    
+                                    // Observer 재시작 (잠시 후)
+                                    setTimeout(function() {
+                                        observer.observe(resultsContainer, { childList: true, subtree: true });
+                                        console.log('🔄 OBSERVER RESTARTED FROM ALL TEXT');
+                                    }, 100);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    });
+    
+    // 검색 결과 컨테이너 관찰 시작
+    const resultsContainer = document.getElementById('searchResultsContent');
+    if (resultsContainer) {
+        observer.observe(resultsContainer, { childList: true, subtree: true });
+        console.log('👀 OBSERVER STARTED ON:', resultsContainer);
+    }
+});
+</script>
 
 <!-- Core controllers -->
 <script src="/static/js/core/uiController.js?v=16.0"></script>
-<script src="/static/js/core/streamingSearch.js?v=66.0"></script>
+<script src="/static/js/core/streamingSearch.js?v=67.0"></script>
 <script src="/static/js/core/search.js?v=106.0"></script>
 <script>
     // 서버 설정 로드 함수

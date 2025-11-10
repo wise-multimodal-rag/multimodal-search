@@ -175,21 +175,80 @@ class SearchDataProcessor {
         return null;
     }
     
-    // Element가 이미지인지 판단
+    // Element가 이미지인지 판단 (content_type과 modality 기반)
     static isImageElement(element) {
         if (!element) return false;
         
-        // modality가 image이고 content가 URL인 경우
+        // content_type이 uri이고 modality가 image인 경우
+        if (element.content_type === 'uri' && element.modality === 'image') {
+            return true;
+        }
+        
+        // 기존 방식: modality가 image이고 content가 URL인 경우
         if (element.modality === 'image' && this.detectImageUrl(element.content)) {
             return true;
         }
         
-        // element_type이 origin이고 content가 이미지 URL인 경우
+        // 기존 방식: element_type이 origin이고 content가 이미지 URL인 경우
         if (element.element_type === 'origin' && this.detectImageUrl(element.content)) {
             return true;
         }
         
         return false;
+    }
+    
+    // Element가 비디오인지 판단 (content_type과 modality 기반)
+    static isVideoElement(element) {
+        if (!element) return false;
+        
+        // content_type이 uri이고 modality가 video인 경우
+        if (element.content_type === 'uri' && element.modality === 'video') {
+            return true;
+        }
+        
+        // element_type이 clip이나 segment이고 content가 비디오 URL인 경우
+        if (['clip', 'segment', 'keyframe', 'thumbnail'].includes(element.element_type) && 
+            element.modality === 'video') {
+            return true;
+        }
+        
+        return false;
+    }
+    
+    // 미디어 URL 감지 (이미지와 비디오 모두)
+    static detectMediaUrl(content) {
+        if (!content || typeof content !== 'string') return null;
+        
+        try {
+            // HTTP/HTTPS URL 패턴 매칭 (이미지와 비디오 확장자)
+            const mediaPattern = /https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|bmp|webp|svg|mp4|webm|ogg|avi|mov|wmv|flv|mkv)(\?[^\s]*)?$/i;
+            const match = content.match(mediaPattern);
+            
+            if (match) {
+                return content.trim();
+            }
+            
+            // 특정 도메인 패턴 (minio storage 등)
+            const minioPattern = /https?:\/\/[^\/]+\.minio\.[^\/]+\/[^\/]+\/[^\/]+\/[^\/]+\/[a-f0-9]+\.(jpg|jpeg|png|gif|bmp|webp|svg|mp4|webm|ogg|avi|mov|wmv|flv|mkv)/i;
+            const minioMatch = content.match(minioPattern);
+            
+            if (minioMatch) {
+                return content.trim();
+            }
+            
+            // internal.example.com 도메인 패턴
+            const labsPattern = /https?:\/\/[^\/]*internal\.example\.com[^\/]*\/[^\s]+\.(jpg|jpeg|png|gif|bmp|webp|svg|mp4|webm|ogg|avi|mov|wmv|flv|mkv)/i;
+            const labsMatch = content.match(labsPattern);
+            
+            if (labsMatch) {
+                return content.trim();
+            }
+            
+        } catch (e) {
+            console.warn('Failed to detect media URL:', e);
+        }
+        
+        return null;
     }
 }
 

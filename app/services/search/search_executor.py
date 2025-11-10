@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
+from app.core.config import weighting_config
 from app.services.analysis.query_analyzer import QueryAnalyzer
 from app.services.search.opensearch_service import OpenSearchService
 
@@ -21,6 +22,8 @@ class SearchExecutor:
         embeddings: Dict[str, List[float]],
         max_results: int,
         expansion_result: Optional[Dict[str, Any]] = None,
+        element_type_weights: Optional[Dict[str, float]] = None,
+        image_caption_tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """확장 쿼리 검색 실행 (순차/병렬 처리 최적화)"""
         # LLM 결과에서 의존성 확인
@@ -29,12 +32,12 @@ class SearchExecutor:
         if has_dependency:
             logger.debug(f"Sequential search execution for {len(expanded_queries)} dependent queries")
             all_search_results = await self._execute_sequential_search(
-                expanded_queries, selected_element_types, embeddings, max_results, expansion_result
+                expanded_queries, selected_element_types, embeddings, max_results, expansion_result, element_type_weights, image_caption_tags
             )
         else:
             logger.debug(f"Parallel search execution for {len(expanded_queries)} independent queries")
             all_search_results = await self._execute_parallel_search(
-                expanded_queries, selected_element_types, embeddings, max_results
+                expanded_queries, selected_element_types, embeddings, max_results, element_type_weights, image_caption_tags
             )
 
         return self._process_search_results(all_search_results, expanded_queries, max_results)
@@ -45,11 +48,13 @@ class SearchExecutor:
         selected_element_types: List[str],
         embeddings: Dict[str, List[float]],
         max_results: int,
+        element_type_weights: Optional[Dict[str, float]] = None,
+        image_caption_tags: Optional[List[str]] = None,
     ) -> List[Any]:
         """기존 병렬 검색 실행"""
         search_tasks = [
             self._execute_single_query_search(
-                expanded_query, i, len(expanded_queries), selected_element_types, embeddings, max_results
+                expanded_query, i, len(expanded_queries), selected_element_types, embeddings, max_results, element_type_weights, image_caption_tags
             )
             for i, expanded_query in enumerate(expanded_queries)
         ]
@@ -64,6 +69,8 @@ class SearchExecutor:
         embeddings: Dict[str, List[float]],
         max_results: int,
         expansion_result: Optional[Dict[str, Any]],
+        element_type_weights: Optional[Dict[str, float]] = None,
+        image_caption_tags: Optional[List[str]] = None,
     ) -> List[Any]:
         """순차적 의존성 처리를 위한 검색"""
         accumulated_context = {}
@@ -82,7 +89,7 @@ class SearchExecutor:
 
             # 단일 쿼리 검색 실행
             result = await self._execute_single_query_search(
-                enriched_query, i, len(expanded_queries), selected_element_types, embeddings, max_results
+                enriched_query, i, len(expanded_queries), selected_element_types, embeddings, max_results, element_type_weights, image_caption_tags
             )
 
             if not isinstance(result, Exception) and result is not None:
@@ -105,9 +112,11 @@ class SearchExecutor:
         selected_element_types: List[str],
         embeddings: Dict[str, List[float]],
         max_results: int,
+        element_type_weights: Optional[Dict[str, float]] = None,
+        image_caption_tags: Optional[List[str]] = None,
     ) -> Any:
         """단일 쿼리 검색 실행"""
-        weight = 1.0 - (query_index * 0.1)  # 0.1씩 감소
+        weight = 1.0 - (query_index * weighting_config.QUERY_WEIGHT_DECAY)  # 설정값에 따라 감소
         search_size = max_results // total_queries + (max_results % total_queries if query_index == 0 else 0)
 
         search_results = await self.opensearch_service.search_elements(
@@ -117,10 +126,14 @@ class SearchExecutor:
             size=search_size,
             from_=0,
             filters=None,
+            element_type_weights=element_type_weights,
+            image_caption_tags=image_caption_tags,
         )
 
-        # 가중치 적용
+        # 쿼리별 가중치 적용
         self._apply_query_weight(search_results, weight, expanded_query)
+        
+        # element_type별 가중치는 OpenSearch에서 이미 적용됨 (후처리 불필요)
 
         return search_results
 
@@ -132,8 +145,9 @@ class SearchExecutor:
                 if isinstance(result, dict) and "score" in result:
                     result["score"] *= weight  # 가중치 적용
                     result["query_used"] = expanded_query  # 어떤 쿼리로 검색됐는지 기록
-                    result["weight_applied"] = weight  # 적용된 가중치 기록
+                    result["query_weight_applied"] = weight  # 적용된 쿼리 가중치 기록
                     weighted_count += 1
+
 
     def _process_search_results(
         self, all_search_results: List[Any], expanded_queries: List[str], max_results: int

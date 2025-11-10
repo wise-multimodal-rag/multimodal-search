@@ -17,6 +17,7 @@ class ImageFeatures(BaseModel):
 
     caption: Optional[str] = None
     objects: Optional[List[Dict[str, Any]]] = None
+    tags: Optional[List[str]] = None
 
 
 class VideoFeatures(BaseModel):

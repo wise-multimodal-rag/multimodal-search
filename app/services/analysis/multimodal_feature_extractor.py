@@ -97,13 +97,8 @@ class MultimodalFeatureExtractor:
             return None
 
     async def _extract_image_features(self, image_data: Dict[str, Any], element_types: List[str]) -> Optional[ImageFeatures]:
-        """이미지 모달리티에서 특징 추출 - element_type별로 개별 처리"""
+        """이미지 모달리티에서 특징 추출 - 이미지가 첨부되면 무조건 캡션 생성"""
         try:
-            # 이미지 관련 element_types가 선택된 경우에만 분석 수행 (현재 활성: caption, origin)
-            if not any(t in element_types for t in ["caption", "origin"]):
-                # 비활성화된 타입: "cropped", "detected_object", "chart", "diagram"
-                return None
-
             if "base64_data" not in image_data:
                 return None
 
@@ -112,28 +107,29 @@ class MultimodalFeatureExtractor:
 
             image_bytes = base64.b64decode(base64_image)
 
-            # element_type별로 개별 feature 추출
+            # 이미지가 첨부되면 무조건 캡션 생성 (검색 사용 여부는 별도 결정)
             caption_text = None
-            origin_data = None
+            caption_tags = None
+            logger.info(f"🖼️ Image attached - generating caption unconditionally")
+            
+            caption_result = await self.embedding_client.generate_image_caption(image_bytes)
+            if caption_result and "caption" in caption_result:
+                caption_text = caption_result["caption"]
+                logger.info(f"✅ Image caption generated: {caption_text[:100]}...")
+                
+                # Extract tags if available
+                if "tags" in caption_result:
+                    caption_tags = caption_result["tags"]
+                    logger.info(f"🏷️ Image caption tags extracted: {caption_tags}")
+            else:
+                logger.warning(f"🚫 Image caption generation failed or returned no caption")
 
-            # caption: 이미지 캡션 생성
-            if "caption" in element_types:
-                caption_result = await self.embedding_client.generate_image_caption(image_bytes)
-                if caption_result and "caption" in caption_result:
-                    caption_text = caption_result["caption"]
-
-            # origin: OpenSearch에서 검색용이므로 별도 임베딩 불필요 (원본 image 임베딩 사용)
-            # if "origin" in element_types:
-            #     origin_data = base64_image  # 원본 base64 데이터
-
-            # 비활성화된 기능들:
-            # 객체 탐지 (detected_object), 잘린 이미지 (cropped), 차트 (chart), 다이어그램 (diagram)
-
-            # 추출된 feature가 있는 경우만 반환
+            # 캡션이 생성된 경우 ImageFeatures 반환
             if caption_text:
                 return ImageFeatures(
                     caption=caption_text,
-                    objects=None,  # origin은 원본 image와 동일하므로 중복 제거
+                    objects=None,
+                    tags=caption_tags,
                 )
             return None
 
@@ -248,75 +244,9 @@ class MultimodalFeatureExtractor:
             return None
 
     async def _analyze_video_with_llm(self, base64_video: str, content_type: str) -> Optional[Dict[str, Any]]:
-        """LLM을 통한 비디오 분석"""
-        try:
-            VIDEO_ANALYSIS_PROMPT = """이 비디오를 분석하여 다음 정보를 JSON 형식으로 제공하세요:
-{
-    "description": "비디오에 대한 간단한 설명",
-    "key_scenes": ["장면1 설명", "장면2 설명"],
-    "detected_objects": ["객체1", "객체2"],
-    "activities": ["활동1", "활동2"],
-    "dominant_colors": ["색상1", "색상2"],
-    "estimated_duration": "추정 길이(초)"
-}"""
-
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": VIDEO_ANALYSIS_PROMPT},
-                        {"type": "video_url", "video_url": {"url": f"data:{content_type};base64,{base64_video}"}},
-                    ],
-                }
-            ]
-
-            response = await self.llm_client.complete(messages, temperature=0.3, max_tokens=1000)
-            if response:
-                import json
-
-                try:
-                    return json.loads(response.strip())
-                except json.JSONDecodeError:
-                    return {"description": response, "analysis_type": "text_only"}
-            return None
-
-        except Exception as e:
-            logger.error(f"Video analysis with LLM failed: {e}")
-            return None
+        """LLM을 통한 비디오 분석 - llm_client로 통합됨"""
+        return await self.llm_client.analyze_video_features(base64_video, content_type)
 
     async def _analyze_audio_with_llm(self, base64_audio: str, content_type: str) -> Optional[Dict[str, Any]]:
-        """LLM을 통한 오디오 분석"""
-        try:
-            AUDIO_ANALYSIS_PROMPT = """이 오디오를 분석하여 다음 정보를 JSON 형식으로 제공하세요:
-{
-    "transcription": "음성 내용 (있다면)",
-    "type": "speech|music|sound_effect|ambient|mixed",
-    "detected_sounds": ["소리1", "소리2"],
-    "language": "언어 (있다면)",
-    "quality": "음질 평가",
-    "duration_estimate": "추정 길이(초)"
-}"""
-
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": AUDIO_ANALYSIS_PROMPT},
-                        {"type": "audio_url", "audio_url": {"url": f"data:{content_type};base64,{base64_audio}"}},
-                    ],
-                }
-            ]
-
-            response = await self.llm_client.complete(messages, temperature=0.3, max_tokens=1000)
-            if response:
-                import json
-
-                try:
-                    return json.loads(response.strip())
-                except json.JSONDecodeError:
-                    return {"description": response, "analysis_type": "text_only"}
-            return None
-
-        except Exception as e:
-            logger.error(f"Audio analysis with LLM failed: {e}")
-            return None
+        """LLM을 통한 오디오 분석 - llm_client로 통합됨"""
+        return await self.llm_client.analyze_audio_features(base64_audio, content_type)

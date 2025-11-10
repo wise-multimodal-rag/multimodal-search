@@ -1,9 +1,10 @@
 import time
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import UploadFile
 from loguru import logger
 
+from app.core.config import weighting_config
 from app.models.opensearch import SearchResponse
 from app.services.analysis.multimodal_feature_extractor import \
     MultimodalFeatureExtractor
@@ -79,7 +80,7 @@ class SearchService:
         text_file: Optional[UploadFile] = None,
         include_chunk_meta: bool = True,
         include_media_meta: bool = True,
-        max_results: int = 5,
+        max_results: int = 10,
     ) -> SearchResponse:
         """멀티모달 검색 오케스트레이션"""
         start_time = self._get_current_time_ms()
@@ -105,7 +106,7 @@ class SearchService:
 
             # Step 3: 멀티모달 특징 추출
             extracted_features = await self.feature_extractor.extract_features(
-                modalities_data, query_analysis["selected_element_types"]
+                modalities_data, query_analysis.get("selected_element_types", []) if query_analysis else []
             )
 
             # Step 4: 임베딩 생성
@@ -113,8 +114,22 @@ class SearchService:
 
             # Step 5: 확장 쿼리 검색 실행 (SearchExecutor 사용)
             expansion_result = query_analysis.get("expansion_analysis") if "expansion_analysis" in query_analysis else None
+            element_type_weights = query_analysis.get("element_type_weights")
+            
+            # 가중치가 0인 element types는 검색에서 제외 (단, 캡션은 무조건 생성했지만 검색엔 가중치에 따라)
+            filtered_element_types = self._filter_element_types_by_weight(
+                query_analysis.get("selected_element_types", []) if query_analysis else [], 
+                element_type_weights
+            )
+            
+            # Extract image caption tags if available
+            image_caption_tags = None
+            if extracted_features and extracted_features.image and hasattr(extracted_features.image, 'tags'):
+                image_caption_tags = getattr(extracted_features.image, 'tags')
+                logger.info(f"🏷️ Using image caption tags for search enhancement: {image_caption_tags}")
+            
             search_results = await self.search_executor.execute_expanded_search(
-                expanded_queries, query_analysis["selected_element_types"], embeddings, max_results, expansion_result
+                expanded_queries, filtered_element_types, embeddings, max_results, expansion_result, element_type_weights, image_caption_tags
             )
 
             # Step 6: 결과 enrichment
@@ -122,9 +137,9 @@ class SearchService:
                 search_results, include_chunk_meta, include_media_meta
             )
 
-            # Step 7: 응답 생성
+            # Step 7: 응답 생성 (첨부 이미지 캡션 포함)
             return self._generate_search_response(
-                text_query, input_types, expanded_queries, query_analysis, enriched_results, search_results, start_time
+                text_query, input_types, expanded_queries, query_analysis, enriched_results, search_results, start_time, extracted_features
             )
 
         except Exception as e:
@@ -148,8 +163,28 @@ class SearchService:
 
         return input_modalities
 
+    def _filter_element_types_by_weight(
+        self, selected_element_types: List[str], element_type_weights: Optional[Dict[str, float]]
+    ) -> List[str]:
+        """가중치가 0인 element types를 검색에서 제외"""
+        if not element_type_weights:
+            return selected_element_types
+        
+        # 가중치가 0보다 큰 element types만 필터링
+        filtered_types = [
+            element_type for element_type in selected_element_types
+            if element_type_weights.get(element_type, 0.0) > 0.0
+        ]
+        
+        if len(filtered_types) != len(selected_element_types):
+            excluded_types = [t for t in selected_element_types if t not in filtered_types]
+            logger.info(f"🚫 Excluding element types with zero weight from search: {excluded_types}")
+            logger.info(f"✅ Using element types for search: {filtered_types}")
+        
+        return filtered_types
+
     def _generate_search_response(
-        self, text_query, input_types, expanded_queries, query_analysis, enriched_results, search_results, start_time
+        self, text_query, input_types, expanded_queries, query_analysis, enriched_results, search_results, start_time, extracted_features=None
     ):
         """Step 7: 응답 생성"""
         end_time = self._get_current_time_ms()
@@ -162,10 +197,17 @@ class SearchService:
         if len(expanded_queries) > 1:
             display_query += f" (expanded to {len(expanded_queries)} queries)"
 
-        # query_analysis에 확장 정보 추가
+        # query_analysis에 확장 정보 및 첨부 이미지 캡션 추가
         if query_analysis:
             query_analysis["expanded_queries"] = expanded_queries
             query_analysis["expansion_used"] = len(expanded_queries) > 1
+            
+            # 첨부된 이미지의 캡션 정보 추가
+            if extracted_features and extracted_features.image and extracted_features.image.caption:
+                query_analysis["attached_image_caption"] = extracted_features.image.caption
+                logger.info(f"🖼️ Added attached image caption to query_analysis: {extracted_features.image.caption[:100]}...")
+            else:
+                logger.info(f"🚫 No image caption found in extracted_features. Image features: {extracted_features.image is not None if extracted_features else 'No features'}")
 
         return SearchResponse(
             query=display_query,
@@ -183,106 +225,45 @@ class SearchService:
         processed_files: Optional[Dict[str, Dict[str, Any]]] = None,
         include_chunk_meta: bool = True,
         include_media_meta: bool = True,
-        max_results: int = 5,
+        max_results: int = 10,
         files_were_provided: bool = False,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """스트리밍 방식의 멀티모달 검색 오케스트레이션"""
         start_time = time.time()
 
         try:
-            # Step 0: 검색 시작 알림
-            input_types = []
-            if text_query:
-                input_types.append("text")
-            if processed_files:
-                input_types.extend(processed_files.keys())
-
-            yield {
-                "step": "start",
-                "message": "멀티모달 검색을 시작합니다...",
-                "timestamp": time.time(),
-                "data": {
-                    "input_types": input_types,
-                    "has_text": bool(text_query),
-                    "has_image": bool(processed_files and "image" in processed_files),
-                    "has_video": bool(processed_files and "video" in processed_files),
-                    "has_audio": bool(processed_files and "audio" in processed_files),
-                },
-            }
-
-            # 입력 검증 - 파일 처리에 실패해도 텍스트 쿼리가 있으면 계속 진행
-            if not text_query and (not processed_files or len(processed_files) == 0):
-                raise ValueError(
-                    "파일 읽기에 실패했고 텍스트 쿼리도 없습니다. 텍스트 쿼리를 입력하거나 파일을 다시 업로드해주세요."
-                )
-
-            # 파일이 제공되었지만 처리에 실패한 경우만 실패 메시지 표시
-            if files_were_provided and (processed_files is None or len(processed_files) == 0):
-                if text_query:
-                    logger.warning("Files were provided but processing failed, continuing with text-only search")
-                    yield {
-                        "step": "file_read_failed",
-                        "message": "파일 처리에 실패했지만 텍스트 쿼리로 검색을 계속 진행합니다",
-                        "timestamp": time.time(),
-                        "data": {"fallback_mode": "text_only"},
-                    }
+            # Step 0: 검색 시작 및 입력 검증
+            async for step_data in self._stream_step_0_start_and_validate(
+                text_query, processed_files, files_were_provided
+            ):
+                yield step_data
 
             # Step 1: 입력 처리
-            yield {"step": "input_processing", "message": "멀티모달 입력을 처리하고 있습니다...", "timestamp": time.time()}
-
-            modalities_data = await self.input_processor.process_multimodal_inputs_from_processed(
-                text_query, processed_files
-            )
-
-            # 파일 정보 수집
-            file_info = {}
-            if processed_files:
-                for file_type, file_data in processed_files.items():
-                    file_info[file_type] = {"filename": file_data["filename"], "content_type": file_data["content_type"]}
-
-            logger.info(f"스트리밍 응답용 modalities_data 키들: {list(modalities_data.keys())}")
-            yield {
-                "step": "input_processed",
-                "message": "입력 처리가 완료되었습니다",
-                "timestamp": time.time(),
-                "data": {"modalities": list(modalities_data.keys()), "text_query": text_query, "file_info": file_info},
-            }
+            modalities_data = None
+            async for step_data in self._stream_step_1_input_processing(text_query, processed_files):
+                if step_data.get("step") == "modalities_data":
+                    modalities_data = step_data.get("data")
+                yield step_data
 
             # Step 2: 쿼리 확장 및 의도 분석
-            yield {"step": "query_analysis", "message": "쿼리를 분석하고 있습니다...", "timestamp": time.time()}
-
-            input_modalities = self._extract_input_modalities(modalities_data) if modalities_data else None
-            query_analysis, expanded_queries = await self.query_analyzer.process_query_analysis(
-                text_query, self.available_element_types, input_modalities
-            )
-
-            yield {
-                "step": "query_analyzed",
-                "message": "쿼리 분석이 완료되었습니다",
-                "timestamp": time.time(),
-                "data": {
-                    "original_query": text_query,
-                    "expanded_queries": expanded_queries,
-                    "expansion_used": len(expanded_queries) > 1,
-                    "total_queries": len(expanded_queries),
-                    "selected_element_types": query_analysis["selected_element_types"],
-                    "reasoning": query_analysis.get("reasoning", ""),
-                    "confidence": query_analysis.get("confidence", 0.0),
-                    "element_types_count": len(query_analysis["selected_element_types"]),
-                    "expansion_analysis": query_analysis.get("expansion_analysis"),
-                },
-            }
+            query_analysis, expanded_queries = None, None
+            async for step_data in self._stream_step_2_query_analysis(text_query, modalities_data):
+                if step_data.get("step") == "query_analysis_result":
+                    result_data = step_data.get("data", {})
+                    query_analysis = result_data.get("query_analysis")
+                    expanded_queries = result_data.get("expanded_queries")
+                yield step_data
 
             # Step 3: 특징 추출
             yield {"step": "feature_extraction", "message": "멀티모달 특징을 추출하고 있습니다...", "timestamp": time.time()}
 
             extracted_features = await self.feature_extractor.extract_features(
-                modalities_data, query_analysis["selected_element_types"]
+                modalities_data, query_analysis.get("selected_element_types", []) if query_analysis else []
             )
 
             # 텍스트 기반 element types 체크
             text_based_types = {"paragraph", "title", "heading", "list_item", "table_cell", "text"}
-            has_text_elements = bool(set(query_analysis["selected_element_types"]) & text_based_types)
+            has_text_elements = bool(set(query_analysis.get("selected_element_types", []) if query_analysis else []) & text_based_types)
 
             # 특징 추출 결과 데이터 준비 - 더 정확한 상태 구분
             feature_data = {
@@ -292,13 +273,13 @@ class SearchService:
                     else ("no_data" if not text_query and not has_text_elements else "failed"),
                     "image": "success"
                     if extracted_features.image is not None
-                    else ("no_data" if not modalities_data.get("image") else "failed"),
+                    else ("no_data" if not modalities_data or not modalities_data.get("image") else "failed"),
                     "video": "success"
                     if extracted_features.video is not None
-                    else ("no_data" if not modalities_data.get("video") else "failed"),
+                    else ("no_data" if not modalities_data or not modalities_data.get("video") else "failed"),
                     "audio": "success"
                     if extracted_features.audio is not None
-                    else ("no_data" if not modalities_data.get("audio") else "failed"),
+                    else ("no_data" if not modalities_data or not modalities_data.get("audio") else "failed"),
                 }
             }
 
@@ -336,7 +317,7 @@ class SearchService:
                     text_feature_data = {
                         "source": "원본 텍스트 쿼리",
                         "query": text_query,
-                        "element_types": [t for t in query_analysis["selected_element_types"] if t in text_based_types],
+                        "element_types": [t for t in (query_analysis.get("selected_element_types", []) if query_analysis else []) if t in text_based_types],
                         "note": "별도 특징 추출 없이 원본 텍스트가 임베딩 생성에 사용됨",
                     }
 
@@ -469,26 +450,42 @@ class SearchService:
                 "timestamp": time.time(),
             }
 
-            expansion_result = query_analysis.get("expansion_analysis")
+            expansion_result = query_analysis.get("expansion_analysis") if query_analysis else None
+            element_type_weights = query_analysis.get("element_type_weights") if query_analysis else None
+            
+            # 가중치가 0인 element types는 검색에서 제외 (단, 캡션은 무조건 생성했지만 검색엔 가중치에 따라)
+            filtered_element_types = self._filter_element_types_by_weight(
+                query_analysis.get("selected_element_types", []) if query_analysis else [], 
+                element_type_weights
+            )
+            
+            # Extract image caption tags if available
+            image_caption_tags = None
+            if extracted_features and extracted_features.image and hasattr(extracted_features.image, 'tags'):
+                image_caption_tags = getattr(extracted_features.image, 'tags')
+                logger.info(f"🏷️ [STREAM] Using image caption tags for search enhancement: {image_caption_tags}")
+            
             search_results = await self.search_executor.execute_expanded_search(
-                expanded_queries, query_analysis["selected_element_types"], embeddings, max_results, expansion_result
+                expanded_queries, filtered_element_types, embeddings, max_results, expansion_result, element_type_weights, image_caption_tags
             )
 
             # 검색 실행 상세 통계
             executed_queries_info = []
             for i, query in enumerate(expanded_queries):
-                weight = 1.0 - (i * 0.1)
+                weight = 1.0 - (i * weighting_config.QUERY_WEIGHT_DECAY)
                 executed_queries_info.append({"index": i + 1, "query": query, "weight": weight, "priority": i + 1})
 
             # OpenSearch 쿼리 정보 (예시 - 실제로는 더 복잡)
             opensearch_query_info = {
                 "index_used": "elements",
                 "query_type": "hybrid_search",
-                "search_fields": ["content^2"],
-                "element_types_filter": query_analysis["selected_element_types"],
+                "search_fields": ["content"],
+                "element_types_filter": query_analysis.get("selected_element_types", []) if query_analysis else [],
                 "has_vector_search": bool(embeddings),
                 "vector_modalities": list(embeddings.keys()) if embeddings else [],
+                "modality_matching": "Each element's modality matched with appropriate embedding" if embeddings else "N/A",
                 "fuzziness": "AUTO",
+                "weighting_applied": "element_type weights applied directly to OpenSearch query",
             }
 
             search_stats = {
@@ -596,6 +593,14 @@ class SearchService:
             try:
                 logger.info("🔄 Creating completed data...")
 
+                # 첨부 이미지 캡션 추가
+                attached_image_caption = None
+                if extracted_features and extracted_features.image and extracted_features.image.caption:
+                    attached_image_caption = extracted_features.image.caption
+                    logger.info(f"🖼️ [STREAM] Found attached image caption: {attached_image_caption[:100]}...")
+                else:
+                    logger.info(f"🚫 [STREAM] No image caption found. Image features: {extracted_features.image is not None if extracted_features else 'No features'}")
+
                 # 데이터 크기 체크를 위한 임시 생성
                 temp_completed_data = {
                     "results": results_data,
@@ -607,11 +612,12 @@ class SearchService:
                     "total_time_ms": total_time * 1000,
                     "processing_steps": 7,
                     "query_analysis": {
-                        "selected_element_types": query_analysis.get("selected_element_types", []),
-                        "confidence": query_analysis.get("confidence", 0.0),
+                        "selected_element_types": query_analysis.get("selected_element_types", []) if query_analysis else [],
+                        "confidence": query_analysis.get("confidence", 0.0) if query_analysis else 0.0,
+                        "attached_image_caption": attached_image_caption,
                     },
                     "expanded_queries": [
-                        q.get("query", str(q)) if isinstance(q, dict) else str(q) for q in expanded_queries
+                        q.get("query", str(q)) if isinstance(q, dict) else str(q) for q in (expanded_queries or [])
                     ],
                 }
 
@@ -706,3 +712,164 @@ class SearchService:
         import time
 
         return int(time.time() * 1000)
+
+    # === 스트리밍 검색 단계별 메서드들 ===
+    
+    async def _stream_step_0_start_and_validate(
+        self, text_query: Optional[str], processed_files: Optional[Dict[str, Dict[str, Any]]], files_were_provided: bool
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Step 0: 검색 시작 알림 및 입력 검증"""
+        # 입력 타입 확인
+        input_types = []
+        if text_query:
+            input_types.append("text")
+        if processed_files:
+            input_types.extend(processed_files.keys())
+
+        yield {
+            "step": "start",
+            "message": "멀티모달 검색을 시작합니다...",
+            "timestamp": time.time(),
+            "data": {
+                "input_types": input_types,
+                "has_text": bool(text_query),
+                "has_image": bool(processed_files and "image" in processed_files),
+                "has_video": bool(processed_files and "video" in processed_files),
+                "has_audio": bool(processed_files and "audio" in processed_files),
+            },
+        }
+
+        # 입력 검증
+        if not text_query and (not processed_files or len(processed_files) == 0):
+            raise ValueError(
+                "파일 읽기에 실패했고 텍스트 쿼리도 없습니다. 텍스트 쿼리를 입력하거나 파일을 다시 업로드해주세요."
+            )
+
+        # 파일 처리 실패 알림
+        if files_were_provided and (processed_files is None or len(processed_files) == 0):
+            if text_query:
+                logger.warning("Files were provided but processing failed, continuing with text-only search")
+                yield {
+                    "step": "file_read_failed",
+                    "message": "파일 처리에 실패했지만 텍스트 쿼리로 검색을 계속 진행합니다",
+                    "timestamp": time.time(),
+                    "data": {"fallback_mode": "text_only"},
+                }
+
+    async def _stream_step_1_input_processing(
+        self, text_query: Optional[str], processed_files: Optional[Dict[str, Dict[str, Any]]]
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Step 1: 멀티모달 입력 처리"""
+        yield {"step": "input_processing", "message": "멀티모달 입력을 처리하고 있습니다...", "timestamp": time.time()}
+
+        modalities_data = await self.input_processor.process_multimodal_inputs_from_processed(
+            text_query, processed_files
+        )
+
+        # 파일 정보 수집
+        file_info = {}
+        if processed_files:
+            for file_type, file_data in processed_files.items():
+                file_info[file_type] = {"filename": file_data["filename"], "content_type": file_data["content_type"]}
+
+        logger.info(f"스트리밍 응답용 modalities_data 키들: {list(modalities_data.keys())}")
+        yield {
+            "step": "input_processed",
+            "message": "입력 처리가 완료되었습니다",
+            "timestamp": time.time(),
+            "data": {"modalities": list(modalities_data.keys()), "text_query": text_query, "file_info": file_info},
+        }
+
+        yield {
+            "step": "modalities_data",
+            "message": "모달리티 데이터 준비 완료",
+            "timestamp": time.time(),
+            "data": modalities_data,
+        }
+
+    async def _stream_step_2_query_analysis(
+        self, text_query: Optional[str], modalities_data: Dict[str, Any]
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Step 2: 쿼리 확장 및 의도 분석"""
+        yield {"step": "query_analysis", "message": "쿼리를 분석하고 있습니다...", "timestamp": time.time()}
+
+        input_modalities = self._extract_input_modalities(modalities_data) if modalities_data else None
+        query_analysis, expanded_queries = await self.query_analyzer.process_query_analysis(
+            text_query, self.available_element_types, input_modalities
+        )
+
+        # 분석 결과 데이터 생성
+        element_weights = query_analysis.get("element_type_weights", {})
+        analysis_data = self._prepare_query_analysis_data(query_analysis, expanded_queries, element_weights, text_query, modalities_data)
+        
+        yield {
+            "step": "query_analyzed",
+            "message": f"쿼리 의도 분석 완료 - {analysis_data['analysis_method']} 사용",
+            "timestamp": time.time(),
+            "data": analysis_data,
+        }
+
+        yield {
+            "step": "query_analysis_result",
+            "message": "쿼리 분석 결과",
+            "timestamp": time.time(),
+            "data": {"query_analysis": query_analysis, "expanded_queries": expanded_queries},
+        }
+
+    def _prepare_query_analysis_data(self, query_analysis, expanded_queries, element_weights, text_query, modalities_data=None):
+        """쿼리 분석 결과 데이터 준비"""
+        highest_weight_type = max(element_weights.items(), key=lambda x: x[1]) if element_weights else ("none", 0.0)
+        meaningful_weights = {k: v for k, v in element_weights.items() if v > 0.0}
+        analysis_method = "Advanced Fallback Analysis" if "fallback_reasoning" in query_analysis else "LLM Analysis"
+        
+        # 가중치 분포 세부 정보
+        weight_distribution_details = {
+            "high_priority": {k: v for k, v in meaningful_weights.items() if v >= weighting_config.HIGH_PRIORITY_THRESHOLD},
+            "medium_priority": {k: v for k, v in meaningful_weights.items() if weighting_config.MEDIUM_PRIORITY_THRESHOLD <= v < weighting_config.HIGH_PRIORITY_THRESHOLD},
+            "low_priority": {k: v for k, v in meaningful_weights.items() if weighting_config.LOW_PRIORITY_THRESHOLD < v < weighting_config.MEDIUM_PRIORITY_THRESHOLD},
+            "excluded": {k: v for k, v in element_weights.items() if v == weighting_config.LOW_PRIORITY_THRESHOLD}
+        }
+        
+        return {
+            "original_query": text_query,
+            "expanded_queries": expanded_queries,
+            "expansion_used": len(expanded_queries) > 1,
+            "total_queries": len(expanded_queries),
+            
+            # Element type 정보
+            "selected_element_types": query_analysis["selected_element_types"],
+            "element_type_weights": element_weights,
+            "meaningful_weights": meaningful_weights,
+            "weight_distribution_details": weight_distribution_details,
+            "highest_priority_type": highest_weight_type[0],
+            "highest_weight_score": highest_weight_type[1],
+            "total_weighted_types": len(meaningful_weights),
+            "zero_weight_types": len(weight_distribution_details["excluded"]),
+            
+            # 분석 정보
+            "analysis_method": analysis_method,
+            "reasoning": query_analysis.get("reasoning", ""),
+            "confidence": query_analysis.get("confidence", 0.0),
+            "element_types_count": len(query_analysis["selected_element_types"]),
+            "expansion_analysis": query_analysis.get("expansion_analysis"),
+            "weighting_system_enabled": query_analysis.get("element_type_weights") is not None,
+            "fallback_reasoning": query_analysis.get("fallback_reasoning", ""),
+            
+            # 요약 정보
+            "summary": {
+                "query_intent": f"'{text_query or 'multimodal query'}'에서 '{highest_weight_type[0]}' 타입을 우선 검색 (가중치: {highest_weight_type[1]:.1f})",
+                "weight_distribution": f"높은 우선순위: {len(weight_distribution_details['high_priority'])}개, " +
+                                     f"중간 우선순위: {len(weight_distribution_details['medium_priority'])}개, " +
+                                     f"낮은 우선순위: {len(weight_distribution_details['low_priority'])}개",
+                "expansion_status": f"{len(expanded_queries)}개 쿼리로 확장" if len(expanded_queries) > 1 else "확장 없음",
+                "opensearch_weighting": "OpenSearch 쿼리 레벨에서 가중치 적용됨"
+            },
+            
+            # 디버그 정보
+            "debug_info": {
+                "llm_success": analysis_method == "LLM Analysis",
+                "fallback_used": analysis_method == "Advanced Fallback Analysis",
+                "input_modalities": self._extract_input_modalities(modalities_data) if modalities_data else None,
+                "available_element_types": self.available_element_types
+            }
+        }

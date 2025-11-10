@@ -199,7 +199,7 @@ class StreamingSearchController {
                     this.stepRenderer.addStep('검색 완료', message, data, 'success', timestamp);
                 } else {
                     // 검색만 모드인 경우: 최종 단계로 설정하고 완료 처리
-                    this.stepRenderer.addStep('검색 완룼', message, data, 'success', timestamp);
+                    this.stepRenderer.addStep('검색 완료', message, data, 'success', timestamp);
                     this.progressManager.currentStep = 7; // 검색 완료 = 7단계
                     this.progressManager.updateProgress();
                 }
@@ -510,16 +510,16 @@ function toggleAnswerPreview(answerId) {
     }
     
     if (plainText.style.display === 'none') {
-        // Preview 모드에서 일반 텍스트 모드로
+        // Text(원문) 모드에서 마크다운 모드로
         plainText.style.display = 'block';
         previewText.style.display = 'none';
-        toggleBtn.innerHTML = 'Preview';
+        toggleBtn.innerHTML = 'Text';
         toggleBtn.classList.remove('active');
     } else {
-        // 일반 텍스트 모드에서 Preview 모드로
+        // 마크다운 모드에서 Text(원문) 모드로
         plainText.style.display = 'none';
         previewText.style.display = 'block';
-        toggleBtn.innerHTML = 'Text';
+        toggleBtn.innerHTML = 'Markdown';
         toggleBtn.classList.add('active');
     }
 }

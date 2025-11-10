@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from loguru import logger
 
 from app.clients.llm_client import LLMClient
+from app.core.config import weighting_config
 
 
 class QueryAnalyzer:
@@ -14,75 +15,129 @@ class QueryAnalyzer:
     async def analyze_query_intent(
         self, query: str, available_element_types: List[str], input_modalities: Optional[List[str]] = None
     ) -> Optional[Dict[str, Any]]:
-        """LLM을 사용하여 쿼리 의도 분석"""
+        """쿼리 의도 분석 - 안정적인 fallback 우선 + LLM 보조"""
+        # 먼저 안정적인 fallback 분석 실행
+        fallback_result = self._fallback_query_analysis(query, available_element_types, input_modalities)
+        
+        # LLM 분석도 시도해보지만 실패해도 문제없음
         try:
-            result = await self.llm_client.analyze_query_intent(query, available_element_types, input_modalities)
-            if result:
-                return result
-            else:
-                logger.warning("LLM query analysis returned None, using fallback strategy")
-                return self._fallback_query_analysis(query, available_element_types, input_modalities)
+            llm_result = await self.llm_client.analyze_query_intent(query, available_element_types, input_modalities)
+            if llm_result and llm_result.get("element_type_weights"):
+                # 유의미한 가중치가 있는지 확인
+                meaningful_weights = {k: v for k, v in llm_result["element_type_weights"].items() if v > 0.0}
+                if meaningful_weights:
+                    llm_result["fallback_reasoning"] = fallback_result.get("reasoning", "")
+                    logger.info(f"🤖 Using LLM query analysis: {len(meaningful_weights)} weighted types")
+                    return llm_result
         except Exception as e:
-            logger.error(f"Query intent analysis failed: {e}, using fallback strategy")
-            return self._fallback_query_analysis(query, available_element_types, input_modalities)
+            logger.debug(f"LLM query analysis failed: {e}")
+        
+        # LLM이 실패하거나 유효하지 않으면 안정적인 fallback 사용
+        logger.info("🔧 Using enhanced fallback query analysis")
+        return fallback_result
 
     def _fallback_query_analysis(
         self, query: str, available_element_types: List[str], input_modalities: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """간단한 휴리스틱을 사용한 폴백 쿼리 분석"""
+        """간단한 휴리스틱을 사용한 폴백 쿼리 분석 - 가중치 기반"""
         # Define modality-specific element types
         modality_element_mapping = {"text": ["paragraph", "summary"], "image": ["caption", "origin"]}
 
+        # Initialize all weights to 0.0
+        element_weights = {element_type: 0.0 for element_type in available_element_types}
+
         # Filter available_element_types based on input modalities
+        relevant_types = set()
         if input_modalities:
-            relevant_types = set()
             for modality in input_modalities:
                 if modality in modality_element_mapping:
                     relevant_types.update(modality_element_mapping[modality])
-            # Only keep element types that are both relevant and available
-            available_element_types = [t for t in available_element_types if t in relevant_types]
+            # Only consider element types that are both relevant and available
+            relevant_available_types = [t for t in available_element_types if t in relevant_types]
+        else:
+            relevant_available_types = available_element_types
 
         query_lower = query.lower()
-        selected_types = []
 
-        # 키워드 기반 휴리스틱 (모달리티 고려)
+        # 향상된 키워드 기반 휴리스틱으로 가중치 설정
         if input_modalities and "text" in input_modalities:
-            # 텍스트 모달리티 전용 키워드
-            if any(word in query_lower for word in ["요약", "summary", "정리"]):
-                selected_types.extend(["summary", "paragraph"])
-            elif any(word in query_lower for word in ["텍스트", "text", "문서", "document", "내용"]):
-                selected_types.extend(["paragraph", "summary"])
+            # 요약 관련 키워드들 (더 포괄적)
+            summary_keywords = ["요약", "summary", "정리", "개요", "핵심", "간략", "압축", "추출", "핵심내용"]
+            # 일반 텍스트 내용 키워드들
+            content_keywords = ["텍스트", "text", "문서", "document", "내용", "본문", "글", "문단", "전문", "상세"]
+            
+            # 키워드 매칭 점수 계산
+            summary_score = sum(1 for keyword in summary_keywords if keyword in query_lower)
+            content_score = sum(1 for keyword in content_keywords if keyword in query_lower)
+            
+            if summary_score > 0:
+                # 요약 관련 쿼리 - summary 우선
+                if "summary" in relevant_available_types:
+                    element_weights["summary"] = min(1.0, weighting_config.TEXT_SUMMARY_BASE_WEIGHT + (summary_score * weighting_config.TEXT_SUMMARY_BOOST))
+                if "paragraph" in relevant_available_types:
+                    element_weights["paragraph"] = max(weighting_config.TEXT_MIN_WEIGHT, weighting_config.TEXT_PARAGRAPH_BASE_WEIGHT - (summary_score * weighting_config.TEXT_PARAGRAPH_PENALTY))
+            elif content_score > 0:
+                # 일반 텍스트 내용 관련 쿼리 - paragraph 우선
+                if "paragraph" in relevant_available_types:
+                    element_weights["paragraph"] = min(1.0, weighting_config.TEXT_SUMMARY_BASE_WEIGHT + (content_score * weighting_config.TEXT_SUMMARY_BOOST))
+                if "summary" in relevant_available_types:
+                    element_weights["summary"] = max(weighting_config.TEXT_MIN_WEIGHT, weighting_config.TEXT_PARAGRAPH_BASE_WEIGHT - (content_score * weighting_config.TEXT_PARAGRAPH_PENALTY))
             else:
-                # 기본적으로 paragraph 우선
-                selected_types.append("paragraph")
+                # 키워드가 없으면 균등하게 분배하되 paragraph 약간 우선
+                if "paragraph" in relevant_available_types:
+                    element_weights["paragraph"] = weighting_config.TEXT_PARAGRAPH_DEFAULT
+                if "summary" in relevant_available_types:
+                    element_weights["summary"] = weighting_config.TEXT_SUMMARY_DEFAULT
 
         if input_modalities and "image" in input_modalities:
-            # 이미지 모달리티 전용 키워드
-            if any(word in query_lower for word in ["이미지", "image", "사진", "그림", "시각"]):
-                selected_types.extend(["origin", "caption"])
-            elif any(word in query_lower for word in ["설명", "캡션", "caption"]):
-                selected_types.extend(["caption", "origin"])
+            # 이미지 설명/캡션 관련 키워드들
+            caption_keywords = ["설명", "캡션", "caption", "묘사", "describe", "보여주", "나타내", "표현"]
+            # 이미지 자체 관련 키워드들
+            image_keywords = ["이미지", "image", "사진", "그림", "시각", "picture", "photo", "원본", "origin"]
+            
+            # 키워드 매칭 점수 계산
+            caption_score = sum(1 for keyword in caption_keywords if keyword in query_lower)
+            image_score = sum(1 for keyword in image_keywords if keyword in query_lower)
+            
+            if caption_score > 0:
+                # 이미지 설명/캡션 관련 쿼리 - 하지만 여전히 origin을 더 우선시
+                if "origin" in relevant_available_types:
+                    element_weights["origin"] = weighting_config.IMAGE_ORIGIN_WEIGHT  # origin을 항상 최고 우선순위로
+                if "caption" in relevant_available_types:
+                    element_weights["caption"] = min(weighting_config.IMAGE_CAPTION_MAX_WEIGHT, weighting_config.IMAGE_CAPTION_BASE_WEIGHT + (caption_score * weighting_config.IMAGE_CAPTION_BOOST))  # caption 가중치 대폭 감소
+            elif image_score > 0:
+                # 이미지 자체 관련 쿼리 - origin 강력히 우선
+                if "origin" in relevant_available_types:
+                    element_weights["origin"] = weighting_config.IMAGE_ORIGIN_WEIGHT  # 최대 가중치
+                if "caption" in relevant_available_types:
+                    element_weights["caption"] = weighting_config.IMAGE_CAPTION_MIN_WEIGHT  # 매우 낮은 가중치
             else:
-                # 기본적으로 origin 우선
-                selected_types.extend(["origin", "caption"])
+                # 키워드가 없으면 origin을 강력히 우선시 (이미지 검색의 기본 목적)
+                if "origin" in relevant_available_types:
+                    element_weights["origin"] = weighting_config.IMAGE_ORIGIN_WEIGHT  # 최대 가중치
+                if "caption" in relevant_available_types:
+                    element_weights["caption"] = weighting_config.IMAGE_CAPTION_BASE_WEIGHT  # 낮은 가중치
 
-        # 특정 타입이 식별되지 않으면 모달리티별 기본값 사용
-        if not selected_types:
+        # 모달리티 정보가 없거나 가중치가 설정되지 않은 경우 기본값 설정
+        meaningful_weights = {k: v for k, v in element_weights.items() if v > 0.0}
+        if not meaningful_weights:
             if input_modalities:
-                if "text" in input_modalities:
-                    selected_types.extend(["paragraph", "summary"])
-                if "image" in input_modalities:
-                    selected_types.extend(["origin", "caption"])
+                for modality in input_modalities:
+                    if modality in weighting_config.MODALITY_FALLBACK_WEIGHTS:
+                        for element_type, weight in weighting_config.MODALITY_FALLBACK_WEIGHTS[modality].items():
+                            if element_type in available_element_types:
+                                element_weights[element_type] = weight
             else:
-                # 모달리티 정보가 없으면 모든 가능한 타입 사용
-                selected_types = ["paragraph", "summary", "origin", "caption"]
+                # 모달리티 정보가 없으면 모든 타입에 균등한 중간 가중치
+                for element_type in available_element_types:
+                    element_weights[element_type] = weighting_config.UNIVERSAL_DEFAULT_WEIGHT
 
-        # available_element_types에 있는 것만 필터링하고 중복 제거
-        selected_types = [t for t in selected_types if t in available_element_types]
-        selected_types = list(dict.fromkeys(selected_types))
+        # Get selected types for backward compatibility
+        selected_types = [k for k, v in element_weights.items() if v > 0.0]
 
         return {
-            "selected_element_types": selected_types,
+            "element_type_weights": element_weights,
+            "selected_element_types": selected_types,  # backward compatibility
             "reasoning": f"Fallback analysis based on keywords in query: {query[:50]}...",
             "confidence": 0.6,
         }
@@ -90,10 +145,14 @@ class QueryAnalyzer:
     def create_default_query_analysis(
         self, available_element_types: List[str], reason: str = "No text query provided"
     ) -> Dict[str, Any]:
-        """텍스트 쿼리가 없을 때 기본 쿼리 분석 생성"""
+        """텍스트 쿼리가 없을 때 기본 쿼리 분석 생성 - 가중치 기반"""
+        # 모든 타입에 동일한 중간 가중치 부여
+        element_weights = {element_type: weighting_config.UNIVERSAL_DEFAULT_WEIGHT for element_type in available_element_types}
+        
         return {
-            "selected_element_types": available_element_types,
-            "reasoning": f"{reason}, using all element types",
+            "element_type_weights": element_weights,
+            "selected_element_types": available_element_types,  # backward compatibility
+            "reasoning": f"{reason}, using all element types with equal weights",
             "confidence": 0.5,
         }
 

@@ -12,7 +12,7 @@ class AppConfig {
                 retryAttempts: 3
             },
             search: {
-                maxResults: 5,
+                maxResults: 10,
                 defaultTimeout: 2000
             },
             ui: {
