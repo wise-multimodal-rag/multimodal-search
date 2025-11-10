@@ -75,131 +75,107 @@ class WeightingConfig(BaseSettings):
     origin_default: float = Field(default=1.0, alias="WEIGHT_ORIGIN_DEFAULT")  # 원본 이미지 기본 가중치
 
     @property
-    def DEFAULT_ELEMENT_WEIGHTS(self) -> Dict[str, float]:
-        return {
-            "paragraph": self.paragraph_default,
-            "summary": self.summary_default,
-            "caption": self.caption_default,
-            "origin": self.origin_default,
-        }
-
-    @property
     def QUERY_WEIGHT_DECAY(self) -> float:
         return self.query_weight_decay
 
-    # === 텍스트 분석 동적 가중치 계산 ===
-    text_summary_base_weight: float = Field(default=0.8, alias="WEIGHT_TEXT_SUMMARY_BASE")  # 요약 키워드 감지 시 기본 가중치
-    text_summary_boost: float = Field(default=0.1, alias="WEIGHT_TEXT_SUMMARY_BOOST")  # 요약 키워드 개수당 추가 가중치
-    text_paragraph_base_weight: float = Field(default=0.7, alias="WEIGHT_TEXT_PARAGRAPH_BASE")  # 문단 기본 가중치 (요약 우선 시)
-    text_paragraph_penalty: float = Field(default=0.1, alias="WEIGHT_TEXT_PARAGRAPH_PENALTY")  # 요약 우선 시 문단 가중치 감소량
-    text_min_weight: float = Field(default=0.4, alias="WEIGHT_TEXT_MIN")  # 텍스트 가중치 최소값
+    # === 핵심 가중치 설정 (사용자 설정 가능) ===
+    # 텍스트 검색 강도 (0.0~1.0): 높을수록 텍스트 기반 검색 우선
+    text_search_strength: float = Field(default=0.7, alias="WEIGHT_TEXT_STRENGTH")  
+    
+    # 이미지 검색 강도 (0.0~1.0): 높을수록 이미지 기반 검색 우선  
+    image_search_strength: float = Field(default=0.8, alias="WEIGHT_IMAGE_STRENGTH")
+    
+    # 벡터 검색 boost 강도 (0.5~3.0): 벡터 검색의 전반적인 가중치
+    vector_boost_strength: float = Field(default=1.5, alias="WEIGHT_VECTOR_BOOST_STRENGTH")
 
-    # === 텍스트 폴백 가중치 (키워드 없을 때) ===
-    text_paragraph_default: float = Field(default=0.8, alias="WEIGHT_TEXT_PARAGRAPH_DEFAULT")  # 문단 폴백 가중치
-    text_summary_default: float = Field(default=0.6, alias="WEIGHT_TEXT_SUMMARY_DEFAULT")  # 요약 폴백 가중치
-
-    # === 이미지 분석 동적 가중치 계산 ===
-    image_origin_weight: float = Field(default=1.0, alias="WEIGHT_IMAGE_ORIGIN")  # 원본 이미지 고정 가중치 (항상 최우선)
-    image_caption_base_weight: float = Field(default=0.3, alias="WEIGHT_IMAGE_CAPTION_BASE")  # 캡션 기본 가중치
-    image_caption_boost: float = Field(default=0.05, alias="WEIGHT_IMAGE_CAPTION_BOOST")  # 캡션 키워드 개수당 추가 가중치
-    image_caption_max_weight: float = Field(default=0.4, alias="WEIGHT_IMAGE_CAPTION_MAX")  # 캡션 최대 가중치
-    image_caption_min_weight: float = Field(default=0.2, alias="WEIGHT_IMAGE_CAPTION_MIN")  # 캡션 최소 가중치 (이미지 쿼리 시)
-
-    # === 전체 시스템 기본값 ===
-    universal_default_weight: float = Field(default=0.6, alias="WEIGHT_UNIVERSAL_DEFAULT")  # 모달리티 정보 없을 때 기본 가중치
-    opensearch_default_weight: float = Field(default=1.0, alias="WEIGHT_OPENSEARCH_DEFAULT")  # OpenSearch 기본 가중치
-
-    # === 우선순위 분류 임계값 ===
-    high_priority_threshold: float = Field(default=0.8, alias="WEIGHT_HIGH_PRIORITY_THRESHOLD")  # 높은 우선순위 임계값 (≥0.8)
-    medium_priority_threshold: float = Field(default=0.5,
-                                             alias="WEIGHT_MEDIUM_PRIORITY_THRESHOLD")  # 중간 우선순위 임계값 (0.5~0.8)
-    low_priority_threshold: float = Field(default=0.0, alias="WEIGHT_LOW_PRIORITY_THRESHOLD")  # 낮은 우선순위 임계값 (>0.0)
-
-    # === Modality Boost 설정 ===
-    modality_boost_min_multiplier: float = Field(default=0.5, alias="WEIGHT_MODALITY_BOOST_MIN")  # 최소 boost 배수 (0.5배)
-    modality_boost_max_multiplier: float = Field(default=2.0, alias="WEIGHT_MODALITY_BOOST_MAX")  # 최대 boost 배수 (2.0배)
-    modality_boost_range: float = Field(default=1.5, alias="WEIGHT_MODALITY_BOOST_RANGE")  # boost 범위 (max - min = 1.5)
-
-    # Property 기존 상수명 호환성 유지
+    # === 계산된 가중치들 (핵심 설정을 기반으로 자동 계산) ===
     @property
     def TEXT_SUMMARY_BASE_WEIGHT(self) -> float:
-        return self.text_summary_base_weight
+        # 텍스트 강도 기반으로 계산 (0.5~0.9 범위)
+        return 0.5 + (self.text_search_strength * 0.4)
 
     @property
     def TEXT_SUMMARY_BOOST(self) -> float:
-        return self.text_summary_boost
+        # 텍스트 강도 기반으로 boost 계산
+        return self.text_search_strength * 0.15
 
     @property
     def TEXT_PARAGRAPH_BASE_WEIGHT(self) -> float:
-        return self.text_paragraph_base_weight
+        # summary보다 약간 낮게
+        return self.TEXT_SUMMARY_BASE_WEIGHT - 0.1
 
     @property
     def TEXT_PARAGRAPH_PENALTY(self) -> float:
-        return self.text_paragraph_penalty
+        return 0.1  # 고정값
 
     @property
     def TEXT_MIN_WEIGHT(self) -> float:
-        return self.text_min_weight
+        return 0.3 + (self.text_search_strength * 0.2)  # 0.3~0.5 범위
 
     @property
     def TEXT_PARAGRAPH_DEFAULT(self) -> float:
-        return self.text_paragraph_default
+        return self.text_search_strength * 0.8  # 텍스트 강도에 비례
 
     @property
     def TEXT_SUMMARY_DEFAULT(self) -> float:
-        return self.text_summary_default
+        return self.text_search_strength * 0.6  # paragraph보다 낮게
 
     @property
     def IMAGE_ORIGIN_WEIGHT(self) -> float:
-        return self.image_origin_weight
+        return self.image_search_strength  # 이미지 강도와 동일
 
     @property
     def IMAGE_CAPTION_BASE_WEIGHT(self) -> float:
-        return self.image_caption_base_weight
+        # 이미지 강도 기반으로 caption 가중치 계산 (0.2~0.5 범위)
+        return 0.2 + (self.image_search_strength * 0.3)
 
     @property
     def IMAGE_CAPTION_BOOST(self) -> float:
-        return self.image_caption_boost
+        return self.image_search_strength * 0.06
 
     @property
     def IMAGE_CAPTION_MAX_WEIGHT(self) -> float:
-        return self.image_caption_max_weight
+        return self.IMAGE_CAPTION_BASE_WEIGHT + 0.2
 
     @property
     def IMAGE_CAPTION_MIN_WEIGHT(self) -> float:
-        return self.image_caption_min_weight
+        return self.IMAGE_CAPTION_BASE_WEIGHT - 0.1
 
     @property
     def UNIVERSAL_DEFAULT_WEIGHT(self) -> float:
-        return self.universal_default_weight
+        # 텍스트와 이미지 강도의 평균
+        return (self.text_search_strength + self.image_search_strength) / 2
 
     @property
     def OPENSEARCH_DEFAULT_WEIGHT(self) -> float:
-        return self.opensearch_default_weight
+        return 1.0  # 고정값
 
     @property
     def HIGH_PRIORITY_THRESHOLD(self) -> float:
-        return self.high_priority_threshold
+        return 0.8  # 고정값
 
     @property
     def MEDIUM_PRIORITY_THRESHOLD(self) -> float:
-        return self.medium_priority_threshold
+        return 0.5  # 고정값
 
     @property
     def LOW_PRIORITY_THRESHOLD(self) -> float:
-        return self.low_priority_threshold
+        return 0.0  # 고정값
 
     @property
     def MODALITY_BOOST_MIN_MULTIPLIER(self) -> float:
-        return self.modality_boost_min_multiplier
+        # vector_boost_strength 기반으로 계산 (0.3~0.7 범위)
+        return 0.3 + (self.vector_boost_strength / 3.0 * 0.4)
 
     @property
     def MODALITY_BOOST_MAX_MULTIPLIER(self) -> float:
-        return self.modality_boost_max_multiplier
+        # vector_boost_strength와 비례 (1.0~3.0 범위)
+        return self.vector_boost_strength * 2.0
 
     @property
     def MODALITY_BOOST_RANGE(self) -> float:
-        return self.modality_boost_range
+        # max - min
+        return self.MODALITY_BOOST_MAX_MULTIPLIER - self.MODALITY_BOOST_MIN_MULTIPLIER
 
     @property
     def MODALITY_FALLBACK_WEIGHTS(self) -> Dict[str, Dict[str, float]]:
