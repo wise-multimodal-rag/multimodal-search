@@ -273,13 +273,13 @@ class SearchService:
                     else ("no_data" if not text_query and not has_text_elements else "failed"),
                     "image": "success"
                     if extracted_features.image is not None
-                    else ("no_data" if not (modalities_data and modalities_data.get("image")) else "failed"),
+                    else ("no_data" if not modalities_data or not modalities_data.get("image") else "failed"),
                     "video": "success"
                     if extracted_features.video is not None
-                    else ("no_data" if not (modalities_data and modalities_data.get("video")) else "failed"),
+                    else ("no_data" if not modalities_data or not modalities_data.get("video") else "failed"),
                     "audio": "success"
                     if extracted_features.audio is not None
-                    else ("no_data" if not (modalities_data and modalities_data.get("audio")) else "failed"),
+                    else ("no_data" if not modalities_data or not modalities_data.get("audio") else "failed"),
                 }
             }
 
