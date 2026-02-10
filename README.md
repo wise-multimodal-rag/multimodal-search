@@ -794,15 +794,19 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 #### Docker 실행
+
 ```bash
-# 전체 서비스 실행 (OpenSearch + App)
-docker-compose up --build
+# 개발용 이미지 빌드 (개발 도구 포함: ruff, pyright)
+docker build --target development -t multimodal-search:dev .
 
-# OpenSearch만 실행
-docker-compose up opensearch opensearch-dashboards
+# 운영용 이미지 빌드 (최소화된 이미지)
+docker build --target production -t multimodal-search:prod .
 
-# LiteLLM 포함 개발 환경
-docker-compose --profile dev up
+# 개발용 컨테이너 실행
+docker run --rm -p 8000:8000 --env-file .env multimodal-search:dev
+
+# 운영용 컨테이너 실행
+docker run --rm -p 8000:8000 --env-file .env multimodal-search:prod
 ```
 
 ### 4. 접속 및 테스트
