@@ -1,13 +1,15 @@
 """클라이언트 설정 제공 API"""
+from typing import Any, Dict
+
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
 
 from app.core.config import settings
+from app.models.common import ApiResponse, ResponseBuilder
 
 router = APIRouter()
 
 
-@router.get("/config/client")
+@router.get("/config/client", response_model=ApiResponse[Dict[str, Any]])
 async def get_client_config():
     """클라이언트에서 사용할 설정 정보 제공
     
@@ -62,16 +64,13 @@ async def get_client_config():
         }
     }
     
-    return JSONResponse(
-        content=client_config,
-        headers={
-            "Cache-Control": "public, max-age=300",  # 5분 캐시
-            "Content-Type": "application/json"
-        }
+    return ResponseBuilder.success(
+        data=client_config,
+        message="Client configuration retrieved successfully"
     )
 
 
-@router.get("/config/features")
+@router.get("/config/features", response_model=ApiResponse[Dict[str, Any]])
 async def get_feature_flags():
     """기능 플래그 정보 제공
     
@@ -88,10 +87,7 @@ async def get_feature_flags():
         "collaborative_search": False,  # 향후 기능
     }
     
-    return JSONResponse(
-        content={"features": features},
-        headers={
-            "Cache-Control": "public, max-age=60",  # 1분 캐시 (빠른 업데이트)
-            "Content-Type": "application/json"
-        }
+    return ResponseBuilder.success(
+        data={"features": features},
+        message="Feature flags retrieved successfully"
     )

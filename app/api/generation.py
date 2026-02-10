@@ -14,12 +14,14 @@ from app.core.interfaces import (
     AnswerGenerationServiceProtocol,
     SearchServiceProtocol,
 )
-from app.models.generation import GenerationResponse
+from app.models.common import ApiResponse, GenerationResponseData, standard_response
+from app.models.generation import GenerationAttempt
 
 router = APIRouter()
 
 
-@router.post("/generate/multimodal", response_model=GenerationResponse)
+@router.post("/generate/multimodal", response_model=ApiResponse[GenerationResponseData])
+@standard_response(message="Answer generation completed successfully")
 async def generate_multimodal_answer(
         text_query: str = Form(description="텍스트 검색 쿼리"),
         image: Optional[UploadFile] = File(default=None, description="이미지 파일"),
@@ -71,7 +73,16 @@ async def generate_multimodal_answer(
 
         logger.info(f"Answer generation completed in {processing_time_ms}ms")
 
-        return GenerationResponse(**generation_result)
+        # GenerationResponseData로 변환
+        generation_data = GenerationResponseData(
+            final_answer=generation_result.get("final_answer"),
+            query=generation_result["query"],
+            total_attempts=generation_result["total_attempts"],
+            generation_attempts=generation_result["generation_attempts"],
+            search_context=generation_result["search_context"]
+        )
+
+        return generation_data
 
     except ValidationException:
         # 검증 예외는 그대로 전파 (미들웨어에서 처리)

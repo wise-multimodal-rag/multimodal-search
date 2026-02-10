@@ -9,6 +9,7 @@ from loguru import logger
 
 from app.api.routes import config, generation, search
 from app.core.dependency_injector import get_opensearch_service
+from app.models.common import ApiResponse, HealthCheckData, ResponseBuilder
 from app.core.error_management import EnhancedExceptionHandlerMiddleware
 from app.core.config import settings
 
@@ -74,13 +75,24 @@ async def root():
     return {"message": "Multimodal Search API", "version": "0.1.0"}
 
 
-@app.get("/health")
+@app.get("/health", response_model=ApiResponse[HealthCheckData])
 async def health_check():
     opensearch_service = get_opensearch_service()
-    return {"status": "healthy", "opensearch": await opensearch_service.health_check()}
+    opensearch_status = await opensearch_service.health_check()
+
+    health_data = HealthCheckData(
+        status="healthy",
+        services={"opensearch": opensearch_status},
+        version="0.2.0"
+    )
+
+    return ResponseBuilder.success(
+        data=health_data,
+        message="Health check completed successfully"
+    )
 
 
-@app.get("/health/external-apis")
+@app.get("/health/external-apis", response_model=ApiResponse[HealthCheckData])
 async def external_apis_health_check():
     """Check health of all external APIs."""
     import httpx
@@ -131,8 +143,18 @@ async def external_apis_health_check():
 
     # Overall status
     all_healthy = all(result.get("status") == "healthy" for result in results.values())
+    overall_status = "healthy" if all_healthy else "degraded"
 
-    return {"status": "healthy" if all_healthy else "degraded", "external_apis": results}
+    health_data = HealthCheckData(
+        status=overall_status,
+        services=results,
+        version="0.2.0"
+    )
+
+    return ResponseBuilder.success(
+        data=health_data,
+        message=f"External APIs health check completed - status: {overall_status}"
+    )
 
 
 @app.get("/search")
