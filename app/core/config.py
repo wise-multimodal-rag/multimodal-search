@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # LiteLLM Configuration - Generation
     litellm_generation_model: str = Field(default="claude-3-5-sonnet-20241022", alias="LITELLM_GENERATION_MODEL")
 
+    # Langfuse Configuration - Prompt Management
+    langfuse_public_key: str = Field(default="", alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
+    langfuse_host: str = Field(default="https://cloud.langfuse.com", alias="LANGFUSE_HOST")
+    langfuse_enabled: bool = Field(default=True, alias="LANGFUSE_ENABLED")
+
     # Application Configuration
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")

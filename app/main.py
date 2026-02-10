@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -7,10 +8,8 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from app.api.routes import config, generation, search
-from app.core.config import settings
 from app.core.dependencies import get_opensearch_service
 from app.core.exceptions import ExceptionHandlerMiddleware
-from app.core.logging import setup_logging
 
 
 @asynccontextmanager
@@ -39,11 +38,23 @@ app = FastAPI(
 # Add exception handling middleware
 app.add_middleware(ExceptionHandlerMiddleware)
 
+# Get project root directory (parent of app directory)
+PROJECT_ROOT = Path(__file__).parent.parent
+
 # Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+static_dir = PROJECT_ROOT / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+else:
+    logger.warning(f"Static directory not found: {static_dir}")
 
 # Setup templates
-templates = Jinja2Templates(directory="templates")
+templates_dir = PROJECT_ROOT / "templates"
+if templates_dir.exists():
+    templates = Jinja2Templates(directory=str(templates_dir))
+else:
+    logger.warning(f"Templates directory not found: {templates_dir}")
+    templates = None
 
 # Include routers
 app.include_router(search.router, prefix="/api/v1", tags=["search"])

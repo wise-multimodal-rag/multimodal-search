@@ -424,7 +424,7 @@ class OpenSearchService:
         boost_multiplier = min_multiplier + (avg_weight * boost_range)
         final_boost = base_boost * boost_multiplier
         
-        logger.info(f"🎯 Modality boost calculated: {embedding_type} → avg_weight={avg_weight:.2f}, multiplier={boost_multiplier:.2f}, final_boost={final_boost:.2f}")
+        logger.info(f"Modality boost calculated: {embedding_type} → avg_weight={avg_weight:.2f}, multiplier={boost_multiplier:.2f}, final_boost={final_boost:.2f}")
         
         return final_boost
 

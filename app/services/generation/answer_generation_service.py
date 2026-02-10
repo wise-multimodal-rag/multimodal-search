@@ -6,6 +6,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from loguru import logger
 
 from app.clients.llm_client import LLMClient
+from app.core.prompt_manager import prompt_manager
 from app.models.opensearch import SearchResponse
 
 
@@ -14,6 +15,7 @@ class AnswerGenerationService:
 
     def __init__(self, llm_client: LLMClient):
         self.llm_client = llm_client
+        self.prompt_manager = prompt_manager
 
     async def generate_answer(
             self,
@@ -58,7 +60,7 @@ class AnswerGenerationService:
                     logger.info(
                         f"Using {len(previous_improvements) if previous_improvements else 0} improvement suggestions from previous attempt")
                 else:
-                    logger.warning("⚠️ Previous attempt is None, skipping improvement suggestions")
+                    logger.warning("Previous attempt is None, skipping improvement suggestions")
 
             draft_answer = await self._generate_draft(query, context, temperature, previous_improvements)
             if not draft_answer:
@@ -66,7 +68,7 @@ class AnswerGenerationService:
                 continue
 
             # 생성된 초안 답변 로깅 (간단히)
-            logger.info(f"📝 Draft {attempt + 1}: {len(draft_answer)} chars - {draft_answer[:100]}...")
+            logger.info(f"Draft {attempt + 1}: {len(draft_answer)} chars - {draft_answer[:100]}...")
 
             # 2. Reflection 수행
             reflection_result = await self._perform_reflection(query, draft_answer, context)
@@ -77,7 +79,7 @@ class AnswerGenerationService:
             # Reflection 결과 로깅 (간단히)
             total_score = reflection_result.get('total_score', 0) if reflection_result else 0
             is_acceptable = reflection_result.get('is_acceptable', False) if reflection_result else False
-            logger.info(f"🔍 Reflection {attempt + 1}: {total_score}/50 ({'PASS' if is_acceptable else 'RETRY'})")
+            logger.info(f"Reflection {attempt + 1}: {total_score}/50 ({'PASS' if is_acceptable else 'RETRY'})")
 
             attempt_result = {
                 "attempt": attempt + 1,
@@ -95,8 +97,8 @@ class AnswerGenerationService:
             is_acceptable = reflection_result.get("is_acceptable", False) if reflection_result else False
 
             if is_acceptable:
-                logger.info(f"✅ Answer accepted in attempt {attempt + 1} - Score: {total_score}/50")
-                logger.info(f"🎉 FINAL ANSWER: {len(draft_answer)} chars - {draft_answer[:100]}...")
+                logger.info(f"Answer accepted in attempt {attempt + 1} - Score: {total_score}/50")
+                logger.info(f"FINAL ANSWER: {len(draft_answer)} chars - {draft_answer[:100]}...")
                 return {
                     "success": True,
                     "final_answer": draft_answer,
@@ -114,24 +116,24 @@ class AnswerGenerationService:
 
             # 마지막 시도인지 확인
             if attempt >= max_attempts - 1:
-                logger.info(f"🔴 Generation reached max attempts ({attempt + 1}/{max_attempts}), selecting best answer")
+                logger.info(f"Generation reached max attempts ({attempt + 1}/{max_attempts}), selecting best answer")
                 break
 
             # 재생성 신호 (첫번째 시도가 35점 이하인 경우에만)
             if total_score <= 35:
-                logger.info(f"🔄 Generation needs retry (score={total_score}), preparing attempt {attempt + 2}")
+                logger.info(f"Generation needs retry (score={total_score}), preparing attempt {attempt + 2}")
 
                 # 재검색은 하지 않음 - 동일한 검색 결과 사용
-                logger.info("📝 Using same search results for regeneration (no re-search needed)")
+                logger.info("Using same search results for regeneration (no re-search needed)")
 
                 # 다음 시도에서는 약간 다른 온도 사용
                 temperature = min(1.0, temperature + 0.1)
             else:
-                logger.info(f"🔶 Score {total_score}/50 is acceptable, completing generation")
+                logger.info(f"Score {total_score}/50 is acceptable, completing generation")
                 break
 
         # 모든 시도 완료 - 가장 점수가 높은 답변 선택
-        logger.info(f"🎯 Selecting best answer from {len(generation_attempts)} attempts")
+        logger.info(f"Selecting best answer from {len(generation_attempts)} attempts")
 
         if generation_attempts:
             # 점수가 가장 높은 답변 선택
@@ -140,8 +142,8 @@ class AnswerGenerationService:
             best_answer = best_attempt["draft_answer"]
             best_attempt_num = best_attempt["attempt"]
 
-            logger.info(f"🏆 Selected attempt {best_attempt_num} with score {best_score}/50")
-            logger.info(f"🔶 BEST ANSWER: {len(best_answer)} chars - {best_answer[:100]}...")
+            logger.info(f"Selected attempt {best_attempt_num} with score {best_score}/50")
+            logger.info(f"BEST ANSWER: {len(best_answer)} chars - {best_answer[:100]}...")
 
             # 성공 여부 판단 (35점 이상이면 성공)
             is_success = best_score >= 35
@@ -162,7 +164,7 @@ class AnswerGenerationService:
             }
         else:
             # 예외적인 경우
-            logger.error("🚨 No generation attempts found")
+            logger.error("No generation attempts found")
             return {
                 "success": False,
                 "final_answer": None,
@@ -226,16 +228,16 @@ class AnswerGenerationService:
                 "attached_image_caption" in search_results.query_analysis):
             attached_caption = search_results.query_analysis.get("attached_image_caption", "")
             if attached_caption and attached_caption.strip():
-                logger.info(f"🖼️ Found attached image caption: {attached_caption[:100]}...")
+                logger.info(f"Found attached image caption: {attached_caption[:100]}...")
                 context_parts.append("\n=== 첨부 이미지 정보 ===")
-                context_parts.append("🖼️ 첨부된 이미지 설명:")
+                context_parts.append("첨부된 이미지 설명:")
                 cleaned_attached_caption = self._clean_content_text(attached_caption)
                 context_parts.append(f"  - {cleaned_attached_caption}")
-                logger.info(f"✅ Added attached image caption to context")
+                logger.info(f"Added attached image caption to context")
             else:
-                logger.info(f"🚫 attached_image_caption is empty or whitespace only")
+                logger.info(f"attached_image_caption is empty or whitespace only")
         else:
-            logger.debug(f"🚫 No attached image caption found")
+            logger.debug(f"No attached image caption found")
 
         return "\n\n".join(context_parts)
 
@@ -265,7 +267,7 @@ class AnswerGenerationService:
                 "_source": ["chunk_id", "content"]
             }
 
-            logger.info(f"🔍 Searching captions for {len(chunk_ids)} origin chunks")
+            logger.info(f"Searching captions for {len(chunk_ids)} origin chunks")
 
             if opensearch_service.client:
                 response = await opensearch_service.client.search(
@@ -287,20 +289,20 @@ class AnswerGenerationService:
                     # 이미 검색 결과에 포함된 caption은 제외
                     if existing_caption_chunk_ids and chunk_id in existing_caption_chunk_ids:
                         excluded_count += 1
-                        logger.debug(f"🔄 Skipping duplicate caption for chunk_id: {chunk_id}")
+                        logger.debug(f"Skipping duplicate caption for chunk_id: {chunk_id}")
                         continue
 
                     captions[chunk_id] = content
 
                 logger.info(
-                    f"✅ Found {len(captions)} captions for origin images ({excluded_count} duplicates excluded)")
+                    f"Found {len(captions)} captions for origin images ({excluded_count} duplicates excluded)")
             else:
-                logger.info("🔍 No captions found for origin images")
+                logger.info("No captions found for origin images")
 
             return captions
 
         except Exception as e:
-            logger.error(f"❌ Failed to get captions for origins: {e}")
+            logger.error(f"Failed to get captions for origins: {e}")
             return {}
 
     def _clean_content_text(self, content: str) -> str:
@@ -348,59 +350,11 @@ class AnswerGenerationService:
         # 이미지 관련 안내문 - 첨부 이미지가 있을 때만 포함 (컨텍스트에서 확인)
         has_attached_image = "=== 첨부 이미지 정보 ===" in context
 
-        # 기본 시스템 프롬프트
-        base_system_prompt = """당신은 멀티모달 검색 결과를 바탕으로 정확하고 유용한 답변을 생성하는 AI 어시스턴트입니다.
-
-다음 원칙을 따라 답변을 생성하세요:
-
-1. **정확성**: 제공된 검색 결과에 기반하여 정확한 정보만 제공
-2. **완성도**: 질문에 대해 포괄적이고 완전한 답변 제공
-3. **명확성**: 이해하기 쉽고 구체적인 설명
-4. **구조화**: 논리적 순서와 명확한 구조로 답변 구성
-5. **출처 표시**: 검색 결과의 어떤 부분을 참고했는지 명시"""
-
-        # 이미지가 첨부된 경우에만 이미지 관련 안내 추가
-        if has_attached_image:
-            image_guidance = """
-
-**중요**: 검색 결과에 "=== 첨부 이미지 정보 ===" 섹션이 있다면, 이는 사용자가 첨부한 이미지에 대한 AI 생성 캡션입니다. 
-사용자가 "이 이미지", "사진", "그림" 등을 언급할 때는 이 캡션을 참고하여 구체적인 이미지 내용을 설명할 수 있습니다."""
-            base_system_prompt += image_guidance
-
-        base_system_prompt += """
-
-답변 형식:
-- 질문에 직접적으로 답변하는 내용으로 시작"""
-
-        if has_attached_image:
-            base_system_prompt += """
-- 이미지 관련 질문이면 첨부 이미지 캡션 정보를 활용하여 구체적으로 설명"""
-
-        base_system_prompt += """
-- 필요시 배경 설명이나 맥락 정보 제공
-- 구체적인 예시나 세부사항 포함
-- 관련된 추가 정보나 주의사항 언급
-
-검색 결과에 없는 정보에 대해서는 추측하지 말고, 검색 결과의 한계를 명시하세요."""
-
-        # 이전 개선 제안이 있는 경우 추가
-        if previous_improvements and len(previous_improvements) > 0:
-            logger.info(f"🔧 Processing previous improvements: {type(previous_improvements)}, {previous_improvements}")
-            try:
-                improvement_text = "\n\n".join([f"- {suggestion}" for suggestion in previous_improvements])
-            except Exception as e:
-                logger.error(
-                    f"❌ Error processing previous improvements: {e}, type: {type(previous_improvements)}, value: {previous_improvements}")
-                improvement_text = "- 이전 개선 제안을 처리하는 중 오류 발생"
-            improvement_section = f"""
-
-**이전 답변에서 개선이 필요했던 부분들:**
-{improvement_text}
-
-위 개선사항들을 반드시 고려하여 더 나은 답변을 생성해주세요."""
-            system_prompt = base_system_prompt + improvement_section
-        else:
-            system_prompt = base_system_prompt
+        # 프롬프트 매니저에서 답변 생성 프롬프트 가져오기
+        system_prompt = await self.prompt_manager.get_answer_generation_prompt(
+            has_attached_image=has_attached_image,
+            previous_improvements=previous_improvements
+        )
 
         user_prompt = f"""질문: {query}
 
@@ -409,10 +363,7 @@ class AnswerGenerationService:
 
 위 검색 결과를 바탕으로 질문에 대한 포괄적이고 정확한 답변을 생성해주세요."""
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
+        messages = self.prompt_manager.create_messages(system_prompt, user_prompt)
         logger.debug(f"🧾 Draft generation messages: {messages}")
 
         try:
@@ -429,33 +380,8 @@ class AnswerGenerationService:
 
     async def _perform_reflection(self, query: str, draft_answer: str, context: str) -> Optional[Dict[str, Any]]:
         """생성된 답변에 대한 reflection 수행"""
-        system_prompt = """당신은 생성된 답변의 품질을 평가하고 개선점을 제안하는 전문가입니다.
-
-다음 기준으로 답변을 평가하세요:
-
-1. **정확성** (0-10): 검색 결과와 일치하는 정보 제공 여부
-2. **완성도** (0-10): 질문에 대한 포괄적인 답변 제공 여부  
-3. **명확성** (0-10): 이해하기 쉽고 구체적인 설명 여부
-4. **구조** (0-10): 논리적 구성과 읽기 쉬운 형태 여부
-5. **관련성** (0-10): 질문과의 직접적인 연관성
-
-전체 점수가 35점 이상(평균 7점)이면 is_acceptable: true로 설정하세요.
-
-JSON 형식으로만 응답하세요:
-{
-    "scores": {
-        "accuracy": 8,
-        "completeness": 7,
-        "clarity": 9,
-        "structure": 8,
-        "relevance": 9
-    },
-    "total_score": 41,
-    "is_acceptable": true,
-    "strengths": ["명확한 설명", "좋은 구조"],
-    "improvement_suggestions": ["더 구체적인 예시 필요"],
-    "overall_assessment": "전반적으로 우수한 답변이나 예시가 더 필요함"
-}"""
+        # 프롬프트 매니저에서 답변 평가 프롬프트 가져오기
+        system_prompt = await self.prompt_manager.get_answer_reflection_prompt()
 
         user_prompt = f"""평가할 답변:
 질문: {query}
@@ -468,10 +394,7 @@ JSON 형식으로만 응답하세요:
 
 위 답변을 평가하고 개선점을 제안해주세요."""
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
+        messages = self.prompt_manager.create_messages(system_prompt, user_prompt)
 
         try:
             response = await self.llm_client.complete(
@@ -510,11 +433,11 @@ JSON 형식으로만 응답하세요:
                     result["improvement_suggestions"] = []
                 elif not isinstance(result["improvement_suggestions"], list):
                     logger.warning(
-                        f"⚠️ improvement_suggestions is not a list: {type(result['improvement_suggestions'])}, converting to list")
+                        f"improvement_suggestions is not a list: {type(result['improvement_suggestions'])}, converting to list")
                     result["improvement_suggestions"] = [str(result["improvement_suggestions"])]
 
                 logger.info(
-                    f"🔍 Reflection result: improvement_suggestions type={type(result.get('improvement_suggestions'))}, value={result.get('improvement_suggestions')}")
+                    f"Reflection result: improvement_suggestions type={type(result.get('improvement_suggestions'))}, value={result.get('improvement_suggestions')}")
                 return result
 
         except json.JSONDecodeError as e:
@@ -536,11 +459,11 @@ JSON 형식으로만 응답하세요:
         """검색 결과를 기반으로 질의에 대한 답변을 스트리밍으로 생성합니다."""
         start_time = time.time()
         max_generation_time = 300  # 5분 최대 실행 시간
-        logger.info(f"🚀 Starting streaming answer generation for query: {query} (max_retries={max_retries})")
+        logger.info(f"Starting streaming answer generation for query: {query} (max_retries={max_retries})")
 
         # 검색 결과를 컨텍스트로 변환
         context = await self._prepare_context(search_results)
-        logger.debug(f"🗂️ Prepared context: {context}")
+        logger.debug(f"Prepared context: {context}")
 
         # 답변 생성 시작 신호
         yield {
@@ -553,15 +476,15 @@ JSON 형식으로만 응답하세요:
 
         # 새로운 로직: 최대 2회만 시도 (초안 1회 + 재생성 1회)
         max_attempts = 2
-        logger.info(f"🎯 STREAM Starting generation with max_attempts={max_attempts} (1 initial + 1 regeneration)")
+        logger.info(f"STREAM Starting generation with max_attempts={max_attempts} (1 initial + 1 regeneration)")
 
         for attempt in range(max_attempts):
-            logger.info(f"🔄 STREAM Starting attempt {attempt + 1}/{max_attempts}")
+            logger.info(f"STREAM Starting attempt {attempt + 1}/{max_attempts}")
             # 취소 요청 체크 및 양보
             try:
                 await asyncio.sleep(0.01)  # 취소 체크를 위한 양보 (10ms)
             except asyncio.CancelledError:
-                logger.info(f"🛑 STREAM Generation cancelled at attempt {attempt + 1}")
+                logger.info(f"STREAM Generation cancelled at attempt {attempt + 1}")
                 cancel_result = {
                     'step': 'answer_generation_cancelled',
                     'message': '답변 생성이 취소되었습니다',
@@ -573,7 +496,7 @@ JSON 형식으로만 응답하세요:
             # 시간 제한 체크
             elapsed_time = time.time() - start_time
             if elapsed_time > max_generation_time:
-                logger.error(f"🚨 STREAM Generation timeout after {elapsed_time:.1f}s, stopping")
+                logger.error(f"STREAM Generation timeout after {elapsed_time:.1f}s, stopping")
                 timeout_result = {
                     'step': 'answer_generation_timeout',
                     'message': f'답변 생성이 시간 초과되어 중단되었습니다 ({elapsed_time:.1f}초)',
@@ -583,7 +506,7 @@ JSON 형식으로만 응답하세요:
                 return
 
             logger.info(
-                f"🔄 STREAM Generation attempt {attempt + 1}/{max_attempts} (max_retries={max_retries}, elapsed={elapsed_time:.1f}s)")
+                f"STREAM Generation attempt {attempt + 1}/{max_attempts} (max_retries={max_retries}, elapsed={elapsed_time:.1f}s)")
 
             # 초안 생성 시작 신호
             yield {
@@ -594,7 +517,7 @@ JSON 형식으로만 응답하세요:
             }
 
             # 1. 초안 생성 (이전 시도의 개선 제안 활용)
-            logger.info(f"🎯 STREAM Generating draft for attempt {attempt + 1}")
+            logger.info(f"STREAM Generating draft for attempt {attempt + 1}")
             previous_improvements = None
             if attempt > 0 and generation_attempts:
                 # 이전 시도에서 개선 제안 추출
@@ -602,18 +525,18 @@ JSON 형식으로만 응답하세요:
                 if previous_attempt:
                     previous_improvements = previous_attempt.get("improvement_suggestions", [])
                     logger.info(
-                        f"🔄 STREAM Using {len(previous_improvements) if previous_improvements else 0} improvement suggestions from previous attempt")
+                        f"STREAM Using {len(previous_improvements) if previous_improvements else 0} improvement suggestions from previous attempt")
                 else:
-                    logger.warning("⚠️ STREAM Previous attempt is None, skipping improvement suggestions")
+                    logger.warning("STREAM Previous attempt is None, skipping improvement suggestions")
 
             try:
                 draft_answer = await self._generate_draft(query, context, temperature, previous_improvements)
                 if not draft_answer:
-                    logger.error(f"❌ STREAM Failed to generate draft answer in attempt {attempt + 1}")
+                    logger.error(f"STREAM Failed to generate draft answer in attempt {attempt + 1}")
                     continue
-                logger.info(f"✅ STREAM Draft generated for attempt {attempt + 1}: {len(draft_answer)} chars")
+                logger.info(f"STREAM Draft generated for attempt {attempt + 1}: {len(draft_answer)} chars")
             except asyncio.CancelledError:
-                logger.info(f"🛑 STREAM Draft generation cancelled at attempt {attempt + 1}")
+                logger.info(f"STREAM Draft generation cancelled at attempt {attempt + 1}")
                 raise
 
             # 초안 생성 완료 신호
@@ -644,16 +567,16 @@ JSON 형식으로만 응답하세요:
             }
 
             # 2. Reflection 수행
-            logger.info(f"🔍 STREAM Performing reflection for attempt {attempt + 1}")
+            logger.info(f"STREAM Performing reflection for attempt {attempt + 1}")
             try:
                 reflection_result = await self._perform_reflection(query, draft_answer, context)
                 if not reflection_result:
-                    logger.error(f"❌ STREAM Failed to perform reflection in attempt {attempt + 1}")
+                    logger.error(f"STREAM Failed to perform reflection in attempt {attempt + 1}")
                     continue
                 logger.info(
-                    f"✅ STREAM Reflection completed for attempt {attempt + 1}: {reflection_result.get('total_score', 0)}/50")
+                    f"STREAM Reflection completed for attempt {attempt + 1}: {reflection_result.get('total_score', 0)}/50")
             except asyncio.CancelledError:
-                logger.info(f"🛑 STREAM Reflection cancelled at attempt {attempt + 1}")
+                logger.info(f"STREAM Reflection cancelled at attempt {attempt + 1}")
                 raise
 
             # 품질 검토 완료 신호  
@@ -691,11 +614,11 @@ JSON 형식으로만 응답하세요:
             is_acceptable = reflection_result.get("is_acceptable", False) if reflection_result else False
             total_score = reflection_result.get("total_score", 0) if reflection_result else 0
             logger.info(
-                f"🎯 STREAM Quality check: score={total_score}/50, acceptable={is_acceptable}, attempt={attempt + 1}/{max_attempts}")
+                f"STREAM Quality check: score={total_score}/50, acceptable={is_acceptable}, attempt={attempt + 1}/{max_attempts}")
 
             # 품질이 좋으면 바로 완료
             if is_acceptable:
-                logger.info(f"✅ STREAM Answer accepted in attempt {attempt + 1}")
+                logger.info(f"STREAM Answer accepted in attempt {attempt + 1}")
 
                 # 최종 결과
                 final_result = {
@@ -720,21 +643,21 @@ JSON 형식으로만 응답하세요:
                     'data': final_result,
                     'timestamp': time.time()
                 }
-                logger.info(f"🏁 STREAM Generation completed successfully after {attempt + 1} attempts")
+                logger.info(f"STREAM Generation completed successfully after {attempt + 1} attempts")
                 return
 
             # 마지막 시도인지 확인 (2회 제한)
             if attempt >= max_attempts - 1:
                 logger.info(
-                    f"🔴 STREAM Generation reached max attempts ({attempt + 1}/{max_attempts}), selecting best answer")
+                    f"STREAM Generation reached max attempts ({attempt + 1}/{max_attempts}), selecting best answer")
                 break
 
             # 재생성 신호 (첫번째 시도가 35점 이하인 경우에만)
             if total_score <= 35:
-                logger.info(f"🔄 STREAM Generation needs retry (score={total_score}), preparing attempt {attempt + 2}")
+                logger.info(f"STREAM Generation needs retry (score={total_score}), preparing attempt {attempt + 2}")
 
                 # 재검색은 하지 않음 - 동일한 검색 결과로 재생성
-                logger.info("📝 STREAM Using same search results for regeneration (no re-search needed)")
+                logger.info("STREAM Using same search results for regeneration (no re-search needed)")
 
                 yield {
                     'step': 'regenerating',
@@ -744,11 +667,11 @@ JSON 형식으로만 응답하세요:
                 # 다음 시도에서는 약간 다른 온도 사용
                 temperature = min(1.0, temperature + 0.1)
             else:
-                logger.info(f"🔶 STREAM Score {total_score}/50 is acceptable, completing generation")
+                logger.info(f"STREAM Score {total_score}/50 is acceptable, completing generation")
                 break
 
         # 모든 시도 완료 - 가장 점수가 높은 답변 선택
-        logger.info(f"🎯 STREAM Selecting best answer from {len(generation_attempts)} attempts")
+        logger.info(f"STREAM Selecting best answer from {len(generation_attempts)} attempts")
 
         if generation_attempts:
             # 점수가 가장 높은 답변 선택
@@ -757,7 +680,7 @@ JSON 형식으로만 응답하세요:
             best_answer = best_attempt["draft_answer"]
             best_attempt_num = best_attempt["attempt"]
 
-            logger.info(f"🏆 STREAM Selected attempt {best_attempt_num} with score {best_score}/50")
+            logger.info(f"STREAM Selected attempt {best_attempt_num} with score {best_score}/50")
 
             # 성공 여부 판단 (35점 이상이면 성공)
             is_success = best_score >= 35
@@ -790,10 +713,10 @@ JSON 형식으로만 응답하세요:
                 'timestamp': time.time()
             }
             logger.info(
-                f"🏁 STREAM Generation completed - selected best answer from {len(generation_attempts)} attempts")
+                f"STREAM Generation completed - selected best answer from {len(generation_attempts)} attempts")
         else:
             # 예외적인 경우 - 시도가 하나도 없음
-            logger.error("🚨 STREAM No generation attempts found")
+            logger.error("STREAM No generation attempts found")
             final_result = {
                 "success": False,
                 "final_answer": None,

@@ -57,8 +57,6 @@ class InputProcessor:
                 logger.info(f"텍스트 파일이 modalities_data에 추가됨: {text_file_data.get('filename', 'unknown')}")
             else:
                 logger.warning("텍스트 파일 처리 실패")
-        else:
-            logger.info("텍스트 파일이 전달되지 않음")
 
         logger.info(f"최종 modalities_data 키들: {list(modalities_data.keys())}")
         return modalities_data

@@ -36,7 +36,7 @@ class FilePreprocessingService:
         if image:
             try:
                 image_content = await image.read()
-                logger.info(f"📷 Image: {image.filename} ({len(image_content) if image_content else 0} bytes)")
+                logger.info(f"Image: {image.filename} ({len(image_content) if image_content else 0} bytes)")
 
                 if image_content and len(image_content) > 0:
                     processed_files["image"] = {
@@ -47,17 +47,17 @@ class FilePreprocessingService:
                 else:
                     error_msg = f"이미지 파일이 비어있습니다: {image.filename}"
                     file_processing_errors.append(error_msg)
-                    logger.error(f"❌ {error_msg}")
+                    logger.error(f"{error_msg}")
             except Exception as e:
                 error_msg = f"이미지 파일 읽기 실패: {str(e)}"
                 file_processing_errors.append(error_msg)
-                logger.error(f"❌ {error_msg}")
+                logger.error(f"{error_msg}")
 
         # 비디오 파일 처리
         if video:
             try:
                 video_content = await video.read()
-                logger.info(f"🎥 Video: {video.filename} ({len(video_content) if video_content else 0} bytes)")
+                logger.info(f"Video: {video.filename} ({len(video_content) if video_content else 0} bytes)")
 
                 if video_content and len(video_content) > 0:
                     processed_files["video"] = {
@@ -68,17 +68,17 @@ class FilePreprocessingService:
                 else:
                     error_msg = f"비디오 파일이 비어있습니다: {video.filename}"
                     file_processing_errors.append(error_msg)
-                    logger.error(f"❌ {error_msg}")
+                    logger.error(f"{error_msg}")
             except Exception as e:
                 error_msg = f"비디오 파일 읽기 실패: {str(e)}"
                 file_processing_errors.append(error_msg)
-                logger.error(f"❌ {error_msg}")
+                logger.error(f"{error_msg}")
 
         # 오디오 파일 처리
         if audio:
             try:
                 audio_content = await audio.read()
-                logger.info(f"🎵 Audio: {audio.filename} ({len(audio_content) if audio_content else 0} bytes)")
+                logger.info(f"Audio: {audio.filename} ({len(audio_content) if audio_content else 0} bytes)")
 
                 if audio_content and len(audio_content) > 0:
                     processed_files["audio"] = {
@@ -89,17 +89,17 @@ class FilePreprocessingService:
                 else:
                     error_msg = f"오디오 파일이 비어있습니다: {audio.filename}"
                     file_processing_errors.append(error_msg)
-                    logger.error(f"❌ {error_msg}")
+                    logger.error(f"{error_msg}")
             except Exception as e:
                 error_msg = f"오디오 파일 읽기 실패: {str(e)}"
                 file_processing_errors.append(error_msg)
-                logger.error(f"❌ {error_msg}")
+                logger.error(f"{error_msg}")
 
         # 텍스트 파일 처리
         if text_file:
             try:
                 text_content = await text_file.read()
-                logger.info(f"📄 Text: {text_file.filename} ({len(text_content) if text_content else 0} bytes)")
+                logger.info(f"Text: {text_file.filename} ({len(text_content) if text_content else 0} bytes)")
 
                 if text_content and len(text_content) > 0:
                     processed_files["text_file"] = {
@@ -110,12 +110,12 @@ class FilePreprocessingService:
                 else:
                     error_msg = f"텍스트 파일이 비어있습니다: {text_file.filename}"
                     file_processing_errors.append(error_msg)
-                    logger.error(f"❌ {error_msg}")
+                    logger.error(f"{error_msg}")
             except Exception as e:
                 error_msg = f"텍스트 파일 읽기 실패: {str(e)}"
                 file_processing_errors.append(error_msg)
-                logger.error(f"❌ {error_msg}")
+                logger.error(f"{error_msg}")
 
-        logger.info(f"📋 Files ready: {len(processed_files)}, errors: {len(file_processing_errors)}")
+        logger.info(f"Files ready: {len(processed_files)}, errors: {len(file_processing_errors)}")
 
         return processed_files, file_processing_errors

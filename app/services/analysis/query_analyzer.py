@@ -27,13 +27,13 @@ class QueryAnalyzer:
                 meaningful_weights = {k: v for k, v in llm_result["element_type_weights"].items() if v > 0.0}
                 if meaningful_weights:
                     llm_result["fallback_reasoning"] = fallback_result.get("reasoning", "")
-                    logger.info(f"🤖 Using LLM query analysis: {len(meaningful_weights)} weighted types")
+                    logger.info(f"Using LLM query analysis: {len(meaningful_weights)} weighted types")
                     return llm_result
         except Exception as e:
             logger.debug(f"LLM query analysis failed: {e}")
         
         # LLM이 실패하거나 유효하지 않으면 안정적인 fallback 사용
-        logger.info("🔧 Using enhanced fallback query analysis")
+        logger.info("Using enhanced fallback query analysis")
         return fallback_result
 
     def _fallback_query_analysis(

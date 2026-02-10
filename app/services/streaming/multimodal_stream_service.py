@@ -59,7 +59,7 @@ class MultimodalStreamService:
                     yield f"data: {json.dumps({'step': 'file_read_failed', 'message': error, 'timestamp': time.time()}, ensure_ascii=False)}\n\n"
 
             # 1단계: 멀티모달 검색 실행
-            logger.info("🔍 Starting multimodal search")
+            logger.info("Starting multimodal search")
             async for step_result in self.search_service.search_multimodal_stream(
                     text_query=text_query,
                     processed_files=processed_files,
@@ -77,7 +77,7 @@ class MultimodalStreamService:
 
             # 2단계: 답변 생성 (요청된 경우)
             if generate_answer and search_results:
-                logger.info("🤖 Starting answer generation")
+                logger.info("Starting answer generation")
                 answer_step_count = 0
                 max_answer_steps = 50  # 무한루프 방지용 최대 스텝 수
 
@@ -89,11 +89,11 @@ class MultimodalStreamService:
                     ):
                         answer_step_count += 1
                         logger.debug(
-                            f"📡 Answer step {answer_step_count}: {answer_step[:100] if isinstance(answer_step, str) else 'data'}")
+                            f"Answer step {answer_step_count}: {answer_step[:100] if isinstance(answer_step, str) else 'data'}")
 
                         # answer_completed가 포함된 스텝인지 확인
                         if isinstance(answer_step, str) and 'answer_completed' in answer_step:
-                            logger.info(f"🏁 STREAM Detected answer_completed in step {answer_step_count}")
+                            logger.info(f"STREAM Detected answer_completed in step {answer_step_count}")
                             answer_completed = True
                             yield answer_step
                             break
@@ -103,7 +103,7 @@ class MultimodalStreamService:
                         # 무한루프 방지
                         if answer_step_count >= max_answer_steps:
                             logger.error(
-                                f"🚨 Answer generation exceeded max steps ({max_answer_steps}), forcing termination")
+                                f"Answer generation exceeded max steps ({max_answer_steps}), forcing termination")
                             # 강제 완료 신호 생성
                             forced_completion_data = {
                                 "step": "answer_completed",
@@ -121,7 +121,7 @@ class MultimodalStreamService:
                             break
 
                 except Exception as answer_error:
-                    logger.error(f"🚨 Answer generation stream failed: {answer_error}")
+                    logger.error(f"Answer generation stream failed: {answer_error}")
                     error_data = {
                         "step": "answer_generation_error",
                         "message": f"답변 생성 중 오류 발생: {str(answer_error)}",
@@ -129,10 +129,10 @@ class MultimodalStreamService:
                     }
                     yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
-                logger.info(f"🏁 Answer generation completed after {answer_step_count} steps")
+                logger.info(f"Answer generation completed after {answer_step_count} steps")
 
             # 스트림 완료 신호 (무조건 전송)
-            logger.info("📡 Sending [DONE] signal")
+            logger.info("Sending [DONE] signal")
             yield "data: [DONE]\n\n"
 
         except Exception as e:
@@ -155,12 +155,12 @@ class MultimodalStreamService:
                 attached_caption = query_analysis.get('attached_image_caption', '')
                 if attached_caption:
                     logger.info(
-                        f"🖼️ [STREAM] Found attached_image_caption in search_results: {attached_caption[:100]}...")
+                        f"[STREAM] Found attached_image_caption in search_results: {attached_caption[:100]}...")
                 else:
-                    logger.info(f"🚫 [STREAM] attached_image_caption is empty")
+                    logger.info(f"[STREAM] attached_image_caption is empty")
             else:
                 logger.info(
-                    f"🚫 [STREAM] No attached_image_caption in search_results. query_analysis keys: {list(query_analysis.keys()) if query_analysis else 'None'}")
+                    f"[STREAM] No attached_image_caption in search_results. query_analysis keys: {list(query_analysis.keys()) if query_analysis else 'None'}")
 
             # 검색 결과를 SearchResponse 형태로 변환
             search_response = SearchResponse(
@@ -184,12 +184,12 @@ class MultimodalStreamService:
                 # 각 단계 결과를 SSE 형식으로 전송
                 yield f"data: {json.dumps(step_data, ensure_ascii=False)}\n\n"
 
-            logger.info("✅ Answer generation completed")
+            logger.info("Answer generation completed")
 
         except Exception as gen_error:
             import traceback
-            logger.error(f"❌ Answer generation failed: {gen_error}")
-            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+            logger.error(f"Answer generation failed: {gen_error}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             error_data = {
                 "step": "answer_generation_error",
                 "message": f"답변 생성 중 오류가 발생했습니다: {str(gen_error)}",
@@ -208,7 +208,7 @@ class MultimodalStreamService:
             # 크기 체크
             if data_size > 10 * 1024 * 1024:  # 10MB 초과
                 logger.warning(
-                    f"⚠️ SSE data too large: {data_size / 1024 / 1024:.2f} MB for step {step_result.get('step', 'unknown')}"
+                    f"SSE data too large: {data_size / 1024 / 1024:.2f} MB for step {step_result.get('step', 'unknown')}"
                 )
                 # 간소화된 에러 메시지 전송
                 error_data = {
@@ -220,12 +220,12 @@ class MultimodalStreamService:
                 return f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
             else:
                 data_str = f"data: {json_data}\n\n"
-                logger.debug(f"✅ SSE data sent: {data_size} bytes for step {step_result.get('step', 'unknown')}")
+                logger.debug(f"SSE data sent: {data_size} bytes for step {step_result.get('step', 'unknown')}")
                 return data_str
 
         except Exception as json_error:
-            logger.error(f"❌ Failed to serialize step result: {json_error}")
-            logger.error(f"❌ Step: {step_result.get('step', 'unknown')}")
+            logger.error(f"Failed to serialize step result: {json_error}")
+            logger.error(f"Step: {step_result.get('step', 'unknown')}")
             error_data = {
                 "step": "serialization_error",
                 "message": f"데이터 직렬화 실패: {str(json_error)}",

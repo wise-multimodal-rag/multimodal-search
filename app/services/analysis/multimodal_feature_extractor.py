@@ -110,19 +110,19 @@ class MultimodalFeatureExtractor:
             # 이미지가 첨부되면 무조건 캡션 생성 (검색 사용 여부는 별도 결정)
             caption_text = None
             caption_tags = None
-            logger.info(f"🖼️ Image attached - generating caption unconditionally")
+            logger.info(f"Image attached - generating caption unconditionally")
             
             caption_result = await self.embedding_client.generate_image_caption(image_bytes)
             if caption_result and "caption" in caption_result:
                 caption_text = caption_result["caption"]
-                logger.info(f"✅ Image caption generated: {caption_text[:100]}...")
+                logger.info(f"Image caption generated: {caption_text[:100]}...")
                 
                 # Extract tags if available
                 if "tags" in caption_result:
                     caption_tags = caption_result["tags"]
-                    logger.info(f"🏷️ Image caption tags extracted: {caption_tags}")
+                    logger.info(f"Image caption tags extracted: {caption_tags}")
             else:
-                logger.warning(f"🚫 Image caption generation failed or returned no caption")
+                logger.warning(f"Image caption generation failed or returned no caption")
 
             # 캡션이 생성된 경우 ImageFeatures 반환
             if caption_text:

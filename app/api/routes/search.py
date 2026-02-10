@@ -80,11 +80,11 @@ async def multimodal_search_and_generate_stream(
     검색만 수행하거나 검색 + LLM 답변 생성을 함께 수행할 수 있습니다.
     generate_answer=True일 때 답변 생성도 함께 실행됩니다.
     """
-    logger.info(f"🚀 Stream API: answer={generate_answer}, temp={temperature}, retries={max_retries}")
+    logger.info(f"Stream API: answer={generate_answer}, temp={temperature}, retries={max_retries}")
     
-    # 🔧 새로운 로직: 최대 1회 재시도만 허용 (총 2번 시도)
+    # 새로운 로직: 최대 1회 재시도만 허용 (총 2번 시도)
     if max_retries > 1:
-        logger.warning(f"⚠️ max_retries {max_retries} exceeded limit, forcing to 1 (total 2 attempts)")
+        logger.warning(f"max_retries {max_retries} exceeded limit, forcing to 1 (total 2 attempts)")
         max_retries = 1
     
     # 파일 전처리
@@ -115,7 +115,7 @@ async def multimodal_search_and_generate_stream(
             ):
                 # 클라이언트 연결 상태 체크
                 if await request.is_disconnected():
-                    logger.info("🔌 Client disconnected, stopping stream")
+                    logger.info("Client disconnected, stopping stream")
                     break
                 yield chunk
         except Exception as e:

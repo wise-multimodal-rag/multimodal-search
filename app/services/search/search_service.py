@@ -126,7 +126,7 @@ class SearchService:
             image_caption_tags = None
             if extracted_features and extracted_features.image and hasattr(extracted_features.image, 'tags'):
                 image_caption_tags = getattr(extracted_features.image, 'tags')
-                logger.info(f"🏷️ Using image caption tags for search enhancement: {image_caption_tags}")
+                logger.info(f"Using image caption tags for search enhancement: {image_caption_tags}")
             
             search_results = await self.search_executor.execute_expanded_search(
                 expanded_queries, filtered_element_types, embeddings, max_results, expansion_result, element_type_weights, image_caption_tags
@@ -178,8 +178,8 @@ class SearchService:
         
         if len(filtered_types) != len(selected_element_types):
             excluded_types = [t for t in selected_element_types if t not in filtered_types]
-            logger.info(f"🚫 Excluding element types with zero weight from search: {excluded_types}")
-            logger.info(f"✅ Using element types for search: {filtered_types}")
+            logger.info(f"Excluding element types with zero weight from search: {excluded_types}")
+            logger.info(f"Using element types for search: {filtered_types}")
         
         return filtered_types
 
@@ -205,9 +205,9 @@ class SearchService:
             # 첨부된 이미지의 캡션 정보 추가
             if extracted_features and extracted_features.image and extracted_features.image.caption:
                 query_analysis["attached_image_caption"] = extracted_features.image.caption
-                logger.info(f"🖼️ Added attached image caption to query_analysis: {extracted_features.image.caption[:100]}...")
+                logger.info(f"Added attached image caption to query_analysis: {extracted_features.image.caption[:100]}...")
             else:
-                logger.info(f"🚫 No image caption found in extracted_features. Image features: {extracted_features.image is not None if extracted_features else 'No features'}")
+                logger.info(f"No image caption found in extracted_features. Image features: {extracted_features.image is not None if extracted_features else 'No features'}")
 
         return SearchResponse(
             query=display_query,
@@ -463,7 +463,7 @@ class SearchService:
             image_caption_tags = None
             if extracted_features and extracted_features.image and hasattr(extracted_features.image, 'tags'):
                 image_caption_tags = getattr(extracted_features.image, 'tags')
-                logger.info(f"🏷️ [STREAM] Using image caption tags for search enhancement: {image_caption_tags}")
+                logger.info(f"[STREAM] Using image caption tags for search enhancement: {image_caption_tags}")
             
             search_results = await self.search_executor.execute_expanded_search(
                 expanded_queries, filtered_element_types, embeddings, max_results, expansion_result, element_type_weights, image_caption_tags
@@ -508,11 +508,11 @@ class SearchService:
             # Step 6: 결과 enrichment
             yield {"step": "result_enrichment", "message": "검색 결과를 보강하고 있습니다...", "timestamp": time.time()}
 
-            logger.info("🔄 Starting result enrichment...")
+            logger.info("Starting result enrichment...")
             enriched_results = await self.result_enricher.enrich_search_results(
                 search_results, include_chunk_meta, include_media_meta
             )
-            logger.info(f"✅ Result enrichment completed: {len(enriched_results)} results")
+            logger.info(f"Result enrichment completed: {len(enriched_results)} results")
 
             # 보강된 결과의 상세 정보 계산
             element_types_in_results = {}
@@ -543,18 +543,18 @@ class SearchService:
             }
 
             # Step 7: 최종 결과
-            logger.info("🔄 Starting final result processing...")
+            logger.info("Starting final result processing...")
             total_time = time.time() - start_time
 
             try:
                 final_stats = self.result_enricher.calculate_search_statistics(search_results)
-                logger.info("✅ Search statistics calculated")
+                logger.info("Search statistics calculated")
             except Exception as e:
-                logger.error(f"❌ Failed to calculate search statistics: {e}")
+                logger.error(f"Failed to calculate search statistics: {e}")
                 final_stats = {}
 
             # 안전한 결과 직렬화
-            logger.info(f"🔄 Starting serialization of {len(enriched_results)} results...")
+            logger.info(f"Starting serialization of {len(enriched_results)} results...")
             results_data = []
             total_bytes = 0
             failed_count = 0
@@ -579,27 +579,27 @@ class SearchService:
 
                 except Exception as e:
                     failed_count += 1
-                    logger.error(f"❌ Failed to serialize result {i}: {type(e).__name__}: {e}")
+                    logger.error(f"Failed to serialize result {i}: {type(e).__name__}: {e}")
                     results_data.append({"error": f"Serialization failed: {str(e)}", "result_index": i})
 
             # 요약 로그
             if failed_count > 0:
                 logger.warning(
-                    f"✅ Serialization completed: {len(results_data) - failed_count}/{len(enriched_results)} successful, {failed_count} failed, {total_bytes:,} bytes total"
+                    f"Serialization completed: {len(results_data) - failed_count}/{len(enriched_results)} successful, {failed_count} failed, {total_bytes:,} bytes total"
                 )
             else:
-                logger.info(f"✅ Serialization completed: {len(results_data)} results, {total_bytes:,} bytes total")
+                logger.info(f"Serialization completed: {len(results_data)} results, {total_bytes:,} bytes total")
 
             try:
-                logger.info("🔄 Creating completed data...")
+                logger.info("Creating completed data...")
 
                 # 첨부 이미지 캡션 추가
                 attached_image_caption = None
                 if extracted_features and extracted_features.image and extracted_features.image.caption:
                     attached_image_caption = extracted_features.image.caption
-                    logger.info(f"🖼️ [STREAM] Found attached image caption: {attached_image_caption[:100]}...")
+                    logger.info(f"[STREAM] Found attached image caption: {attached_image_caption[:100]}...")
                 else:
-                    logger.info(f"🚫 [STREAM] No image caption found. Image features: {extracted_features.image is not None if extracted_features else 'No features'}")
+                    logger.info(f"[STREAM] No image caption found. Image features: {extracted_features.image is not None if extracted_features else 'No features'}")
 
                 # 데이터 크기 체크를 위한 임시 생성
                 temp_completed_data = {
@@ -626,11 +626,11 @@ class SearchService:
 
                 temp_json = json.dumps(temp_completed_data, default=str)
                 data_size = len(temp_json)
-                logger.info(f"📊 Completed data size: {data_size} bytes ({data_size / 1024 / 1024:.2f} MB)")
+                logger.info(f"Completed data size: {data_size} bytes ({data_size / 1024 / 1024:.2f} MB)")
 
                 # 크기가 너무 크면 간소화
                 if data_size > 5 * 1024 * 1024:  # 5MB 초과시
-                    logger.warning(f"⚠️ Data too large ({data_size / 1024 / 1024:.2f} MB), simplifying...")
+                    logger.warning(f"Data too large ({data_size / 1024 / 1024:.2f} MB), simplifying...")
                     completed_data = {
                         "results": results_data[:5],  # 처음 5개만
                         "search_stats": temp_completed_data["search_stats"],
@@ -641,16 +641,16 @@ class SearchService:
                 else:
                     completed_data = temp_completed_data
 
-                logger.info("✅ Completed data created successfully")
+                logger.info("Completed data created successfully")
 
-                logger.info("🔄 Yielding completed step...")
+                logger.info("Yielding completed step...")
                 yield {
                     "step": "completed",
                     "message": f"검색이 완료되었습니다 ({total_time:.2f}초)",
                     "timestamp": time.time(),
                     "data": completed_data,
                 }
-                logger.info("✅ Completed step yielded successfully")
+                logger.info("Completed step yielded successfully")
 
                 # 프론트엔드가 completed 이벤트를 처리할 시간을 확보하기 위한 짧은 지연
                 import asyncio
@@ -658,10 +658,10 @@ class SearchService:
                 await asyncio.sleep(0.1)
 
                 # 스트림 완료 확인 로그
-                logger.info("🏁 Stream processing completed - search_multimodal_stream ending")
+                logger.info("Stream processing completed - search_multimodal_stream ending")
 
             except Exception as e:
-                logger.error(f"❌ Failed to create completed data: {e}")
+                logger.error(f"Failed to create completed data: {e}")
                 # 최소한의 완료 메시지라도 전송
                 yield {
                     "step": "completed",
@@ -679,8 +679,8 @@ class SearchService:
         except Exception as e:
             import traceback
 
-            logger.error(f"❌ Streaming search failed: {e}")
-            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            logger.error(f"Streaming search failed: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
             yield {"step": "error", "error": str(e), "timestamp": time.time()}
 
