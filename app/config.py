@@ -1,11 +1,16 @@
+from pathlib import Path
 from typing import Dict
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# 프로젝트 루트 디렉토리 경로 (app 폴더의 부모)
+PROJECT_ROOT = Path(__file__).parent.parent
+ENV_FILE_PATH = PROJECT_ROOT / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(ENV_FILE_PATH), env_file_encoding="utf-8", extra="ignore")
 
     # OpenSearch Configuration
     opensearch_host: str = Field(default="localhost", alias="OPENSEARCH_HOST")
@@ -69,7 +74,7 @@ class WeightingConfig(BaseSettings):
     - Element Type 가중치: 콘텐츠 타입별 중요도 (origin=1.0, paragraph=0.8...)
     - 동적 계산: 쿼리 내용에 따라 가중치 자동 조정
     """
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", env_prefix="WEIGHT_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(ENV_FILE_PATH), env_file_encoding="utf-8", env_prefix="WEIGHT_", extra="ignore")
 
     # === 쿼리별 가중치 설정 ===
     query_weight_decay: float = Field(default=0.1, alias="WEIGHT_QUERY_DECAY")  # 각 쿼리마다 감소할 가중치 (1.0 → 0.9 → 0.8...)
