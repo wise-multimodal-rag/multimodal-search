@@ -4,6 +4,18 @@
 
 OpenSearch를 사용한 멀티모달 검색 및 RAG 시스템입니다. 텍스트, 이미지, 비디오, 오디오를 통합하여 검색하고, 하이브리드 검색(BM25 + 벡터 검색)과 LLM 기반 질의 분석을 지원합니다.
 
+## 📚 기술 스택 및 아키텍처
+
+- **Backend**: FastAPI (Python 3.11+)
+- **Package Manager**: uv + pyproject.toml
+- **Search Engine**: OpenSearch (벡터 검색 지원)
+- **LLM**: LiteLLM (다중 모델 지원)
+- **External APIs**: Embedding & Feature Extraction Services
+- **Deployment**: Docker + GitLab CI/CD
+- **Architecture**: 도메인 기반 모듈 구조 + 의존성 주입 패턴
+- **Error Handling**: 중앙집중식 예외 처리 + Circuit Breaker 패턴
+- **API Response**: 표준화된 응답 모델 + 메타데이터 통합
+
 ## 시스템 아키텍처
 
 ### 1. 멀티모달 검색 파이프라인
@@ -730,14 +742,6 @@ flowchart TD
 - **스마트 로깅**: Base64 데이터 마스킹 및 노이즈 필터링으로 효율적인 디버깅
 - **강화된 입력 검증**: 유연한 파일 시그니처 검증 및 XSS 방지
 
-## 기술 스택
-
-- **Backend**: FastAPI (Python 3.11+)
-- **Package Manager**: uv + pyproject.toml
-- **Search Engine**: OpenSearch (벡터 검색 지원)
-- **LLM**: LiteLLM (다중 모델 지원)
-- **External APIs**: Embedding & Feature Extraction Services
-- **Deployment**: Docker + GitLab CI/CD
 
 ## ⚖️ 가중치 시스템
 
@@ -816,37 +820,118 @@ docker-compose --profile dev up
 ## 아키텍처
 
 ### 디렉토리 구조
+
 ```
 app/
-├── main.py              # FastAPI 애플리케이션 (글로벌 예외 처리 미들웨어 포함)
-├── core/                # 핵심 시스템 컴포넌트
-│   ├── config.py        # 설정 관리
-│   ├── logging.py       # 로깅 시스템 (스마트 필터링)
-│   ├── security.py      # 보안 관리 (API 키 마스킹, 보안 유틸리티)
-│   ├── exceptions.py    # 예외 처리 (Circuit Breaker, Retry Handler, 미들웨어)
-│   ├── validators.py    # 강화된 입력 검증 (파일 시그니처, XSS 방지)
-│   ├── dependencies.py  # 의존성 주입
-│   └── index_mappings.py # OpenSearch 인덱스 매핑
-├── models/              # Pydantic 모델
-│   ├── opensearch.py    # 검색 관련 모델
-│   ├── generation.py    # 답변 생성 관련 모델
-│   └── features.py      # 특징 추출 모델
-├── services/            # 비즈니스 로직 (병렬 처리 최적화)
-│   ├── search/          # 검색 서비스 (병렬 쿼리 실행)
-│   ├── generation/      # AI 답변 생성 서비스
-│   ├── streaming/       # 스트리밍 통합 서비스
-│   ├── embeddings/      # 임베딩 서비스 (병렬 임베딩 생성)
-│   ├── analysis/        # 분석 서비스
-│   └── processing/      # 전처리 서비스
-├── clients/             # 외부 API 클라이언트 (보안 강화)
-│   ├── llm_client.py    # LLM 클라이언트 (답변 생성용)
-│   ├── embedding_client.py # 임베딩 API 클라이언트
-│   └── feature_extraction_client.py # 특징 추출 API 클라이언트
-└── api/routes/          # API 엔드포인트
-    ├── search.py        # 검색 엔드포인트
-    ├── generation.py    # 답변 생성 엔드포인트
-    └── config.py        # 설정 엔드포인트
+├── main.py                    # FastAPI 애플리케이션 진입점
+├── config.py                  # 전역 설정 관리
+├── version.py                 # 버전 및 빌드 정보
+├── dependencies.py            # DI 컨테이너 및 의존성 등록
+├── constants.py               # 전역 상수 정의
+├── handlers.py                # 요청/응답 핸들러 함수
+│
+├── exceptions/                # 중앙집중식 예외 처리 시스템
+│   ├── __init__.py           # 예외 모듈 초기화
+│   ├── base.py               # 기본 예외 클래스 정의
+│   ├── service.py            # 도메인별 비즈니스 예외
+│   └── handlers.py           # 글로벌 예외 핸들러 + 미들웨어
+│
+├── schemas/                   # 표준화된 API 스키마 모델
+│   ├── __init__.py           # 스키마 모듈 초기화
+│   ├── common.py             # 공통 응답 모델 (ApiResponse[T])
+│   ├── search.py             # 검색 관련 스키마
+│   ├── generation.py         # 답변 생성 스키마
+│   ├── features.py           # 특징 추출 스키마
+│   └── requests.py           # 공통 요청 스키마
+│
+├── utils/                     # 도메인 별 유틸리티 함수
+│   ├── __init__.py           # 유틸리티 모듈 초기화
+│   ├── logging.py            # 스마트 로깅 시스템
+│   ├── validation.py         # 입력 검증 + XSS 방지
+│   ├── authentication.py     # 보안 + API 키 관리
+│   ├── opensearch.py         # OpenSearch 전용 유틸리티
+│   ├── serialization.py      # 데이터 직렬화 처리
+│   ├── index_mappings.py     # OpenSearch 인덱스 매핑
+│   └── common.py             # 공통 유틸리티 함수
+│
+├── src/                       # 도메인 기반 비즈니스 로직
+│   ├── search/               # 검색 도메인 서비스
+│   │   ├── __init__.py       # 검색 서비스 통합 인터페이스
+│   │   ├── opensearch.py     # OpenSearch 핵심 엔진
+│   │   ├── services.py       # 검색 서비스 통합 (SearchService)
+│   │   ├── executor.py       # 검색 실행 엔진 (SearchExecutor)
+│   │   ├── enricher.py       # 결과 강화 서비스 (ResultEnricher)
+│   │   └── analyzers.py      # 쿼리 분석 + 확장 (QueryAnalyzer)
+│   ├── generation/           # AI 답변 생성 도메인
+│   │   ├── __init__.py       # 생성 서비스 인터페이스
+│   │   ├── services.py       # 답변 생성 엔진 (AnswerGenerationService)
+│   │   └── streaming.py      # 스트리밍 서비스 (MultimodalStreamService)
+│   ├── processing/           # 데이터 처리 도메인
+│   │   ├── __init__.py       # 처리 서비스 인터페이스
+│   │   ├── input.py          # 입력 처리기 (InputProcessor)
+│   │   ├── files.py          # 파일 전처리 서비스 (FilePreprocessingService)
+│   │   └── features.py       # 멀티모달 특징 추출 (MultimodalFeatureExtractor)
+│   └── embeddings/           # 임베딩 도메인
+│       ├── __init__.py       # 임베딩 서비스 인터페이스
+│       └── services.py       # 임베딩 생성 엔진 (EmbeddingService)
+│
+├── interfaces/                # 의존성 주입 + 프로토콜 정의
+│   ├── __init__.py           # 인터페이스 모듈 초기화
+│   ├── protocols.py          # 서비스 프로토콜 정의
+│   ├── container.py          # 의존성 컨테이너
+│   └── injector.py           # 의존성 주입 관리
+│
+├── prompts/                   # LLM 프롬프트 관리 시스템
+│   ├── __init__.py           # 프롬프트 모듈 초기화
+│   ├── manager.py            # Langfuse 통합 프롬프트 관리자
+│   └── templates.py          # 프롬프트 템플릿 정의
+│
+├── handlers/                  # 요청/응답 처리 핸들러
+│   ├── __init__.py           # 핸들러 모듈 초기화
+│   ├── cors.py               # CORS 설정
+│   ├── middleware.py         # 미들웨어 설정
+│   └── common.py             # 공통 핸들러 함수
+│
+├── clients/                   # 외부 API 클라이언트 (보안 강화)
+│   ├── __init__.py           # 클라이언트 모듈 초기화
+│   ├── llm_client.py         # LLM 서비스 클라이언트
+│   ├── embedding_client.py   # 임베딩 API 클라이언트
+│   └── feature_extraction_client.py  # 특징 추출 API 클라이언트
+│
+└── api/                       # API 엔드포인트 정의
+    ├── __init__.py           # API 모듈 초기화
+    ├── search.py             # 검색 엔드포인트
+    ├── generation.py         # 답변 생성 엔드포인트
+    └── config.py             # 설정 엔드포인트
+│
 ```
+
+### 아키텍처 개선 사항
+
+**도메인 기반 구조 (Domain-Driven Design)**
+- 비즈니스 로직이 도메인별로 명확히 분리되어 유지보수성 향상
+- `src/` 디렉토리 하위에 search, generation, processing, embeddings 도메인 구성
+- 각 도메인은 독립적으로 개발 및 테스트 가능한 모듈 구조
+
+**의존성 주입 패턴 (Dependency Injection)**
+- `interfaces/` 디렉토리를 통한 프로토콜 기반 의존성 정의
+- 느슨한 결합으로 테스트 용이성과 확장성 확보
+- 런타임 시 구현체 자동 주입으로 코드 간소화
+
+**중앙집중식 예외 처리 (Centralized Error Handling)**
+- `exceptions/` 디렉토리의 계층적 예외 시스템
+- Circuit Breaker 패턴으로 외부 API 장애 대응
+- 글로벌 예외 핸들러를 통한 일관된 오류 응답
+
+**표준화된 API 응답 (Standardized Response Models)**
+- `schemas/common.py`의 `ApiResponse[T]` 제네릭 래퍼
+- 모든 API가 동일한 구조로 메타데이터와 데이터 반환
+- 클라이언트 개발 시 일관된 인터페이스 제공
+
+**모던한 개발 경험 (Modern Development Experience)**
+- 깔끔하고 직관적인 임포트 경로: `from app.src.search import SearchService`
+- 타입 힌트와 프로토콜 기반 인터페이스로 IDE 지원 향상
+- 도메인별 명확한 책임 분리로 개발 생산성 증대
 
 ### OpenSearch 인덱스 구조
 1. **multimodal_rag_media**: 미디어 파일 메타데이터
@@ -875,6 +960,7 @@ MULTIMODAL_API_KEY=your-secure-api-key
 LITELLM_URL=http://localhost:4000
 LITELLM_API_KEY=your-secure-llm-key
 LITELLM_MODEL=gpt-4o-mini
+LITELLM_TIMEOUT=180.0
 
 # Application Configuration
 APP_HOST=127.0.0.1
@@ -910,46 +996,32 @@ STORAGE_PATH=/storage
 
 ## 시스템 특징
 
-### 🔍 지능형 검색
+### 지능형 검색
 - **적응형 쿼리 확장**: 쿼리 특성에 따른 선택적 기법 적용 (분해, 재작성, 의미 확장)
-- **🆕 지능형 의존성 판단**: LLM이 쿼리 간 의존성을 자동 분석하여 실행 방식 결정
+- **지능형 의존성 판단**: LLM이 쿼리 간 의존성을 자동 분석하여 실행 방식 결정
 - **하이브리드 검색**: BM25 텍스트 검색 + 벡터 유사도 검색 결합
-- **🆕 적응형 실행**: 독립적 쿼리는 병렬, 의존적 쿼리는 순차 처리
-- **🆕 컨텍스트 보강**: 이전 검색 결과를 활용한 다음 쿼리 정확도 향상
+- **적응형 실행**: 독립적 쿼리는 병렬, 의존적 쿼리는 순차 처리
+- **컨텍스트 보강**: 이전 검색 결과를 활용한 다음 쿼리 정확도 향상
 - **폴백 메커니즘**: LLM 실패 시 원본 쿼리로 안정적 서비스 지속
 
-### 🛡️ 시스템 안정성
+### 시스템 안정성
 - **Circuit Breaker**: 외부 API 장애 시 서비스 보호 및 빠른 복구
 - **자동 재시도**: 지수 백오프를 통한 일시적 오류 극복
 - **보안 강화**: API 키 마스킹 및 민감 정보 보호
 - **글로벌 예외 처리**: 통합된 오류 처리 및 구조화된 응답
 
-### ⚡ 성능 최적화
+### 성능 최적화
 - **병렬 처리**: 임베딩 생성 및 메타데이터 조회 동시 실행
 - **스마트 로깅**: 86% 볼륨 감소 및 Base64 데이터 마스킹
 - **검색 로직 간소화**: 불필요한 리랭킹 과정 제거
 - **실시간 모니터링**: 외부 API 상태 및 응답 시간 추적
 
-## 주요 업데이트
-
-### v0.3.2 - 간소화된 답변 생성 시스템 (현재)
-- **🆕 고정 2회 시도 시스템**: 복잡한 재검색 로직 제거, 개선 제안 기반 재생성으로 단순화
-- **🆕 첨부 이미지 통합**: 검색 결과와 첨부 이미지 캡션을 통합한 컨텍스트 생성
-- **🆕 자동 캡션 보강**: origin element의 관련 caption 자동 조회 및 중복 제거
-- **스트리밍 최적화**: 실시간 모니터링, 취소 가능, 5분 시간 제한
-- **개선 제안 활용**: 이전 시도의 improvement_suggestions를 다음 시도에 반영
-
-### v0.3.0 - AI 답변 생성 시스템
-- **Reflection 기반 품질 관리**: 5차원 평가를 통한 답변 품질 보장 (총 50점)
-- **품질 임계값**: 35점 이상 답변 수락, 이하 시 재생성 또는 최고점 선택
-- **스트리밍 답변 생성**: 실시간 생성 과정 모니터링
-
-### v0.2.0 - 지능형 검색 시스템  
-- **LLM 기반 쿼리 분해**: 의존성 인식 순차/병렬 실행
-- **컨텍스트 전파**: 이전 검색 결과 활용한 쿼리 보강
-- **성능 최적화**: 86% 로깅 감소, Circuit Breaker 패턴
-
----
+### 현대적 아키텍처
+- **도메인 기반 설계**: 검색, 생성, 처리, 임베딩 도메인별 명확한 분리
+- **의존성 주입**: 프로토콜 기반 인터페이스로 테스트 용이성 확보
+- **표준화된 API**: `ApiResponse[T]` 제네릭 래퍼로 일관된 응답 구조
+- **중앙집중식 예외 처리**: 도메인별 예외와 글로벌 핸들러로 체계적 오류 관리
+- **타입 안전성**: 프로토콜과 타입 힌트로 IDE 지원 및 개발 생산성 향상
 
 ## 라이선스 및 기여
 

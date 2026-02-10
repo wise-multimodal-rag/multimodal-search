@@ -2,16 +2,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from app.api.routes import config, generation, search
-from app.core.dependency_injector import get_opensearch_service
-from app.models.common import ApiResponse, HealthCheckData, ResponseBuilder
-from app.core.error_management import EnhancedExceptionHandlerMiddleware
-from app.core.config import settings
+from app.api import config, generation, search
+from app.handlers import configure_cors, configure_handlers, configure_middleware
+from app.interfaces import get_opensearch_service
+from app.schemas import ApiResponse, HealthCheckData, ResponseBuilder
 
 
 @asynccontextmanager
@@ -37,11 +35,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add enhanced exception handling middleware
-app.add_middleware(
-    EnhancedExceptionHandlerMiddleware,
-    include_debug_info=settings.debug
-)
+# Configure application middleware and handlers
+configure_middleware(app)
+configure_handlers(app)
+configure_cors(app)
 
 # Get project root directory (parent of app directory)
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -97,7 +94,7 @@ async def external_apis_health_check():
     """Check health of all external APIs."""
     import httpx
 
-    from app.core.dependency_injector import (
+    from app.interfaces import (
         get_embedding_client,
         get_feature_extraction_client,
         get_llm_client,
@@ -159,4 +156,6 @@ async def external_apis_health_check():
 
 @app.get("/search")
 async def search_page(request: Request):
+    if templates is None:
+        return {"error": "Templates not available"}
     return templates.TemplateResponse("search.html", {"request": request})

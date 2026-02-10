@@ -3,8 +3,8 @@ from typing import Any, Dict
 
 from fastapi import APIRouter
 
-from app.core.config import settings
-from app.models.common import ApiResponse, ResponseBuilder
+from app.config import settings
+from app.schemas.common import ApiResponse, ResponseBuilder
 
 router = APIRouter()
 
@@ -63,7 +63,7 @@ async def get_client_config():
             "buildTime": "2024-01-01T00:00:00Z"  # 빌드 시간
         }
     }
-    
+
     return ResponseBuilder.success(
         data=client_config,
         message="Client configuration retrieved successfully"
@@ -86,7 +86,7 @@ async def get_feature_flags():
         "export_results": False,  # 향후 기능
         "collaborative_search": False,  # 향후 기능
     }
-    
+
     return ResponseBuilder.success(
         data={"features": features},
         message="Feature flags retrieved successfully"

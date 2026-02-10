@@ -6,26 +6,27 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from app.core.common_handlers import execute_multimodal_search
-from app.core.dependency_injector import (
+from app.handlers.common import execute_multimodal_search
+from app.interfaces import (
     InputValidatorDep,
     MultimodalStreamServiceDep,
     SearchServiceDep,
 )
-from app.core.error_management import BusinessLogicException, ValidationException
-from app.core.interfaces import (
+from app.src.processing.files import FilePreprocessingService
+from app.exceptions import BusinessLogicException, ValidationException
+from app.interfaces.protocols import (
     InputValidatorProtocol,
     SearchServiceProtocol,
 )
-from app.models.common import ApiResponse, SearchResponseData, standard_response
-from app.services import MultimodalStreamService
+from app.schemas.common import ApiResponse, ResponseBuilder
+from app.schemas.search import SearchResponse
+from app.src.generation import MultimodalStreamService
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 
-@router.post("/search/multimodal", response_model=ApiResponse[SearchResponseData])
-@standard_response(message="Multimodal search completed successfully")
+@router.post("/search/multimodal", response_model=ApiResponse[SearchResponse])
 async def search_multimodal(
         text_query: Optional[str] = Form(default="쿼리를 입력해주세요", description="텍스트 검색 쿼리"),
         image: Optional[UploadFile] = File(default=None, description="이미지 파일"),
@@ -54,17 +55,10 @@ async def search_multimodal(
             input_validator=input_validator,
         )
 
-        search_data = SearchResponseData(
-            query=result.query,
-            total_hits=result.total_hits,
-            max_score=result.max_score,
-            results=result.results,
-            took_ms=result.took_ms,
-            element_types_used=result.element_types_used,
-            query_analysis=result.query_analysis
+        return ResponseBuilder.success(
+            data=result,
+            message="Multimodal search completed successfully"
         )
-
-        return search_data
 
     except ValidationException:
         # 검증 예외는 그대로 전파 (미들웨어에서 처리)

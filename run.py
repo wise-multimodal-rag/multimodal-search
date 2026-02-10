@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Development server runner
-"""
+"""Development server runner"""
 import uvicorn
-from app.core.config import settings
+from app.config import settings
 
 if __name__ == "__main__":
     # Setup logging before starting uvicorn
-    from app.core.logging import setup_logging
+    from app.utils.logging import setup_logging
     setup_logging()
     
     uvicorn.run(

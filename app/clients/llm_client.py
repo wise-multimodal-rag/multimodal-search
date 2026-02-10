@@ -3,10 +3,10 @@ from typing import Any, Dict, List, Optional
 import httpx
 from loguru import logger
 
-from app.core.config import settings
-from app.core.error_management import ExternalAPIException
-from app.core.security import security_manager
-from app.core.prompt_manager import prompt_manager
+from app.config import settings
+from app.exceptions.service import LLMClientException
+from app.utils.authentication import security_manager
+from app.prompts.manager import prompt_manager
 
 
 class LLMClient:
@@ -15,7 +15,7 @@ class LLMClient:
         self.api_key = security_manager.get_api_key("LITELLM_API_KEY") or settings.litellm_api_key
         self.model = settings.litellm_model
         self.generation_model = settings.litellm_generation_model
-        self.timeout = 60.0
+        self.timeout = settings.litellm_timeout
         self.prompt_manager = prompt_manager
 
     async def complete(
@@ -57,7 +57,6 @@ class LLMClient:
                 response.raise_for_status()
 
                 result = response.json()
-                logger.debug(f"LLM API response keys: {list(result.keys())}")
 
                 # Check for various possible response structures
                 if "choices" in result and len(result["choices"]) > 0:
@@ -72,15 +71,12 @@ class LLMClient:
                         message = choice["message"]
                         if "content" in message and message["content"]:
                             content = message["content"]
-                            logger.debug(f"LLM response received, length: {len(content)} chars")
                             
                             # 답변 생성 모드일 때만 상세 내용 로깅
                             if use_generation_model and len(content) > 100:  # 긴 응답만 로깅 (답변 생성 시)
                                 logger.info(f"LLM Raw Response ({payload.get('model')}):")
                                 logger.info(f"Content ({len(content)} chars):")
-                                logger.info(f"{'*'*50}")
                                 logger.info(content)
-                                logger.info(f"{'*'*50}")
                             
                             return content
                         elif "content" in message and message["content"] == "":
@@ -95,12 +91,10 @@ class LLMClient:
                 elif "content" in result:
                     # Some APIs return content directly
                     content = result["content"]
-                    logger.debug(f"LLM response received (direct), length: {len(content)} chars")
                     return content
                 elif "text" in result:
                     # Some APIs use 'text' field
                     content = result["text"]
-                    logger.debug(f"LLM response received (text field), length: {len(content)} chars")
                     return content
                 else:
                     logger.error(f"Unexpected LLM response structure: {result}")
@@ -113,11 +107,11 @@ class LLMClient:
                 logger.error(f"Response status: {status_code}")
                 logger.error(f"Response text: {response_text}")
 
-                # 외부 API 예외로 변환
-                raise ExternalAPIException(
-                    service="LiteLLM",
+                # LLM API 예외로 변환
+                raise LLMClientException(
                     message=str(e),
                     details={
+                        "service": "LiteLLM",
                         "status_code": status_code,
                         "response_text": response_text[:500] if isinstance(response_text, str) else response_text
                     },

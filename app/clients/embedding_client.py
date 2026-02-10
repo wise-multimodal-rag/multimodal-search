@@ -3,8 +3,8 @@ from typing import Any, Dict, List, Optional
 import httpx
 from loguru import logger
 
-from app.core.config import settings
-from app.core.security import security_manager
+from app.config import settings
+from app.utils.authentication import security_manager
 
 
 class EmbeddingClient:
@@ -29,7 +29,6 @@ class EmbeddingClient:
                     logger.info(
                         f"Text embedding API response: status={result.get('status')}, embedding_dim={len(embedding)}"
                     )
-                    logger.debug(f"Text embedding first_5_values={embedding[:5]}")
                     return embedding
                 else:
                     logger.debug(f"Text embedding API response: {result}")
@@ -55,7 +54,6 @@ class EmbeddingClient:
                     logger.info(
                         f"Image embedding API response: status={result.get('status')}, embedding_dim={len(embedding)}"
                     )
-                    logger.debug(f"Image embedding first_5_values={embedding[:5]}")
                     return embedding
                 else:
                     logger.debug(f"Image embedding API response: {result}")
