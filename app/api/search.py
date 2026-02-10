@@ -2,19 +2,25 @@ import json
 import time
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from app.core.common_handlers import execute_multimodal_search
-from app.core.dependencies import (get_input_validator, get_multimodal_stream_service,
-                                   get_search_service)
+from app.core.error_management import BusinessLogicException, ValidationException
+from app.core.dependency_injector import (
+    InputValidatorDep,
+    MultimodalStreamServiceDep,
+    SearchServiceDep,
+)
+from app.core.interfaces import (
+    InputValidatorProtocol,
+    SearchServiceProtocol,
+)
 from app.core.utils import get_input_types
-from app.core.validators import InputValidator
 from app.models.opensearch import SearchResponse
-from app.services import (FilePreprocessingService, MultimodalStreamService,
-                          SearchService)
+from app.services import MultimodalStreamService
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -30,8 +36,8 @@ async def search_multimodal(
     include_chunk_meta: bool = Form(default=True, description="Chunk 메타데이터 포함 여부"),
     include_media_meta: bool = Form(default=True, description="Media 메타데이터 포함 여부"),
     max_results: int = Form(default=10, ge=1, le=100, description="최대 결과 수"),
-    search_service: SearchService = Depends(get_search_service),
-    input_validator: InputValidator = Depends(get_input_validator),
+    search_service: SearchServiceProtocol = SearchServiceDep,
+    input_validator: InputValidatorProtocol = InputValidatorDep,
 ):
     """진정한 멀티모달 검색 엔드포인트 - 텍스트, 이미지, 비디오, 오디오 조합 입력"""
     try:
@@ -51,12 +57,16 @@ async def search_multimodal(
 
         return result
 
-    except HTTPException as e:
-        logger.warning(f"HTTP {e.status_code} error in multimodal search: {e.detail}")
+    except ValidationException:
+        # 검증 예외는 그대로 전파 (미들웨어에서 처리)
         raise
     except Exception as e:
         logger.error(f"Multimodal search failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise BusinessLogicException(
+            message=str(e),
+            operation="multimodal_search",
+            cause=e
+        )
 
 
 @router.post("/search/multimodal/stream")  
@@ -73,7 +83,7 @@ async def multimodal_search_and_generate_stream(
     generate_answer: bool = Form(default=False, description="AI 답변도 함께 생성"),
     temperature: float = Form(default=0.7, ge=0.0, le=2.0, description="답변 생성 온도"),
     max_retries: int = Form(default=2, ge=0, le=5, description="답변 재생성 최대 횟수"),
-    multimodal_stream_service: MultimodalStreamService = Depends(get_multimodal_stream_service),
+    multimodal_stream_service: MultimodalStreamService = MultimodalStreamServiceDep,
 ):
     """멀티모달 검색 및 선택적 AI 답변 생성 스트리밍 엔드포인트
     
@@ -120,8 +130,13 @@ async def multimodal_search_and_generate_stream(
                 yield chunk
         except Exception as e:
             logger.error(f"Stream error: {e}")
-            # 에러 발생 시에도 적절한 종료 신호
-            yield f"data: {json.dumps({'step': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+            # 스트리밍 에러는 특별한 처리가 필요 (연결이 이미 열려있음)
+            error_data = {
+                "step": "error",
+                "message": "스트림 처리 중 오류가 발생했습니다",
+                "error_code": "STREAM_ERROR"
+            }
+            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
     
     # 스트리밍 응답 생성
     return StreamingResponse(

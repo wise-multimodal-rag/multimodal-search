@@ -249,7 +249,7 @@ class AnswerGenerationService:
 
         try:
             # OpenSearch 서비스에 접근하기 위해 dependency injection 사용
-            from app.core.dependencies import get_opensearch_service
+            from app.core.dependency_injector import get_opensearch_service
             opensearch_service = get_opensearch_service()
 
             # chunk_id들로 caption element 검색

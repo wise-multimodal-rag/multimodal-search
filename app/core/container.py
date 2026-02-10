@@ -59,10 +59,18 @@ class DIContainer:
             RuntimeError: 순환 의존성이 감지된 경우
         """
         if service_type in self._resolving:
-            raise RuntimeError(f"Circular dependency detected for {service_type.__name__}")
+            from app.core.error_management import DependencyException
+            raise DependencyException(
+                message=f"Circular dependency detected for {service_type.__name__}",
+                service_type=service_type.__name__
+            )
         
         if service_type not in self._services:
-            raise ValueError(f"Service {service_type.__name__} is not registered")
+            from app.core.error_management import DependencyException
+            raise DependencyException(
+                message=f"Service {service_type.__name__} is not registered",
+                service_type=service_type.__name__
+            )
         
         self._resolving.add(service_type)
         try:
@@ -97,7 +105,11 @@ class DIContainer:
                     if param.default != inspect.Parameter.empty:
                         kwargs[name] = param.default
                     else:
-                        raise ValueError(f"Cannot resolve dependency {param.annotation.__name__} for {cls.__name__}")
+                        from app.core.error_management import DependencyException
+                        raise DependencyException(
+                            message=f"Cannot resolve dependency {param.annotation.__name__} for {cls.__name__}",
+                            service_type=cls.__name__
+                        )
         
         return cls(**kwargs)
     

@@ -5,8 +5,9 @@ import binascii
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import HTTPException, status
 from loguru import logger
+
+from app.core.error_management import ValidationException
 
 
 class InputValidator:
@@ -45,9 +46,9 @@ class InputValidator:
             return None
 
         if len(text) > cls.MAX_TEXT_LENGTH:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Text query too long. Maximum {cls.MAX_TEXT_LENGTH} characters allowed.",
+            raise ValidationException(
+                f"Text query too long. Maximum {cls.MAX_TEXT_LENGTH} characters allowed.",
+                field="text_query"
             )
 
         # 악성 패턴 검사 (기본적인 XSS 방지)
@@ -55,8 +56,9 @@ class InputValidator:
 
         for pattern in dangerous_patterns:
             if re.search(pattern, text, re.IGNORECASE | re.DOTALL):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST, detail="Text contains potentially dangerous content"
+                raise ValidationException(
+                    "Text contains potentially dangerous content",
+                    field="text_query"
                 )
 
         return text
@@ -68,16 +70,18 @@ class InputValidator:
             return 50  # 기본값
 
         if not isinstance(max_results, int):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="max_results must be an integer")
+            raise ValidationException("max_results must be an integer", field="max_results")
 
         if max_results < cls.MIN_RESULTS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=f"max_results must be at least {cls.MIN_RESULTS}"
+            raise ValidationException(
+                f"max_results must be at least {cls.MIN_RESULTS}",
+                field="max_results"
             )
 
         if max_results > cls.MAX_RESULTS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=f"max_results cannot exceed {cls.MAX_RESULTS}"
+            raise ValidationException(
+                f"max_results cannot exceed {cls.MAX_RESULTS}",
+                field="max_results"
             )
 
         return max_results
@@ -95,29 +99,29 @@ class InputValidator:
             max_size_mb = max_size // (1024 * 1024)
             
             if file_size > max_size:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"File too large. Maximum {max_size_mb}MB allowed.",
+                raise ValidationException(
+                    f"File too large. Maximum {max_size_mb}MB allowed.",
+                    field="file_size"
                 )
 
             if file_size == 0:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file data")
+                raise ValidationException("Empty file data", field="file_data")
 
             # MIME 타입 검사
             if file_type not in allowed_types:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Unsupported file type: {file_type}. Allowed types: {allowed_types}",
+                raise ValidationException(
+                    f"Unsupported file type: {file_type}. Allowed types: {allowed_types}",
+                    field="file_type"
                 )
 
             # 파일 시그니처 검사 (간단한 검증)
             if not cls._validate_file_signature(file_data, file_type):
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File data does not match declared type")
+                raise ValidationException("File data does not match declared type", field="file_signature")
 
             return file_data, file_size
 
         except binascii.Error:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid base64 data")
+            raise ValidationException("Invalid base64 data", field="file_data")
 
     @classmethod
     def _validate_file_signature(cls, file_data: bytes, file_type: str) -> bool:
@@ -249,9 +253,9 @@ class InputValidator:
         )
 
         if not has_input:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="At least one input (text_query, image, video, audio, or text_file) is required",
+            raise ValidationException(
+                "At least one input (text_query, image, video, audio, or text_file) is required",
+                field="input"
             )
 
         return validated

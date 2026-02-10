@@ -1,14 +1,20 @@
 import time
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from loguru import logger
 
 from app.core.common_handlers import execute_multimodal_search
-from app.core.dependencies import get_answer_generation_service, get_search_service
+from app.core.error_management import BusinessLogicException, ValidationException
+from app.core.dependency_injector import (
+    AnswerGenerationServiceDep,
+    SearchServiceDep,
+)
+from app.core.interfaces import (
+    AnswerGenerationServiceProtocol,
+    SearchServiceProtocol,
+)
 from app.models.generation import GenerationResponse
-from app.services import SearchService
-from app.services.generation import AnswerGenerationService
 
 router = APIRouter()
 
@@ -25,8 +31,8 @@ async def generate_multimodal_answer(
         max_results: int = Form(default=10, ge=1, le=100, description="최대 검색 결과 수"),
         temperature: float = Form(default=0.7, ge=0.0, le=2.0, description="생성 온도"),
         max_retries: int = Form(default=2, ge=0, le=5, description="재생성 최대 횟수"),
-        search_service: SearchService = Depends(get_search_service),
-        generation_service: AnswerGenerationService = Depends(get_answer_generation_service),
+        search_service: SearchServiceProtocol = SearchServiceDep,
+        generation_service: AnswerGenerationServiceProtocol = AnswerGenerationServiceDep,
 ):
     """멀티모달 검색 결과를 기반으로 LLM 답변을 생성하는 엔드포인트"""
     start_time = time.time()
@@ -67,9 +73,13 @@ async def generate_multimodal_answer(
 
         return GenerationResponse(**generation_result)
 
-    except HTTPException as e:
-        logger.warning(f"HTTP {e.status_code} error in multimodal answer generation: {e.detail}")
+    except ValidationException:
+        # 검증 예외는 그대로 전파 (미들웨어에서 처리)
         raise
     except Exception as e:
         logger.error(f"Multimodal answer generation failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise BusinessLogicException(
+            message=str(e),
+            operation="answer_generation",
+            cause=e
+        )

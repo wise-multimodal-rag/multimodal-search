@@ -4,6 +4,7 @@ import httpx
 from loguru import logger
 
 from app.core.config import settings
+from app.core.error_management import ExternalAPIException
 from app.core.security import security_manager
 from app.core.prompt_manager import prompt_manager
 
@@ -107,9 +108,21 @@ class LLMClient:
 
             except Exception as e:
                 logger.error(f"LLM completion request failed: {e}")
-                logger.error(f"Response status: {response.status_code if 'response' in locals() else 'N/A'}")
-                logger.error(f"Response text: {response.text if 'response' in locals() else 'N/A'}")
-                return None
+                status_code = response.status_code if 'response' in locals() else 'N/A'
+                response_text = response.text if 'response' in locals() else 'N/A'
+                logger.error(f"Response status: {status_code}")
+                logger.error(f"Response text: {response_text}")
+
+                # 외부 API 예외로 변환
+                raise ExternalAPIException(
+                    service="LiteLLM",
+                    message=str(e),
+                    details={
+                        "status_code": status_code,
+                        "response_text": response_text[:500] if isinstance(response_text, str) else response_text
+                    },
+                    cause=e
+                )
 
     async def analyze_query_intent(
         self, query: str, available_element_types: List[str], input_modalities: Optional[List[str]] = None
@@ -277,6 +290,7 @@ class LLMClient:
                 return None
             except Exception as e:
                 logger.error(f"Error processing LLM response: {e}")
+                # analyze_query_intent는 None 반환이 허용되는 메서드이므로 예외를 던지지 않음
                 return None
 
         return None
@@ -363,6 +377,7 @@ class LLMClient:
                 return None
             except Exception as e:
                 logger.error(f"Error processing query expansion response: {e}")
+                # expand_query는 None 반환이 허용되는 메서드이므로 예외를 던지지 않음
                 return None
 
         return None
@@ -389,6 +404,7 @@ class LLMClient:
 
         except Exception as e:
             logger.error(f"Video analysis with LLM failed: {e}")
+            # 비디오 분석 실패는 None 반환이 허용됨 (옵셔널 기능)
             return None
 
     async def analyze_audio_features(self, base64_audio: str, content_type: str) -> Optional[Dict[str, Any]]:
@@ -413,4 +429,5 @@ class LLMClient:
 
         except Exception as e:
             logger.error(f"Audio analysis with LLM failed: {e}")
+            # 오디오 분석 실패는 None 반환이 허용됨 (옵셔널 기능)
             return None

@@ -8,8 +8,9 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from app.api.routes import config, generation, search
-from app.core.dependencies import get_opensearch_service
-from app.core.exceptions import ExceptionHandlerMiddleware
+from app.core.dependency_injector import get_opensearch_service
+from app.core.error_management import EnhancedExceptionHandlerMiddleware
+from app.core.config import settings
 
 
 @asynccontextmanager
@@ -35,8 +36,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add exception handling middleware
-app.add_middleware(ExceptionHandlerMiddleware)
+# Add enhanced exception handling middleware
+app.add_middleware(
+    EnhancedExceptionHandlerMiddleware,
+    include_debug_info=settings.debug
+)
 
 # Get project root directory (parent of app directory)
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -62,23 +66,7 @@ app.include_router(generation.router, prefix="/api/v1", tags=["generation"])
 app.include_router(config.router, prefix="/api/v1", tags=["config"])
 
 
-# Global exception handlers
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global exception handler caught: {type(exc).__name__}: {exc}")
-    logger.error(f"Request: {request.method} {request.url}")
-    if hasattr(request, "body") and request.method in ["POST", "PUT", "PATCH"]:
-        try:
-            body = await request.body()
-            body_str = body.decode("utf-8")
-            # If body is too long (likely contains base64), just show size
-            if len(body_str) > 1000:
-                logger.error(f"Request body size: {len(body_str)} bytes (truncated)")
-            else:
-                logger.error(f"Request body: {body_str}")
-        except:
-            logger.error("Could not read request body")
-    return JSONResponse(status_code=500, content={"detail": f"Internal server error: {str(exc)}"})
+# Global exception handling is now managed by EnhancedExceptionHandlerMiddleware
 
 
 @app.get("/")
@@ -97,8 +85,11 @@ async def external_apis_health_check():
     """Check health of all external APIs."""
     import httpx
 
-    from app.core.dependencies import (get_embedding_client,
-                                       get_feature_extraction_client, get_llm_client)
+    from app.core.dependency_injector import (
+        get_embedding_client,
+        get_feature_extraction_client,
+        get_llm_client,
+    )
 
     results = {}
 
