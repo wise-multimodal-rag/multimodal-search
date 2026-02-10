@@ -159,3 +159,22 @@ async def search_page(request: Request):
     if templates is None:
         return {"error": "Templates not available"}
     return templates.TemplateResponse("search.html", {"request": request})
+
+
+if __name__ == "__main__":
+    import uvicorn
+    from app.config import settings
+
+    # Setup logging before starting uvicorn
+    from app.utils.logging import setup_logging
+    setup_logging()
+
+    uvicorn.run(
+        app,
+        host=settings.app_host,
+        port=settings.app_port,
+        reload=settings.debug,
+        log_level=settings.log_level.lower(),
+        # Disable uvicorn's default logging configuration
+        log_config=None
+    )

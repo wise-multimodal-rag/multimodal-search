@@ -91,7 +91,7 @@ uv pip install -e .[dev]
 #### 로컬 개발 서버
 ```bash
 # 개발 서버 실행
-python run.py
+python -m app.main
 
 # 또는 uvicorn 직접 실행
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

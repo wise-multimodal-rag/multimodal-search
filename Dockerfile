@@ -50,7 +50,6 @@ RUN mkdir -p logs app_logs \
 COPY --chown=app:app app/ ./app/
 COPY --chown=app:app static/ ./static/
 COPY --chown=app:app templates/ ./templates/
-COPY --chown=app:app run.py ./
 
 # Switch to non-root user
 USER app
@@ -59,7 +58,7 @@ USER app
 EXPOSE 8000
 
 # Default command for development
-CMD ["python", "run.py"]
+CMD ["python", "-m", "app.main"]
 
 # -----------------------------------------------------------------------------
 # Production Stage: Minimal runtime dependencies only
@@ -83,7 +82,6 @@ RUN mkdir -p logs app_logs \
 COPY --chown=app:app app/ ./app/
 COPY --chown=app:app static/ ./static/
 COPY --chown=app:app templates/ ./templates/
-COPY --chown=app:app run.py ./
 
 # Remove unnecessary files and clean up
 RUN apt-get autoremove -y \
@@ -99,7 +97,7 @@ USER app
 EXPOSE 8000
 
 # Production command with unified logging
-CMD ["python", "run.py"]
+CMD ["python", "-m", "app.main"]
 
 # -----------------------------------------------------------------------------
 # Default target is production
