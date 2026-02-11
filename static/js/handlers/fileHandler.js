@@ -44,7 +44,7 @@ class FileHandler {
     }
     
     initializeEventListeners() {
-        // File input handlers
+        // File input middleware
         this.imageInput.addEventListener('change', (e) => {
             this.handleFileSelection('image', e.target.files[0], '📷');
         });

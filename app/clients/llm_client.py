@@ -3,8 +3,8 @@ from typing import Any, Dict, List, Optional
 import httpx
 from loguru import logger
 
-from app.config import settings
-from app.exceptions.service import LLMClientException
+from app.config.config import settings
+from app.api.exceptions.service import LLMClientException
 from app.utils.authentication import security_manager
 from app.prompts.manager import prompt_manager
 

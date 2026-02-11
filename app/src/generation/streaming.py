@@ -8,7 +8,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from loguru import logger
 
-from app.schemas.search import SearchResponse
+from app.api.schemas import SearchResponse
 from app.src.search.services import SearchService
 from app.src.generation.services import AnswerGenerationService
 

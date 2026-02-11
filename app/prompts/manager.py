@@ -9,7 +9,7 @@ from typing import Dict, List, Any, Optional
 
 from loguru import logger
 
-from app.config import settings
+from app.config.config import settings
 from app.prompts.templates import PromptIds, DefaultPrompts, PromptTemplates
 
 try:

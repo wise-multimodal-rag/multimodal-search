@@ -15,7 +15,7 @@ class SecurityManager:
     def _load_api_keys(self):
         """Load API keys from settings object."""
         # Import here to avoid circular imports
-        from app.config import settings
+        from app.config.config import settings
 
         # API 키 검증 설정
         key_configs = {

@@ -1,14 +1,14 @@
 from functools import lru_cache
 
+from app.api.dependencies import container
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.feature_extraction_client import FeatureExtractionClient
 from app.clients.llm_client import LLMClient
-from app.interfaces.container import container
-from app.utils.validation import InputValidator
 from app.src.embeddings import EmbeddingService
-from app.src.processing import FilePreprocessingService, InputProcessor, MultimodalFeatureExtractor
 from app.src.generation import MultimodalStreamService, AnswerGenerationService
+from app.src.processing import InputProcessor, MultimodalFeatureExtractor
 from app.src.search import OpenSearchService, QueryAnalyzer, ResultEnricher, SearchExecutor, SearchService
+from app.utils.validation import InputValidator
 
 
 # DI 컨테이너 초기화
@@ -36,6 +36,7 @@ def _initialize_container():
     container.register(SearchService)
     container.register(AnswerGenerationService)
     container.register(MultimodalStreamService)
+
 
 # 컨테이너 초기화
 _initialize_container()

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from app.config import settings
+from app.config.config import settings
 
 # 통일된 로그 포맷
 LOG_FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}"

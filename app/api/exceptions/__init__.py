@@ -3,7 +3,7 @@
 This module provides a centralized exception handling system with:
 - Base exception classes
 - Service-specific exceptions
-- Exception handlers and middleware
+- Exception middleware and middleware
 - Error response formatting
 """
 

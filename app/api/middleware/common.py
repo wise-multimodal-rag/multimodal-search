@@ -6,7 +6,7 @@ from loguru import logger
 
 from app.utils.common import get_input_types
 from app.utils.validation import InputValidator
-from app.schemas.search import SearchResponse
+from app.api.schemas import SearchResponse
 from app.src.search import SearchService
 
 

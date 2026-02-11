@@ -7,7 +7,7 @@ from loguru import logger
 
 from app.clients.llm_client import LLMClient
 from app.prompts import prompt_manager
-from app.schemas.search import SearchResponse
+from app.api.schemas import SearchResponse
 
 
 class AnswerGenerationService:
@@ -254,7 +254,7 @@ class AnswerGenerationService:
 
         try:
             # OpenSearch 서비스에 접근하기 위해 dependency injection 사용
-            from app.interfaces import get_opensearch_service
+            from app.api.dependencies import get_opensearch_service
             opensearch_service = get_opensearch_service()
 
             # chunk_id들로 caption element 검색

@@ -4,18 +4,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from loguru import logger
 
-from app.handlers.common import execute_multimodal_search
-from app.exceptions import BusinessLogicException, ValidationException
-from app.interfaces import (
-    AnswerGenerationServiceDep,
-    SearchServiceDep,
-)
-from app.interfaces.protocols import (
+from app.api.dependencies.injector import get_answer_generation_service, get_search_service
+from app.api.dependencies.protocols import (
     AnswerGenerationServiceProtocol,
     SearchServiceProtocol,
 )
-from app.schemas.common import ApiResponse, GenerationResponseData, ResponseBuilder
-from app.schemas.generation import GenerationAttempt
+from app.api.exceptions import BusinessLogicException, ValidationException
+from app.api.middleware.common import execute_multimodal_search
+from app.api.schemas.common import ApiResponse, GenerationResponseData, ResponseBuilder
 
 router = APIRouter()
 
@@ -32,8 +28,8 @@ async def generate_multimodal_answer(
         max_results: int = Form(default=10, ge=1, le=100, description="최대 검색 결과 수"),
         temperature: float = Form(default=0.7, ge=0.0, le=2.0, description="생성 온도"),
         max_retries: int = Form(default=2, ge=0, le=5, description="재생성 최대 횟수"),
-        search_service: SearchServiceProtocol = SearchServiceDep,
-        generation_service: AnswerGenerationServiceProtocol = AnswerGenerationServiceDep,
+        search_service: SearchServiceProtocol = Depends(get_search_service),
+        generation_service: AnswerGenerationServiceProtocol = Depends(get_answer_generation_service),
 ):
     """멀티모달 검색 결과를 기반으로 LLM 답변을 생성하는 엔드포인트"""
     start_time = time.time()

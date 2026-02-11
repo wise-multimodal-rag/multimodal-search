@@ -1,26 +1,26 @@
 import json
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from app.handlers.common import execute_multimodal_search
-from app.interfaces import (
-    InputValidatorDep,
-    MultimodalStreamServiceDep,
-    SearchServiceDep,
+from app.api.dependencies.injector import (
+    get_input_validator,
+    get_multimodal_stream_service,
+    get_search_service,
 )
-from app.src.processing.files import FilePreprocessingService
-from app.exceptions import BusinessLogicException, ValidationException
-from app.interfaces.protocols import (
+from app.api.dependencies.protocols import (
     InputValidatorProtocol,
     SearchServiceProtocol,
 )
-from app.schemas.common import ApiResponse, ResponseBuilder
-from app.schemas.search import SearchResponse
+from app.api.exceptions import BusinessLogicException, ValidationException
+from app.api.middleware.common import execute_multimodal_search
+from app.api.schemas.common import ApiResponse, ResponseBuilder
+from app.api.schemas.search import SearchResponse
 from app.src.generation import MultimodalStreamService
+from app.src.processing.files import FilePreprocessingService
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -36,8 +36,8 @@ async def search_multimodal(
         include_chunk_meta: bool = Form(default=True, description="Chunk 메타데이터 포함 여부"),
         include_media_meta: bool = Form(default=True, description="Media 메타데이터 포함 여부"),
         max_results: int = Form(default=10, ge=1, le=100, description="최대 결과 수"),
-        search_service: SearchServiceProtocol = SearchServiceDep,
-        input_validator: InputValidatorProtocol = InputValidatorDep,
+        search_service: SearchServiceProtocol = Depends(get_search_service),
+        input_validator: InputValidatorProtocol = Depends(get_input_validator),
 ):
     """진정한 멀티모달 검색 엔드포인트 - 텍스트, 이미지, 비디오, 오디오 조합 입력"""
     try:
@@ -86,7 +86,7 @@ async def multimodal_search_and_generate_stream(
         generate_answer: bool = Form(default=False, description="AI 답변도 함께 생성"),
         temperature: float = Form(default=0.7, ge=0.0, le=2.0, description="답변 생성 온도"),
         max_retries: int = Form(default=2, ge=0, le=5, description="답변 재생성 최대 횟수"),
-        multimodal_stream_service: MultimodalStreamService = MultimodalStreamServiceDep,
+        multimodal_stream_service: MultimodalStreamService = Depends(get_multimodal_stream_service),
 ):
     """멀티모달 검색 및 선택적 AI 답변 생성 스트리밍 엔드포인트
     

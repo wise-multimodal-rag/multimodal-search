@@ -3,7 +3,7 @@ from typing import List, Dict, Optional, Any
 
 from loguru import logger
 
-from app.config import weighting_config
+from app.config.weights import weighting_config
 from app.src.search.opensearch import OpenSearchService
 from app.src.search.analyzers import QueryAnalyzer
 

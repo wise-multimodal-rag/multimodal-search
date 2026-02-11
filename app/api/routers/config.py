@@ -3,8 +3,8 @@ from typing import Any, Dict
 
 from fastapi import APIRouter
 
-from app.config import settings
-from app.schemas.common import ApiResponse, ResponseBuilder
+from app.api.schemas.common import ApiResponse, ResponseBuilder
+from app.config.config import settings
 
 router = APIRouter()
 

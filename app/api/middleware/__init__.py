@@ -1,4 +1,4 @@
-"""FastAPI application handlers and middleware configuration."""
+"""FastAPI application middleware and middleware configuration."""
 
 from .cors import configure_cors
 from .middleware import configure_handlers, configure_middleware

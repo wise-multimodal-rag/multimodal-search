@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 from opensearchpy import AsyncOpenSearch
 
-from app.config import settings, weighting_config
+from app.config.config import settings
+from app.config.weights import weighting_config
 from app.src.embeddings import EmbeddingService
 from app.utils.index_mappings import (get_chunk_meta_mapping, get_elements_mapping,
                                       get_media_meta_mapping)

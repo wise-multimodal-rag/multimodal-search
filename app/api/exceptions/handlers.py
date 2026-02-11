@@ -1,4 +1,4 @@
-"""Exception handlers and middleware for the multimodal search application."""
+"""Exception middleware and middleware for the multimodal search application."""
 
 import traceback
 from typing import Any, Dict

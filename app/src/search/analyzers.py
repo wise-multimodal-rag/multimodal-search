@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from loguru import logger
 
 from app.clients.llm_client import LLMClient
-from app.config import weighting_config
+from app.config.weights import weighting_config
 
 
 class QueryAnalyzer:

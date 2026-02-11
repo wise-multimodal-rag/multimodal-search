@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional
 
 from loguru import logger
 
-from app.schemas.search import SearchResult, Element, ChunkMeta, MediaMeta
+from app.api.schemas import SearchResult, Element, ChunkMeta, MediaMeta
 from app.src.search.opensearch import OpenSearchService
 
 

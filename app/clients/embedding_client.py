@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from loguru import logger
 
-from app.config import settings
+from app.config.config import settings
 from app.utils.authentication import security_manager
 
 

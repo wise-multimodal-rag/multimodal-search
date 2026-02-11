@@ -1,7 +1,7 @@
 """향상된 의존성 주입 컨테이너"""
 import inspect
 from functools import lru_cache
-from typing import Any, Callable, Dict, Optional, Type, TypeVar
+from typing import Any, Callable, Dict, Type, TypeVar
 
 T = TypeVar('T')
 
@@ -62,14 +62,14 @@ class DIContainer:
         service_type_name = getattr(service_type, '__name__', str(service_type))
 
         if service_type in self._resolving:
-            from app.exceptions.base import DependencyException
+            from app.api.exceptions.base import DependencyException
             raise DependencyException(
                 message=f"Circular dependency detected for {service_type_name}",
                 service_type=service_type_name
             )
 
         if service_type not in self._services:
-            from app.exceptions.base import DependencyException
+            from app.api.exceptions.base import DependencyException
             raise DependencyException(
                 message=f"Service {service_type_name} is not registered",
                 service_type=service_type_name
@@ -130,7 +130,7 @@ class DIContainer:
                     if param.default != inspect.Parameter.empty:
                         kwargs[name] = param.default
                     else:
-                        from app.exceptions.base import DependencyException
+                        from app.api.exceptions.base import DependencyException
                         type_name = getattr(param_type, '__name__', str(param_type))
                         raise DependencyException(
                             message=f"Cannot resolve dependency {type_name} for {cls.__name__}",

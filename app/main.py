@@ -6,10 +6,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from app.api import config, generation, search
-from app.handlers import configure_cors, configure_handlers, configure_middleware
-from app.interfaces import get_opensearch_service
-from app.schemas import ApiResponse, HealthCheckData, ResponseBuilder
+from app.api.dependencies import get_opensearch_service
+from app.api.middleware import configure_cors, configure_handlers, configure_middleware
+from app.api.routers import search, generation, config
+from app.api.schemas import ApiResponse, HealthCheckData, ResponseBuilder
 
 
 @asynccontextmanager
@@ -59,9 +59,9 @@ else:
     templates = None
 
 # Include routers
-app.include_router(search.router, prefix="/api/v1", tags=["search"])
-app.include_router(generation.router, prefix="/api/v1", tags=["generation"])
-app.include_router(config.router, prefix="/api/v1", tags=["config"])
+app.include_router(search.router, prefix="/api", tags=["search"])
+app.include_router(generation.router, prefix="/api", tags=["generation"])
+app.include_router(config.router, prefix="/api", tags=["config"])
 
 
 # Global exception handling is now managed by EnhancedExceptionHandlerMiddleware
@@ -94,7 +94,7 @@ async def external_apis_health_check():
     """Check health of all external APIs."""
     import httpx
 
-    from app.interfaces import (
+    from app.api.dependencies import (
         get_embedding_client,
         get_feature_extraction_client,
         get_llm_client,
@@ -163,10 +163,11 @@ async def search_page(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    from app.config import settings
+    from app.config.config import settings
 
     # Setup logging before starting uvicorn
     from app.utils.logging import setup_logging
+
     setup_logging()
 
     uvicorn.run(

@@ -7,8 +7,8 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from fastapi import UploadFile
 from loguru import logger
 
-from app.config import weighting_config
-from app.schemas.search import SearchResponse
+from app.api.schemas import SearchResponse
+from app.config.weights import weighting_config
 from app.src.embeddings import EmbeddingService
 from app.src.processing import MultimodalFeatureExtractor, InputProcessor
 from app.src.search.analyzers import QueryAnalyzer

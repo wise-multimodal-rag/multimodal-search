@@ -5,7 +5,7 @@ import binascii
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.exceptions.base import ValidationException
+from app.api.exceptions import ValidationException
 
 
 class InputValidator:
