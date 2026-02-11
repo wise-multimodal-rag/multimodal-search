@@ -22,9 +22,16 @@ dependencies = [
 ]
 
 [dependency-groups]
-test = [
+lint = [
+    "pre-commit>=4.5.1",
     "pyright>=1.1.408",
     "ruff>=0.15.0",
+]
+test = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "setuptools>=82.0.0",
+    "tabulate>=0.9.0",
 ]
 
 [build-system]

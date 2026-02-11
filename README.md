@@ -82,8 +82,14 @@ cp .env.example .env
 # uv 패키지 매니저 사용 (권장)
 uv pip install -e .
 
-# 개발 의존성 포함
-uv pip install -e .[dev]
+# 개발 의존성 포함 (린트 도구)
+uv pip install -e . --group lint
+
+# 테스트 의존성 포함
+uv pip install -e . --group test
+
+# 모든 개발 의존성 포함
+uv pip install -e . --group lint --group test
 ```
 
 ### 3. 실행 방법

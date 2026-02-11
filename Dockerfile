@@ -40,7 +40,7 @@ ENV APP_HOST=0.0.0.0 \
 RUN uv pip install --system -e .
 
 # Install development tools separately
-RUN uv pip install --system pyright>=1.1.408 ruff>=0.15.0
+RUN uv pip install --system -e . --group lint
 
 # Create necessary directories
 RUN mkdir -p logs app_logs \
