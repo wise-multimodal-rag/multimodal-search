@@ -3,8 +3,8 @@ from typing import Any, Dict, List, Optional
 import httpx
 from loguru import logger
 
-from app.core.config import settings
-from app.core.security import security_manager
+from app.config.config import settings
+from app.utils.authentication import security_manager
 
 
 class FeatureExtractionClient:

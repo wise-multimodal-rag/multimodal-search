@@ -1,41 +1,105 @@
-FROM python:3.11-slim
+# -----------------------------------------------------------------------------
+# Base Stage: Common dependencies and setup
+# -----------------------------------------------------------------------------
+FROM python:3.11-slim as base
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install system dependencies and create app user
+RUN apt-get update && apt-get install -y \
+    --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --shell /bin/bash --uid 1000 app
+
+# Install uv package manager (latest version with dependency groups support)
+RUN pip install --no-cache-dir uv>=0.5.0
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Copy dependency files first (for better layer caching)
+COPY --chown=app:app pyproject.toml ./
 
-# Install uv
-RUN pip install uv
+# -----------------------------------------------------------------------------
+# Development Stage: Includes development tools
+# -----------------------------------------------------------------------------
+FROM base as development
 
-# Copy dependency files
-COPY pyproject.toml ./
+# Set Docker-specific environment variables
+ENV APP_HOST=0.0.0.0 \
+    APP_PORT=8000 \
+    DEBUG=true
 
-# Install dependencies
+# Install runtime dependencies first
 RUN uv pip install --system -e .
 
-# Create logs directory
-RUN mkdir -p logs
+# Install development tools separately
+RUN uv pip install --system -e . --group lint
+
+# Create necessary directories
+RUN mkdir -p logs app_logs \
+    && chown -R app:app /app
 
 # Copy application code
-COPY app/ ./app/
-COPY static/ ./static/
-COPY templates/ ./templates/
+COPY --chown=app:app app/ ./app/
+COPY --chown=app:app static/ ./static/
+COPY --chown=app:app templates/ ./templates/
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash app \
-    && chown -R app:app /app
+# Switch to non-root user
 USER app
 
 # Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Default command for development
+CMD ["python", "-m", "app.main"]
 
-# Run application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# -----------------------------------------------------------------------------
+# Production Stage: Minimal runtime dependencies only
+# -----------------------------------------------------------------------------
+FROM base as production
+
+# Set Docker-specific environment variables
+ENV APP_HOST=0.0.0.0 \
+    APP_PORT=8000 \
+    DEBUG=false
+
+# Install only runtime dependencies
+RUN uv pip install --system -e .
+
+# Create necessary directories with minimal permissions
+RUN mkdir -p logs app_logs \
+    && chown -R app:app /app \
+    && chmod 755 /app
+
+# Copy application code
+COPY --chown=app:app app/ ./app/
+COPY --chown=app:app static/ ./static/
+COPY --chown=app:app templates/ ./templates/
+
+# Remove unnecessary files and clean up
+RUN apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/* \
+    && rm -rf /root/.cache
+
+# Switch to non-root user
+USER app
+
+# Expose port
+EXPOSE 8000
+
+# Production command with unified logging
+CMD ["python", "-m", "app.main"]
+
+# -----------------------------------------------------------------------------
+# Default target is production
+# -----------------------------------------------------------------------------
+FROM production

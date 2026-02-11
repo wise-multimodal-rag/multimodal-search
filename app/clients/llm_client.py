@@ -3,8 +3,10 @@ from typing import Any, Dict, List, Optional
 import httpx
 from loguru import logger
 
-from app.core.config import settings
-from app.core.security import security_manager
+from app.config.config import settings
+from app.api.exceptions.service import LLMClientException
+from app.utils.authentication import security_manager
+from app.prompts.manager import prompt_manager
 
 
 class LLMClient:
@@ -13,7 +15,8 @@ class LLMClient:
         self.api_key = security_manager.get_api_key("LITELLM_API_KEY") or settings.litellm_api_key
         self.model = settings.litellm_model
         self.generation_model = settings.litellm_generation_model
-        self.timeout = 60.0
+        self.timeout = settings.litellm_timeout
+        self.prompt_manager = prompt_manager
 
     async def complete(
         self,
@@ -54,7 +57,6 @@ class LLMClient:
                 response.raise_for_status()
 
                 result = response.json()
-                logger.debug(f"LLM API response keys: {list(result.keys())}")
 
                 # Check for various possible response structures
                 if "choices" in result and len(result["choices"]) > 0:
@@ -69,15 +71,12 @@ class LLMClient:
                         message = choice["message"]
                         if "content" in message and message["content"]:
                             content = message["content"]
-                            logger.debug(f"LLM response received, length: {len(content)} chars")
                             
                             # 답변 생성 모드일 때만 상세 내용 로깅
                             if use_generation_model and len(content) > 100:  # 긴 응답만 로깅 (답변 생성 시)
-                                logger.info(f"🤖 LLM Raw Response ({payload.get('model')}):")
-                                logger.info(f"📝 Content ({len(content)} chars):")
-                                logger.info(f"{'*'*50}")
+                                logger.info(f"LLM Raw Response ({payload.get('model')}):")
+                                logger.info(f"Content ({len(content)} chars):")
                                 logger.info(content)
-                                logger.info(f"{'*'*50}")
                             
                             return content
                         elif "content" in message and message["content"] == "":
@@ -92,12 +91,10 @@ class LLMClient:
                 elif "content" in result:
                     # Some APIs return content directly
                     content = result["content"]
-                    logger.debug(f"LLM response received (direct), length: {len(content)} chars")
                     return content
                 elif "text" in result:
                     # Some APIs use 'text' field
                     content = result["text"]
-                    logger.debug(f"LLM response received (text field), length: {len(content)} chars")
                     return content
                 else:
                     logger.error(f"Unexpected LLM response structure: {result}")
@@ -105,9 +102,21 @@ class LLMClient:
 
             except Exception as e:
                 logger.error(f"LLM completion request failed: {e}")
-                logger.error(f"Response status: {response.status_code if 'response' in locals() else 'N/A'}")
-                logger.error(f"Response text: {response.text if 'response' in locals() else 'N/A'}")
-                return None
+                status_code = response.status_code if 'response' in locals() else 'N/A'
+                response_text = response.text if 'response' in locals() else 'N/A'
+                logger.error(f"Response status: {status_code}")
+                logger.error(f"Response text: {response_text}")
+
+                # LLM API 예외로 변환
+                raise LLMClientException(
+                    message=str(e),
+                    details={
+                        "service": "LiteLLM",
+                        "status_code": status_code,
+                        "response_text": response_text[:500] if isinstance(response_text, str) else response_text
+                    },
+                    cause=e
+                )
 
     async def analyze_query_intent(
         self, query: str, available_element_types: List[str], input_modalities: Optional[List[str]] = None
@@ -171,41 +180,14 @@ class LLMClient:
 입력 모달리티: {", ".join(input_modalities)}
 """
 
-        system_message = f"""쿼리 내용을 분석하여 검색에 적합한 element_type별 가중치를 계산하세요.
-{modality_context}
-사용 가능한 타입:
-{element_list}
+        # 프롬프트 매니저에서 쿼리 의도 분석 프롬프트 가져오기
+        system_message = await self.prompt_manager.get_query_intent_analysis_prompt(
+            modality_context=modality_context,
+            element_list=element_list
+        )
 
-**중요한 우선순위 규칙**:
-- 이미지 관련 쿼리 ("이미지", "사진", "그림" 등):
-  → origin (원본 이미지): 1.0 (최고 우선순위)
-  → caption (이미지 설명): 0.2-0.3 (매우 낮은 우선순위)
-- 요약 관련 쿼리 ("요약", "정리" 등):
-  → summary: 1.0, paragraph: 0.5-0.7
-- 일반 텍스트 쿼리 ("내용", "문서", "텍스트" 등):
-  → paragraph: 1.0, summary: 0.5-0.7
 
-가중치 (0.0~1.0):
-- 1.0: 핵심 요구사항 (최고 우선순위)
-- 0.7: 관련 높음
-- 0.5: 보통 관련
-- 0.3: 약간 관련
-- 0.2: 매우 낮은 관련성
-- 0.0: 관련 없음
-
-JSON만 출력:
-{{
-    "element_type_weights": {{
-        "paragraph": 0.3,
-        "summary": 0.5, 
-        "caption": 0.2,
-        "origin": 1.0
-    }},
-    "reasoning": "이미지 검색이므로 origin을 최우선으로, caption은 매우 낮게 설정",
-    "confidence": 0.9
-}}"""
-
-        messages = [{"role": "system", "content": system_message}, {"role": "user", "content": f"검색 쿼리: {query}"}]
+        messages = self.prompt_manager.create_messages(system_message, f"검색 쿼리: {query}")
 
         response = await self.complete(messages, temperature=0.2, max_tokens=1500, force_json=False)
 
@@ -302,6 +284,7 @@ JSON만 출력:
                 return None
             except Exception as e:
                 logger.error(f"Error processing LLM response: {e}")
+                # analyze_query_intent는 None 반환이 허용되는 메서드이므로 예외를 던지지 않음
                 return None
 
         return None
@@ -328,63 +311,11 @@ JSON만 출력:
             if search_scope:
                 context_info += f"검색 범위: {search_scope}\n"
 
-        system_message = f"""검색 쿼리를 분석하여 필요한 경우에만 확장하세요. 원본 쿼리의 의도를 최대한 보존하면서 검색 성능을 개선하는 것이 목표입니다.
+        # 프롬프트 매니저에서 쿼리 확장 프롬프트 가져오기
+        system_message = await self.prompt_manager.get_query_expansion_prompt(context_info)
 
-{context_info}
 
-적용 가능한 기법:
-
-1. **Query Rewriting (쿼리 재작성)** - 기본적으로 적용:
-   - 동의어, 유의어로 재작성
-   - 예시: "AI" → "인공지능", "방법" → "how to"
-
-2. **Query Decomposition (쿼리 분해)** - 복합 쿼리일 때만:
-   - 2개 이상의 독립적 개념이 명확히 구분되는 경우에만 적용
-   - 예시: "파이썬과 자바스크립트 차이점" → "파이썬" + "자바스크립트"
-
-3. **Semantic Expansion (의미적 확장)** - 매우 제한적으로 적용:
-   ⚠️ **다음 경우에만 적용**:
-   - 쿼리가 너무 추상적이어서 구체적인 검색이 어려운 경우
-   - 사용자가 명시적으로 "관련된", "비슷한", "유사한" 등의 확장을 요청한 경우
-   - 도메인 전문 용어가 필요한 매우 기술적인 쿼리인 경우
-   
-   ❌ **적용하지 말아야 할 경우**:
-   - 구체적인 제품명, 브랜드명, 고유명사가 포함된 쿼리
-   - 이미 충분히 구체적인 쿼리
-   - 정확한 매칭이 중요한 쿼리
-
-**원칙**: 의심스러우면 Semantic Expansion을 사용하지 마세요. Query Rewriting만으로도 충분한 경우가 대부분입니다.
-
-간소화된 JSON 형식으로만 응답하세요:
-{{
-    "original_query": "원본 쿼리",
-    "final_queries": [
-        {{
-            "query": "확장된 쿼리1",
-            "priority": 1
-        }},
-        {{
-            "query": "확장된 쿼리2", 
-            "priority": 2
-        }}
-    ],
-    "has_dependency": false,
-    "dependency_reason": "분해된 쿼리들이 독립적으로 실행 가능",
-    "applied_techniques": ["rewriting", "decomposition"],
-    "expansion_summary": "Query rewriting and decomposition applied (2 variants generated)"
-}}
-
-참고:
-- 원본 쿼리는 항상 priority 1로 final_queries에 포함
-- 확장 쿼리는 최대 2-3개까지만 생성
-- priority가 낮을수록 우선순위가 높음
-- applied_techniques: ["rewriting", "decomposition", "semantic_expansion"] 중 사용된 것만
-- has_dependency가 true면 순차 검색, false면 병렬 검색"""
-
-        messages = [
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": f"다음 쿼리를 확장해주세요: {query}"},
-        ]
+        messages = self.prompt_manager.create_messages(system_message, f"다음 쿼리를 확장해주세요: {query}")
 
         response = await self.complete(messages, temperature=0.2, max_tokens=2000, force_json=True)
 
@@ -440,6 +371,7 @@ JSON만 출력:
                 return None
             except Exception as e:
                 logger.error(f"Error processing query expansion response: {e}")
+                # expand_query는 None 반환이 허용되는 메서드이므로 예외를 던지지 않음
                 return None
 
         return None
@@ -447,30 +379,13 @@ JSON만 출력:
     async def analyze_video_features(self, base64_video: str, content_type: str) -> Optional[Dict[str, Any]]:
         """LLM을 통한 비디오 분석"""
         try:
-            VIDEO_ANALYSIS_PROMPT = """이 비디오를 분석하여 다음 정보를 JSON 형식으로 제공하세요:
-{
-    "description": "비디오 전체 설명",
-    "scenes": [
-        {
-            "timestamp": "0:00-0:30", 
-            "description": "장면 설명"
-        }
-    ],
-    "activities": ["활동1", "활동2"],
-    "objects": ["객체1", "객체2"],
-    "setting": "장소/환경",
-    "duration_estimate": "추정 길이(초)"
-}"""
+            # 프롬프트 매니저에서 비디오 분석 프롬프트 가져오기
+            video_prompt = await self.prompt_manager.get_video_analysis_prompt()
 
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": VIDEO_ANALYSIS_PROMPT},
-                        {"type": "video_url", "video_url": {"url": f"data:{content_type};base64,{base64_video}"}},
-                    ],
-                }
+            content_list = [
+                {"type": "video_url", "video_url": {"url": f"data:{content_type};base64,{base64_video}"}}
             ]
+            messages = self.prompt_manager.create_multimodal_messages(video_prompt, content_list)
 
             response = await self.complete(messages, temperature=0.3, max_tokens=1000)
             if response:
@@ -483,30 +398,19 @@ JSON만 출력:
 
         except Exception as e:
             logger.error(f"Video analysis with LLM failed: {e}")
+            # 비디오 분석 실패는 None 반환이 허용됨 (옵셔널 기능)
             return None
 
     async def analyze_audio_features(self, base64_audio: str, content_type: str) -> Optional[Dict[str, Any]]:
         """LLM을 통한 오디오 분석"""
         try:
-            AUDIO_ANALYSIS_PROMPT = """이 오디오를 분석하여 다음 정보를 JSON 형식으로 제공하세요:
-{
-    "transcription": "음성 내용 (있다면)",
-    "type": "speech|music|sound_effect|ambient|mixed",
-    "detected_sounds": ["소리1", "소리2"],
-    "language": "언어 (있다면)",
-    "quality": "음질 평가",
-    "duration_estimate": "추정 길이(초)"
-}"""
+            # 프롬프트 매니저에서 오디오 분석 프롬프트 가져오기
+            audio_prompt = await self.prompt_manager.get_audio_analysis_prompt()
 
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": AUDIO_ANALYSIS_PROMPT},
-                        {"type": "audio_url", "audio_url": {"url": f"data:{content_type};base64,{base64_audio}"}},
-                    ],
-                }
+            content_list = [
+                {"type": "audio_url", "audio_url": {"url": f"data:{content_type};base64,{base64_audio}"}}
             ]
+            messages = self.prompt_manager.create_multimodal_messages(audio_prompt, content_list)
 
             response = await self.complete(messages, temperature=0.3, max_tokens=1000)
             if response:
@@ -519,4 +423,5 @@ JSON만 출력:
 
         except Exception as e:
             logger.error(f"Audio analysis with LLM failed: {e}")
+            # 오디오 분석 실패는 None 반환이 허용됨 (옵셔널 기능)
             return None
