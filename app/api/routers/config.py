@@ -20,8 +20,8 @@ async def get_client_config():
             "baseUrl": "",  # 클라이언트에서 현재 도메인 사용
             "timeout": 30000,
             "endpoints": {
-                "search": "/api/v1/search/multimodal",
-                "searchStream": "/api/v1/search/multimodal/stream",
+                "search": "/api/search/multimodal",
+                "searchStream": "/api/search/multimodal/stream",
                 "health": "/health"
             }
         },

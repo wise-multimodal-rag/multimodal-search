@@ -35,7 +35,7 @@ class RetryManager {
             console.log('📤 Sending retry request to server...');
             
             // 재시도 요청 전송
-            const response = await fetch('/api/v1/search/multimodal/stream', {
+            const response = await fetch('/api/search/multimodal/stream', {
                 method: 'POST',
                 body: retryFormData,
                 signal: abortController ? abortController.signal : null
