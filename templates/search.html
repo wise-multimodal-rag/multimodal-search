@@ -175,7 +175,7 @@
 <!-- Managers -->
 <script src="/static/js/managers/tooltipManager.js"></script>
 <script src="/static/js/managers/historyManager.js?v=33.0"></script>
-<script src="/static/js/managers/retryManager.js?v=1.0"></script>
+<script src="/static/js/managers/retryManager.js?v=2.0"></script>
 
 <!-- Handlers -->
 <script src="/static/js/handlers/fileHandler.js?v=52.0"></script>
@@ -341,13 +341,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- Core controllers -->
 <script src="/static/js/core/uiController.js?v=16.0"></script>
-<script src="/static/js/core/streamingSearch.js?v=67.0"></script>
-<script src="/static/js/core/search.js?v=106.0"></script>
+<script src="/static/js/core/streamingSearch.js?v=68.0"></script>
+<script src="/static/js/core/search.js?v=107.0"></script>
 <script>
     // 서버 설정 로드 함수
     async function loadServerConfiguration() {
         try {
-            const response = await fetch('/api/v1/config/client');
+            const response = await fetch('/api/config/client');
             if (response.ok) {
                 const serverConfig = await response.json();
                 window.appConfig.injectServerConfig(serverConfig);

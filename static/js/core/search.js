@@ -222,7 +222,7 @@ class SearchController {
     
     async fallbackToRegularSearch(formData) {
         // Original search logic as fallback
-        const response = await fetch('/api/v1/search/multimodal', {
+        const response = await fetch('/api/search/multimodal', {
             method: 'POST',
             body: formData
         });

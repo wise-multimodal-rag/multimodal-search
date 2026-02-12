@@ -54,7 +54,7 @@ class StreamingSearchController {
         
         try {
             await this.streamingHandler.startStreaming(
-                '/api/v1/search/multimodal/stream',
+                '/api/search/multimodal/stream',
                 formData,
                 this.hasAnswerGeneration,
                 (stepResult) => this.handleStepResult(stepResult),
