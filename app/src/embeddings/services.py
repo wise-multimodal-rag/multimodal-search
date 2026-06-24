@@ -43,14 +43,11 @@ class EmbeddingService:
                 embedding_tasks.append(self.embedding_client.get_text_embedding(text_query))
                 task_names.append("text")
 
-            # 2. 이미지 임베딩
+            # 2. 이미지 임베딩 (base64 문자열을 직접 전달 — 불필요한 decode/encode 제거)
             if "image" in modalities_data and "base64_data" in modalities_data["image"]:
-                try:
-                    image_bytes = base64.b64decode(modalities_data["image"]["base64_data"])
-                    embedding_tasks.append(self.embedding_client.get_image_embedding(image_bytes))
-                    task_names.append("image")
-                except Exception as e:
-                    logger.warning(f"Failed to decode image data: {e}")
+                image_base64 = modalities_data["image"]["base64_data"]
+                embedding_tasks.append(self.embedding_client.get_image_embedding(image_base64))
+                task_names.append("image")
 
             # 3. 비디오 임베딩 (첫 프레임 또는 키프레임 사용)
             if "video" in modalities_data and "base64_data" in modalities_data["video"]:
