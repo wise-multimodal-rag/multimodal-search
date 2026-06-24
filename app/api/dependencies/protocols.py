@@ -48,8 +48,8 @@ class EmbeddingClientProtocol(Protocol):
         """텍스트 임베딩 생성"""
         ...
 
-    async def get_image_embedding(self, image_data: bytes) -> Optional[List[float]]:
-        """이미지 임베딩 생성"""
+    async def get_image_embedding(self, image_base64: str) -> Optional[List[float]]:
+        """이미지 임베딩 생성 (base64 문자열 입력)"""
         ...
 
     async def get_video_embedding(self, video_data: bytes) -> Optional[List[float]]:
@@ -59,9 +59,6 @@ class EmbeddingClientProtocol(Protocol):
     async def get_audio_embedding(self, audio_data: bytes) -> Optional[List[float]]:
         """오디오 임베딩 생성"""
         ...
-
-    async def detect_objects(self, image_data: bytes) -> Optional[Dict[str, Any]]:
-        """객체 감지"""
         ...
 
     async def generate_image_caption(self, image_data: bytes) -> Optional[Dict[str, Any]]:
@@ -257,7 +254,7 @@ class EmbeddingClientBase(ABC):
         pass
 
     @abstractmethod
-    async def get_image_embedding(self, image_data: bytes) -> Optional[List[float]]:
+    async def get_image_embedding(self, image_base64: str) -> Optional[List[float]]:
         pass
 
 
