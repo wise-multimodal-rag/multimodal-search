@@ -77,6 +77,7 @@ class SearchResult(BaseModel):
     media_meta: Optional[MediaMeta] = None
     score: float
     original_score: Optional[float] = None
+    score_breakdown: Optional[Dict[str, Any]] = None
 
 
 class SearchResponse(BaseModel):

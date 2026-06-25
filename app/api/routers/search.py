@@ -28,7 +28,7 @@ templates = Jinja2Templates(directory="templates")
 
 @router.post("/search/multimodal", response_model=ApiResponse[SearchResponse])
 async def search_multimodal(
-        text_query: Optional[str] = Form(default="쿼리를 입력해주세요", description="텍스트 검색 쿼리"),
+        text_query: Optional[str] = Form(default=None, description="텍스트 검색 쿼리"),
         image: Optional[UploadFile] = File(default=None, description="이미지 파일"),
         video: Optional[UploadFile] = File(default=None, description="비디오 파일"),
         audio: Optional[UploadFile] = File(default=None, description="오디오 파일"),
@@ -75,7 +75,7 @@ async def search_multimodal(
 @router.post("/search/multimodal/stream")
 async def multimodal_search_and_generate_stream(
         request: Request,
-        text_query: Optional[str] = Form(default="쿼리를 입력해주세요", description="텍스트 검색 쿼리"),
+        text_query: Optional[str] = Form(default=None, description="텍스트 검색 쿼리"),
         image: Optional[UploadFile] = File(default=None, description="이미지 파일"),
         video: Optional[UploadFile] = File(default=None, description="비디오 파일"),
         audio: Optional[UploadFile] = File(default=None, description="오디오 파일"),

@@ -30,7 +30,7 @@ class QueryAnalyzer:
                     logger.info(f"Using LLM query analysis: {len(meaningful_weights)} weighted types")
                     return llm_result
         except Exception as e:
-            logger.debug(f"LLM query analysis failed: {e}")
+            logger.warning(f"LLM query analysis failed ({type(e).__name__}): {e}")
         
         # LLM이 실패하거나 유효하지 않으면 안정적인 fallback 사용
         logger.info("Using enhanced fallback query analysis")

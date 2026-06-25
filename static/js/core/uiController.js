@@ -228,5 +228,14 @@ function toggleMetadata(resultId, metaType) {
     }
 }
 
+function toggleScoreBreakdown(breakdownId) {
+    const panel = document.getElementById(breakdownId);
+    if (panel) {
+        const isVisible = panel.style.display !== 'none';
+        panel.style.display = isVisible ? 'none' : 'block';
+    }
+}
+window.toggleScoreBreakdown = toggleScoreBreakdown;
+
 // 전역 인스턴스 생성
 window.uiController = new UIController();

@@ -126,12 +126,17 @@ class OpenSearchService:
                 "query": search_query,
                 "size": size,
                 "from": from_,
-                "_source": True
+                "_source": True,
+                "explain": True,
             }
 
             # Add KNN section for better vector search performance if embeddings exist
             # Note: Using the query-level KNN approach instead of top-level knn section
             # because OpenSearch may not support multiple KNN searches in array format
+
+            # Determine search mode for score breakdown context
+            has_image_embedding = bool(embeddings and any('image' in k for k in embeddings.keys()))
+            search_mode = "image" if has_image_embedding else "text"
 
             response = await self.client.search(index=self.elements_index, body=search_body)
 
@@ -145,12 +150,18 @@ class OpenSearchService:
             logger.info(
                 f"OpenSearch [{','.join(element_types)}] {weight_info} ({modality_info}) → {hits_count} hits (max: {max_score:.4f})")
 
-            # Convert to standard format (score 정보 보존)
+            # Convert to standard format (score 정보 보존 + explain 파싱)
             results = []
             for hit in response["hits"]["hits"]:
                 result_item = hit["_source"].copy()
                 result_item["score"] = hit.get("_score", 0.0)
                 result_item["original_score"] = hit.get("_original_score")
+
+                # Parse explanation tree for score breakdown
+                explanation = hit.get("_explanation")
+                if explanation:
+                    result_item["score_breakdown"] = self._parse_explanation(explanation, search_mode)
+
                 results.append(result_item)
 
             return {
@@ -448,6 +459,203 @@ class OpenSearchService:
             f"Modality boost calculated: {embedding_type} → avg_weight={avg_weight:.2f}, multiplier={boost_multiplier:.2f}, final_boost={final_boost:.2f}")
 
         return final_boost
+
+    def _parse_explanation(self, explanation: Dict[str, Any], search_mode: str) -> Dict[str, Any]:
+        """Parse OpenSearch _explanation tree to extract BM25 and vector score components.
+
+        The explanation tree structure for a bool/should query:
+        - Top level: sum of (should clause scores)
+          - Child 0: BM25 text match (with boost)
+          - Child 1+: script_score vector queries (with boost)
+
+        Returns a structured breakdown of each scoring component.
+        """
+        breakdown = {
+            "total_score": explanation.get("value", 0.0),
+            "search_mode": search_mode,
+            "components": [],
+        }
+
+        try:
+            details = explanation.get("details", [])
+            if not details:
+                # Single component - no decomposition possible
+                breakdown["components"].append({
+                    "type": "combined",
+                    "score": explanation.get("value", 0.0),
+                    "description": explanation.get("description", "")[:100],
+                })
+                return breakdown
+
+            for detail in details:
+                component = self._classify_explanation_node(detail)
+                if component:
+                    breakdown["components"].append(component)
+
+        except Exception as e:
+            logger.debug(f"Failed to parse explanation: {e}")
+            breakdown["parse_error"] = str(e)
+
+        return breakdown
+
+    def _classify_explanation_node(self, node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Classify a single explanation node as BM25, vector, element_type boost, or wrapper."""
+        description = node.get("description", "").lower()
+        value = node.get("value", 0.0)
+        details = node.get("details", [])
+
+        # Skip coord/queryNorm nodes with zero value
+        if value == 0.0 and "coord" in description:
+            return None
+
+        # Element type term boost detection (before generic BM25)
+        # These are "weight(element_type:xxx)" or term queries on element_type with boost
+        if "element_type" in description:
+            boost = self._extract_boost_value(node)
+            return {
+                "type": "element_type_boost",
+                "score": value,
+                "description": "Element Type 가중치",
+                "details": {"boost": boost} if boost else {},
+            }
+
+        # BM25 text match detection
+        if any(keyword in description for keyword in ["weight(", "multi_match", "bm25", "idf", "tf"]):
+            return {
+                "type": "bm25",
+                "score": value,
+                "description": "BM25 키워드 매칭",
+                "details": self._extract_boost_info(node),
+            }
+
+        # Script score (vector similarity) detection
+        if "script score" in description or "cosinesimilarity" in description:
+            # Try to identify vector type from nested details
+            vector_type = self._identify_vector_type(node)
+            return {
+                "type": f"vector_{vector_type}",
+                "score": value,
+                "description": f"Vector 유사도 ({vector_type})",
+                "details": self._extract_boost_info(node),
+            }
+
+        # Bool query with boost (wrapper for sub-components)
+        if "bool" in description or "sum of" in description or "max of" in description:
+            # Recurse into children to find actual scoring components
+            sub_components = []
+            for sub_detail in details:
+                sub_comp = self._classify_explanation_node(sub_detail)
+                if sub_comp:
+                    sub_components.append(sub_comp)
+
+            if sub_components:
+                # If wrapper has boost, apply it
+                boost = self._extract_boost_value(node)
+                if boost and boost != 1.0:
+                    for comp in sub_components:
+                        comp["boost_applied"] = boost
+
+                # If all sub-components are the same type, label the composite accordingly
+                if len(sub_components) == 1:
+                    return sub_components[0]
+
+                sub_types = set(c.get("type") for c in sub_components)
+                if sub_types == {"bm25"}:
+                    composite_label = "BM25 텍스트 관련성 (멀티 키워드 합산)"
+                    composite_type = "bm25_composite"
+                elif sub_types == {"element_type_boost"}:
+                    composite_label = "Element Type 가중치 합산"
+                    composite_type = "element_type_composite"
+                else:
+                    composite_label = description[:80]
+                    composite_type = "composite"
+
+                return {
+                    "type": composite_type,
+                    "score": value,
+                    "description": composite_label,
+                    "sub_components": sub_components,
+                }
+
+        # Product/boost wrapper
+        if "product of" in description or "boost" in description:
+            boost = self._extract_boost_value(node)
+            # Find the actual scoring child
+            for sub_detail in details:
+                sub_comp = self._classify_explanation_node(sub_detail)
+                if sub_comp:
+                    if boost and boost != 1.0:
+                        sub_comp["boost_applied"] = boost
+                    sub_comp["score"] = value  # Use the boosted score
+                    return sub_comp
+
+        # Boost factor node (e.g., text_search_boost or embedding_search_boost applied at bool level)
+        if value > 0.0 and "boost" in description:
+            return {
+                "type": "search_boost",
+                "score": value,
+                "description": "검색 유형 가중치 (Boost)",
+                "details": {"boost": value},
+            }
+
+        # Generic fallback - include it for transparency
+        if value > 0.0:
+            return {
+                "type": "other",
+                "score": value,
+                "description": description[:80] if description else "unknown",
+            }
+
+        return None
+
+    def _identify_vector_type(self, node: Dict[str, Any]) -> str:
+        """Identify whether a vector score is for image or text embedding."""
+        # Walk the explanation tree looking for modality hints
+        node_str = str(node).lower()
+        if "embeddings.image" in node_str or "'image'" in node_str:
+            return "image"
+        elif "embeddings.text" in node_str or "'text'" in node_str:
+            return "text"
+        elif "image_caption" in node_str:
+            return "image_caption"
+        return "unknown"
+
+    def _extract_boost_info(self, node: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract boost-related information from an explanation node."""
+        info = {}
+        description = node.get("description", "")
+
+        # Try to extract boost value from description
+        boost = self._extract_boost_value(node)
+        if boost:
+            info["boost"] = boost
+
+        # Check child details for boost info
+        for detail in node.get("details", []):
+            desc = detail.get("description", "").lower()
+            if "boost" in desc:
+                info["boost"] = detail.get("value", 1.0)
+
+        return info
+
+    def _extract_boost_value(self, node: Dict[str, Any]) -> Optional[float]:
+        """Extract boost value from a node or its children."""
+        description = node.get("description", "").lower()
+
+        # Look for boost in description string (e.g., "boost=3.0")
+        if "boost" in description:
+            import re
+            boost_match = re.search(r"boost[=:]\s*([0-9.]+)", description)
+            if boost_match:
+                return float(boost_match.group(1))
+
+        # Look for boost in child details
+        for detail in node.get("details", []):
+            desc = detail.get("description", "").lower()
+            if "boost" in desc and detail.get("value"):
+                return detail.get("value")
+
+        return None
 
     def _log_search_query(self, search_query: Dict[str, Any], embeddings: Optional[Dict[str, List[float]]],
                           text_query: str, element_types: List[str], element_type_weights: Optional[Dict[str, float]]):

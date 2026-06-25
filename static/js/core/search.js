@@ -302,6 +302,75 @@ class SearchController {
         document.getElementById('generateButton').style.display = 'inline-block';
         document.getElementById('stopButton').style.display = 'none';
     }
+
+    _renderScoreBreakdownPanel(breakdownId, scoreBreakdown, hybridScore) {
+        if (!scoreBreakdown || !scoreBreakdown.components) {
+            return `<div id="${breakdownId}" class="score-breakdown-panel" style="display:none;">
+                <div class="breakdown-header">📊 점수 상세</div>
+                <div class="breakdown-item">
+                    <span class="breakdown-label">총점</span>
+                    <span class="breakdown-value">${hybridScore}</span>
+                </div>
+                <div class="breakdown-note">상세 분석 데이터 없음</div>
+            </div>`;
+        }
+
+        const searchMode = scoreBreakdown.search_mode || 'unknown';
+        const searchModeLabel = searchMode === 'image' ? '🖼️ 이미지 검색 모드' : '📝 텍스트 검색 모드';
+
+        let componentsHtml = '';
+        for (const comp of scoreBreakdown.components) {
+            const typeLabel = this._getComponentTypeLabel(comp.type);
+            const boostInfo = comp.details && comp.details.boost ? ` (boost: ${comp.details.boost})` :
+                              comp.boost_applied ? ` (boost: ${comp.boost_applied})` : '';
+
+            componentsHtml += `
+                <div class="breakdown-item">
+                    <span class="breakdown-label">${typeLabel}${boostInfo}</span>
+                    <span class="breakdown-value">${comp.score.toFixed(4)}</span>
+                </div>`;
+
+            if (comp.sub_components) {
+                for (const sub of comp.sub_components) {
+                    const subLabel = this._getComponentTypeLabel(sub.type);
+                    componentsHtml += `
+                        <div class="breakdown-item sub-item">
+                            <span class="breakdown-label">  └ ${subLabel}</span>
+                            <span class="breakdown-value">${sub.score.toFixed(4)}</span>
+                        </div>`;
+                }
+            }
+        }
+
+        return `<div id="${breakdownId}" class="score-breakdown-panel" style="display:none;">
+            <div class="breakdown-header">📊 점수 상세 분석</div>
+            <div class="breakdown-mode">${searchModeLabel}</div>
+            <div class="breakdown-item total">
+                <span class="breakdown-label">총점 (Hybrid)</span>
+                <span class="breakdown-value">${scoreBreakdown.total_score ? scoreBreakdown.total_score.toFixed(4) : hybridScore}</span>
+            </div>
+            <div class="breakdown-separator"></div>
+            ${componentsHtml}
+        </div>`;
+    }
+
+    _getComponentTypeLabel(type) {
+        const labels = {
+            'bm25': '🔤 BM25 (키워드 매칭)',
+            'bm25_composite': '🔤 BM25 (멀티 키워드 합산)',
+            'vector_image': '🖼️ Vector (이미지 임베딩)',
+            'vector_text': '📝 Vector (텍스트 임베딩)',
+            'vector_image_caption': '💬 Vector (이미지 캡션)',
+            'vector_unknown': '🔢 Vector (임베딩)',
+            'element_type_boost': '🏷️ Element Type 가중치',
+            'element_type_composite': '🏷️ Element Type 가중치 합산',
+            'search_boost': '⚡ 검색 유형 가중치',
+            'composite': '📦 복합 점수',
+            'combined': '📦 통합 점수',
+            'other': '📌 기타',
+        };
+        return labels[type] || `📌 ${type}`;
+    }
     
     sanitizeElementForDisplay(element) {
         // element 객체를 복사하여 embedding 관련 필드 제거/요약
@@ -405,17 +474,21 @@ class SearchController {
                     </div>` : ''}
                 `;
                 
-                let scoreDisplay = `<span class="score-tag hybrid" data-tooltip="Hybrid 점수: OpenSearch 원본 점수에 쿼리별 가중치(첫 번째 쿼리 1.0, 두 번째 0.9, 세 번째 0.8...)를 적용하여 계산된 최종 점수입니다. 확장된 쿼리의 우선순위에 따라 가중치가 달라집니다.">Hybrid: ${hybridScore}</span>`;
+                const breakdownId = `fallback-score-breakdown-${index}`;
+                const scoreBreakdown = result.score_breakdown || null;
+                let scoreTags = `<span class="score-tag hybrid clickable" onclick="toggleScoreBreakdown('${breakdownId}')" data-tooltip="클릭하여 점수 상세 확인">Hybrid: ${hybridScore}</span>`;
                 if (originalScore) {
-                    scoreDisplay += `<span class="score-tag opensearch" data-tooltip="OpenSearch 원본 점수: 추가 처리 전 OpenSearch에서 직접 반환한 원본 relevance 점수입니다. Hybrid 점수와 비교하여 점수 변화를 확인할 수 있습니다.">OpenSearch: ${originalScore}</span>`;
+                    scoreTags += `<span class="score-tag opensearch" data-tooltip="OpenSearch 원본 점수">OpenSearch: ${originalScore}</span>`;
                 }
+                const breakdownPanel = this._renderScoreBreakdownPanel(breakdownId, scoreBreakdown, hybridScore);
                 
                 resultsHtml += `
                     <div class="search-result-card">
                         <div class="search-result-header">
                             <div class="search-result-type">${element.element_type} (${element.modality})</div>
-                            <div class="search-result-score">${scoreDisplay}</div>
+                            <div class="search-result-score">${scoreTags}</div>
                         </div>
+                        ${breakdownPanel}
                         <div class="search-result-content">
                             <div class="content-text">
                                 ${element.content ? this.cleanContentIndentation(element.content) : 'No content'}

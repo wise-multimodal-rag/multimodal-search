@@ -73,11 +73,13 @@ class ResultEnricher:
                 element_data = item["_source"]
                 score = item.get("_score", 0.0)
                 original_score = item.get("_original_score")
+                score_breakdown = item.get("_explanation")
             else:
                 # 이미 변환된 형태
                 element_data = item
                 score = item.get("score", 0.0)
                 original_score = item.get("original_score")
+                score_breakdown = item.get("score_breakdown")
 
             element = Element(**element_data)
 
@@ -109,7 +111,7 @@ class ResultEnricher:
 
             return SearchResult(
                 element=element, chunk_meta=chunk_meta, media_meta=media_meta, score=score,
-                original_score=original_score
+                original_score=original_score, score_breakdown=score_breakdown
             )
 
         except Exception as e:

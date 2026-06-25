@@ -152,6 +152,7 @@ body {
 
 .search-result-score {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     align-items: center;
     position: relative;
@@ -176,6 +177,87 @@ body {
     color: #1d4ed8;
     background: #dbeafe;
     border: 1px solid #93c5fd;
+}
+
+.score-tag.clickable {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.score-tag.clickable:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);
+}
+
+.score-breakdown-panel {
+    margin-top: 8px;
+    padding: 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.6;
+    width: 100%;
+}
+
+.score-breakdown-panel .breakdown-header {
+    font-weight: 600;
+    font-size: 13px;
+    color: #1e293b;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.score-breakdown-panel .breakdown-mode {
+    font-size: 11px;
+    color: #64748b;
+    margin-bottom: 8px;
+    padding: 4px 8px;
+    background: #f1f5f9;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.score-breakdown-panel .breakdown-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.score-breakdown-panel .breakdown-item.total {
+    font-weight: 600;
+    color: #059669;
+}
+
+.score-breakdown-panel .breakdown-item.sub-item {
+    padding-left: 12px;
+    font-size: 11px;
+    color: #64748b;
+}
+
+.score-breakdown-panel .breakdown-label {
+    color: #475569;
+}
+
+.score-breakdown-panel .breakdown-value {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-weight: 500;
+    color: #1e293b;
+}
+
+.score-breakdown-panel .breakdown-separator {
+    height: 1px;
+    background: #e2e8f0;
+    margin: 6px 0;
+}
+
+.score-breakdown-panel .breakdown-note {
+    color: #94a3b8;
+    font-size: 11px;
+    font-style: italic;
+    margin-top: 4px;
 }
 
 .search-result-content {
