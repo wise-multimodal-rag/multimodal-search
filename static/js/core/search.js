@@ -285,15 +285,25 @@ class SearchController {
     // 콘텐츠의 불필요한 들여쓰기를 제거하되 줄바꿈은 유지하는 함수
     cleanContentIndentation(content) {
         if (!content) return '';
-        
+
+        // HTML 특수문자 이스케이프 (DOM 깨짐 방지: -->, <--, <script> 등)
+        const escaped = this.escapeHtml(content);
+
         // 앞뒤 공백 제거
-        const trimmed = content.trim();
-        
+        const trimmed = escaped.trim();
+
         // 각 줄의 앞쪽 공백을 제거하되 줄바꿈은 유지
         const lines = trimmed.split('\n');
         const cleanedLines = lines.map(line => line.trim());
-        
+
         return cleanedLines.join('\n');
+    }
+
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
     
     restoreButtonState() {
@@ -315,29 +325,59 @@ class SearchController {
             </div>`;
         }
 
-        const searchMode = scoreBreakdown.search_mode || 'unknown';
-        const searchModeLabel = searchMode === 'image' ? '🖼️ 이미지 검색 모드' : '📝 텍스트 검색 모드';
+        // _display_mode (match_type 기준)를 우선 사용, 없으면 search_mode 사용
+        const displayMode = scoreBreakdown._display_mode || scoreBreakdown.search_mode || 'unknown';
+        const searchModeLabels = {
+            'same_modal': '✅ 동일 모달리티 매칭',
+            'cross_modal': '🔀 Cross-modal 매칭',
+            'image': '🖼️ 이미지 검색 모드',
+            'text': '📝 텍스트 검색 모드',
+        };
+        const searchModeLabel = searchModeLabels[displayMode] || `📝 ${displayMode}`;
 
         let componentsHtml = '';
-        for (const comp of scoreBreakdown.components) {
-            const typeLabel = this._getComponentTypeLabel(comp.type);
-            const boostInfo = comp.details && comp.details.boost ? ` (boost: ${comp.details.boost})` :
-                              comp.boost_applied ? ` (boost: ${comp.boost_applied})` : '';
 
+        // Cross-modal 정규화 정보 표시
+        const normalization = scoreBreakdown.normalization;
+        if (normalization) {
             componentsHtml += `
                 <div class="breakdown-item">
-                    <span class="breakdown-label">${typeLabel}${boostInfo}</span>
-                    <span class="breakdown-value">${comp.score.toFixed(4)}</span>
-                </div>`;
+                    <span class="breakdown-label">🔢 원본 벡터 유사도</span>
+                    <span class="breakdown-value">${normalization.raw_vector_score.toFixed(4)}</span>
+                </div>
+                <div class="breakdown-item">
+                    <span class="breakdown-label">📐 정규화 배율</span>
+                    <span class="breakdown-value">× ${normalization.scale_factor}</span>
+                </div>
+                <div class="breakdown-item total">
+                    <span class="breakdown-label">📊 정규화 최종 점수</span>
+                    <span class="breakdown-value">${normalization.final_score}</span>
+                </div>
+                <div class="breakdown-separator"></div>
+                <div class="breakdown-note">${normalization.method}</div>`;
+        } else {
+            for (const comp of scoreBreakdown.components) {
+                const typeLabel = this._getComponentTypeLabel(comp.type);
+                const boostInfo = comp.details && comp.details.boost ? ` (boost: ${comp.details.boost})` :
+                                  comp.boost_applied ? ` (boost: ${comp.boost_applied})` : '';
 
-            if (comp.sub_components) {
-                for (const sub of comp.sub_components) {
-                    const subLabel = this._getComponentTypeLabel(sub.type);
-                    componentsHtml += `
-                        <div class="breakdown-item sub-item">
-                            <span class="breakdown-label">  └ ${subLabel}</span>
-                            <span class="breakdown-value">${sub.score.toFixed(4)}</span>
-                        </div>`;
+                componentsHtml += `
+                    <div class="breakdown-item">
+                        <span class="breakdown-label">${typeLabel}${boostInfo}</span>
+                        <span class="breakdown-value">${comp.score.toFixed(4)}</span>
+                    </div>`;
+
+                // Render sub-components only for non-BM25 composites
+                // BM25 composite는 개별 토큰 점수를 펼치지 않음 (합산 점수만 표시)
+                if (comp.sub_components && comp.type !== 'bm25_composite') {
+                    for (const sub of comp.sub_components) {
+                        const subLabel = this._getComponentTypeLabel(sub.type);
+                        componentsHtml += `
+                            <div class="breakdown-item sub-item">
+                                <span class="breakdown-label">  └ ${subLabel}</span>
+                                <span class="breakdown-value">${sub.score.toFixed(4)}</span>
+                            </div>`;
+                    }
                 }
             }
         }
@@ -474,19 +514,29 @@ class SearchController {
                     </div>` : ''}
                 `;
                 
+                // Cross-modal 배지
+                const matchType = result.match_type || null;
+                const crossModalBadge = matchType === 'cross_modal'
+                    ? '<span class="score-tag cross-modal" data-tooltip="Cross-modal: 다른 모달리티에서 발견된 결과">🔀 Cross</span>'
+                    : '';
+
                 const breakdownId = `fallback-score-breakdown-${index}`;
                 const scoreBreakdown = result.score_breakdown || null;
+                // match_type 기준으로 search_mode 오버라이드 (더 직관적)
+                if (scoreBreakdown && matchType) {
+                    scoreBreakdown._display_mode = matchType;
+                }
                 let scoreTags = `<span class="score-tag hybrid clickable" onclick="toggleScoreBreakdown('${breakdownId}')" data-tooltip="클릭하여 점수 상세 확인">Hybrid: ${hybridScore}</span>`;
                 if (originalScore) {
                     scoreTags += `<span class="score-tag opensearch" data-tooltip="OpenSearch 원본 점수">OpenSearch: ${originalScore}</span>`;
                 }
                 const breakdownPanel = this._renderScoreBreakdownPanel(breakdownId, scoreBreakdown, hybridScore);
-                
+
                 resultsHtml += `
-                    <div class="search-result-card">
+                    <div class="search-result-card${matchType === 'cross_modal' ? ' cross-modal-result' : ''}">
                         <div class="search-result-header">
                             <div class="search-result-type">${element.element_type} (${element.modality})</div>
-                            <div class="search-result-score">${scoreTags}</div>
+                            <div class="search-result-score">${crossModalBadge}${scoreTags}</div>
                         </div>
                         ${breakdownPanel}
                         <div class="search-result-content">

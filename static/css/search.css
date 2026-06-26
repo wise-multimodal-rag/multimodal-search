@@ -179,6 +179,17 @@ body {
     border: 1px solid #93c5fd;
 }
 
+.score-tag.cross-modal {
+    color: #7c3aed;
+    background: #ede9fe;
+    border: 1px solid #c4b5fd;
+    font-weight: 500;
+}
+
+.search-result-card.cross-modal-result {
+    border-left: 3px solid #7c3aed;
+}
+
 .score-tag.clickable {
     cursor: pointer;
     transition: all 0.2s ease;

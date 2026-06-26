@@ -25,7 +25,7 @@ class SearchExecutor:
             element_type_weights: Optional[Dict[str, float]] = None,
             image_caption_tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """확장 쿼리 검색 실행 (순차/병렬 처리 최적화)"""
+        """확장 쿼리 검색 실행 (순차/병렬 처리 최적화) + cross-modal 검색 병합"""
         # LLM 결과에서 의존성 확인
         has_dependency = expansion_result.get("has_dependency", False) if expansion_result else False
 
@@ -41,6 +41,19 @@ class SearchExecutor:
                 expanded_queries, selected_element_types, embeddings, max_results, element_type_weights,
                 image_caption_tags
             )
+
+        # Cross-modal: 별도의 벡터 전용 cross-modal 검색을 병렬로 실행하여 다른 모달리티 결과 확보
+        if embeddings:
+            cross_modal_size = max(3, max_results // 3)  # 전체 결과의 ~1/3을 cross-modal로 확보
+            cross_modal_results = await self.opensearch_service.search_cross_modal(
+                embeddings=embeddings,
+                element_types=selected_element_types,
+                size=cross_modal_size,
+                element_type_weights=element_type_weights,
+            )
+            if cross_modal_results and cross_modal_results.get("results"):
+                all_search_results.append(cross_modal_results)
+                logger.info(f"Cross-modal search added {len(cross_modal_results['results'])} results")
 
         return self._process_search_results(all_search_results, expanded_queries, max_results)
 
@@ -121,7 +134,14 @@ class SearchExecutor:
     ) -> Any:
         """단일 쿼리 검색 실행"""
         weight = 1.0 - (query_index * weighting_config.QUERY_WEIGHT_DECAY)  # 설정값에 따라 감소
-        search_size = max_results // total_queries + (max_results % total_queries if query_index == 0 else 0)
+        base_size = max_results // total_queries + (max_results % total_queries if query_index == 0 else 0)
+
+        # Cross-modal: 임베딩이 있을 때 검색 크기를 확대하여 다양한 모달리티 결과 확보
+        # 최종 결과는 _combine_search_results에서 점수순 정렬 후 max_results로 잘림
+        if embeddings:
+            search_size = min(base_size * 3, max_results)
+        else:
+            search_size = base_size
 
         search_results = await self.opensearch_service.search_elements(
             query=expanded_query,
@@ -187,7 +207,7 @@ class SearchExecutor:
         return combined_results
 
     def _combine_search_results(self, all_search_results: List[Any], max_results: int) -> Dict[str, Any]:
-        """검색 결과 통합"""
+        """검색 결과 통합 (cross-modal 점수 정규화 포함)"""
         if not all_search_results:
             return {"results": [], "total_hits": 0, "max_score": 0.0, "took_ms": 0}
 
@@ -195,23 +215,88 @@ class SearchExecutor:
         search_results = all_search_results[0] if all_search_results else None
 
         if len(all_search_results) > 1:
-            # 여러 검색 결과를 통합
-            combined_results = []
+            # 메인 검색 결과의 최대 점수를 기준으로 cross-modal 점수 정규화
+            main_results = []
+            cross_modal_results = []
+
             for sr in all_search_results:
                 if sr and isinstance(sr, dict) and "results" in sr:
-                    combined_results.extend(sr["results"])
+                    for r in sr["results"]:
+                        if r.get("_cross_modal"):
+                            cross_modal_results.append(r)
+                        else:
+                            main_results.append(r)
 
-            # 점수순으로 정렬하고 중복 제거
-            combined_results.sort(key=lambda x: x.get("score", 0), reverse=True)
-            unique_results = []
+            # Cross-modal 점수 정규화: 메인 결과의 상위권에 삽입되도록 스케일링
+            # 가장 유사한 cross-modal 결과가 메인 결과의 상위 1/3에 위치하도록 설정
+            if cross_modal_results and main_results:
+                main_scores = sorted([r.get("score", 0) for r in main_results if r.get("score", 0) > 0],
+                                     reverse=True)
+                if main_scores:
+                    # 상위 1/3 지점의 점수를 target으로 사용
+                    target_rank = max(0, len(main_scores) // 3)
+                    target_score = main_scores[target_rank]
+                    cross_max = max(r.get("score", 0) for r in cross_modal_results)
+
+                    if cross_max > 0:
+                        # Scale: cross-modal의 최고 점수가 main의 상위 1/3 수준이 되도록
+                        scale_factor = target_score / cross_max
+                        for r in cross_modal_results:
+                            raw_score = r.get("score", 0.0)
+                            r["original_score"] = raw_score
+                            r["score"] = raw_score * scale_factor
+
+                            # score_breakdown에도 정규화 정보 반영
+                            if r.get("score_breakdown"):
+                                r["score_breakdown"]["normalized_score"] = raw_score * scale_factor
+                                r["score_breakdown"]["normalization"] = {
+                                    "raw_vector_score": raw_score,
+                                    "scale_factor": round(scale_factor, 2),
+                                    "final_score": round(raw_score * scale_factor, 4),
+                                    "method": "cross-modal score normalization (상위 1/3 target)",
+                                }
+                                r["score_breakdown"]["total_score"] = raw_score * scale_factor
+
+                        logger.info(
+                            f"Cross-modal score normalization: scale={scale_factor:.2f} "
+                            f"(target_score={target_score:.2f}, cross_max={cross_max:.2f})")
+
+            # Cross-modal 결과 보장 슬롯: max_results의 일부를 cross-modal에 할당
+            # 이를 통해 BM25 점수가 높은 같은 모달리티 결과에 밀리지 않도록 보장
+            cross_modal_slots = min(len(cross_modal_results), max(2, max_results // 4))
+            main_slots = max_results - cross_modal_slots
+
+            # 메인 결과 정렬 + 중복 제거
+            main_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+            unique_main = []
             seen_ids = set()
-            for result in combined_results:
+            for result in main_results:
                 result_id = result.get("id") or result.get("_id") or result.get("element_id")
                 if result_id and result_id not in seen_ids:
                     seen_ids.add(result_id)
-                    unique_results.append(result)
-                    if len(unique_results) >= max_results:
+                    unique_main.append(result)
+                    if len(unique_main) >= main_slots:
                         break
+
+            # Cross-modal 결과 정렬 + 중복 제거 (메인과 중복되지 않도록)
+            cross_modal_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+            unique_cross = []
+            for result in cross_modal_results:
+                result_id = result.get("id") or result.get("_id") or result.get("element_id")
+                if result_id and result_id not in seen_ids:
+                    seen_ids.add(result_id)
+                    unique_cross.append(result)
+                    if len(unique_cross) >= cross_modal_slots:
+                        break
+
+            # 합산 후 점수순 최종 정렬
+            unique_results = unique_main + unique_cross
+            unique_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+            if unique_cross:
+                logger.info(
+                    f"Cross-modal slots: {len(unique_cross)}/{cross_modal_slots} "
+                    f"(main: {len(unique_main)}/{main_slots})")
 
             # 통합된 결과로 search_results 업데이트
             if search_results and isinstance(search_results, dict):

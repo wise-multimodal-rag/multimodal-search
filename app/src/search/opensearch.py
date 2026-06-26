@@ -136,7 +136,15 @@ class OpenSearchService:
 
             # Determine search mode for score breakdown context
             has_image_embedding = bool(embeddings and any('image' in k for k in embeddings.keys()))
-            search_mode = "image" if has_image_embedding else "text"
+            has_text_embedding = bool(embeddings and any(
+                k in ('text', 'text_summary', 'text_keywords', 'text_entities',
+                      'image_caption', 'image_objects') for k in embeddings.keys()))
+            if has_image_embedding and has_text_embedding:
+                search_mode = "cross_modal"
+            elif has_image_embedding:
+                search_mode = "image"
+            else:
+                search_mode = "text"
 
             response = await self.client.search(index=self.elements_index, body=search_body)
 
@@ -175,6 +183,10 @@ class OpenSearchService:
             logger.error(f"Element search failed: {e}")
             raise
 
+    # Active embedding fields for cross-modal search
+    # All use Qwen3-VL unified 2048D vector space — cross-modal similarity is valid
+    CROSS_MODAL_EMBEDDING_FIELDS = ["text", "image"]
+
     def _build_search_query(
             self,
             query: str,
@@ -184,7 +196,12 @@ class OpenSearchService:
             element_type_weights: Optional[Dict[str, float]] = None,
             image_caption_tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Build hybrid search query combining text and vector search with element_type weights"""
+        """Build hybrid search query with cross-modal vector search support.
+
+        Cross-modal: Qwen3-VL produces text/image embeddings in the same 2048D vector space,
+        so a text embedding can meaningfully match against image embeddings and vice versa.
+        Each query embedding searches ALL active embedding fields (text, image).
+        """
         # element_type별 가중치가 있으면 가중치 기반 쿼리 구성, 없으면 기존 방식
         if element_type_weights:
             # 가중치 기반 element_type 필터링 (should 쿼리로 변경)
@@ -214,69 +231,74 @@ class OpenSearchService:
             # 기존 방식: 필터로 element_type 제한
             bool_query = {"bool": {"must": [], "filter": [{"terms": {"element_type": element_types}}]}}
 
-        # Add text search
+        # Add text search (BM25)
         if query.strip():
             # Enhance query with image caption tags if provided
             enhanced_query = self._enhance_query_with_caption_tags(query, image_caption_tags)
-            bool_query["bool"]["must"].append(
-                {"multi_match": {"query": enhanced_query, "fields": ["content"], "type": "best_fields",
-                                 "fuzziness": "AUTO"}}
-            )
+            bm25_query = {"multi_match": {"query": enhanced_query, "fields": ["content", "description"],
+                                          "type": "best_fields", "fuzziness": "AUTO"}}
 
-        # Add vector search if embeddings provided
+            if embeddings:
+                # Cross-modal mode: BM25 is a scoring bonus (should), not a requirement (must).
+                # This allows vector-only matches (e.g., images) to appear in results.
+                if "should" not in bool_query["bool"]:
+                    bool_query["bool"]["should"] = []
+                bool_query["bool"]["should"].append(bm25_query)
+            else:
+                # Text-only mode: BM25 is required
+                bool_query["bool"]["must"].append(bm25_query)
+
+        # Add cross-modal vector search if embeddings provided
         if embeddings:
-            # Create modality-specific vector queries using bool/should structure
-            # This is more compatible across different OpenSearch versions
             vector_queries = []
 
             for modality, embedding_vector in embeddings.items():
-                if embedding_vector and len(embedding_vector) > 0:
-                    # Map embedding types to OpenSearch modalities
-                    opensearch_modality = self._map_embedding_to_modality(modality)
+                if not embedding_vector or len(embedding_vector) == 0:
+                    continue
 
-                    # Use script_score query for vector similarity with element_type filtering
-                    base_query = {"term": {"modality": opensearch_modality}}
+                # Identify source modality (for logging/boost calculation only, NOT for filtering)
+                source_modality = self._map_embedding_to_modality(modality)
 
-                    # Add element_type filtering to vector search as well
+                # Cross-modal: search against ALL embedding fields
+                for target_field in self.CROSS_MODAL_EMBEDDING_FIELDS:
+                    # Base query: documents that have this embedding field populated
+                    base_query = {"exists": {"field": f"embeddings.{target_field}"}}
+
+                    # Add element_type filtering to vector search
                     if element_type_weights:
-                        # Create element_type should query with weights for vector search too
-                        element_type_queries = []
+                        et_queries = []
                         for element_type in element_types:
-                            weight = element_type_weights.get(element_type, weighting_config.OPENSEARCH_DEFAULT_WEIGHT)
+                            weight = element_type_weights.get(element_type,
+                                                             weighting_config.OPENSEARCH_DEFAULT_WEIGHT)
                             if weight > 0:
-                                boost = max(0.1, weight * 10)
-                                element_type_queries.append({
-                                    "term": {
-                                        "element_type": {
-                                            "value": element_type,
-                                            "boost": boost
-                                        }
-                                    }
+                                et_boost = max(0.1, weight * 10)
+                                et_queries.append({
+                                    "term": {"element_type": {"value": element_type, "boost": et_boost}}
                                 })
 
-                        if element_type_queries:
+                        if et_queries:
                             base_query = {
                                 "bool": {
-                                    "must": [{"term": {"modality": opensearch_modality}}],
-                                    "should": element_type_queries,
+                                    "must": [{"exists": {"field": f"embeddings.{target_field}"}}],
+                                    "should": et_queries,
                                     "minimum_should_match": 1
                                 }
                             }
 
-                    # Apply element_type boost to the final script score
+                    # Build script_score query
                     if element_type_weights:
                         script_source = """
-                        double similarity = cosineSimilarity(params.query_vector, doc['embeddings.{modality}']) + 1.0;
+                        double similarity = cosineSimilarity(params.query_vector, doc['embeddings.{target}']) + 1.0;
                         double element_boost = 1.0;
                         if (params.element_weights.containsKey(doc['element_type'].value)) {{
                             element_boost = params.element_weights[doc['element_type'].value];
                         }}
                         return similarity * Math.max(0.05, element_boost);
-                        """.format(modality=opensearch_modality)
+                        """.format(target=target_field)
 
                         vector_query = {
                             "script_score": {
-                                "query": {"term": {"modality": opensearch_modality}},
+                                "query": base_query,
                                 "script": {
                                     "source": script_source,
                                     "params": {
@@ -291,26 +313,31 @@ class OpenSearchService:
                             "script_score": {
                                 "query": base_query,
                                 "script": {
-                                    "source": "cosineSimilarity(params.query_vector, doc['embeddings." + opensearch_modality + "']) + 1.0",
+                                    "source": f"cosineSimilarity(params.query_vector, doc['embeddings.{target_field}']) + 1.0",
                                     "params": {"query_vector": embedding_vector}
                                 }
                             }
                         }
-                    vector_queries.append(vector_query)
+
+                    vector_queries.append({
+                        "query": vector_query,
+                        "source_modality": source_modality,
+                        "target_field": target_field,
+                    })
 
             # Combine text search with vector searches
             if vector_queries:
-                # Configure search type weights based on modalities
-                has_image_embedding = any('image' in str(vq) for vq in vector_queries)
+                # Configure search type weights based on input modalities
+                has_image_embedding = any(vq["source_modality"] == "image" for vq in vector_queries)
 
                 if has_image_embedding:
-                    # 이미지 검색 시: 이미지 임베딩을 강력히 우선시
-                    text_search_boost = 0.3  # BM25 텍스트 검색 가중치 대폭 감소
-                    embedding_search_boost = 3.0  # 이미지 임베딩 검색 가중치 대폭 증가 (10배 차이)
+                    # 이미지 검색 시: 임베딩을 강력히 우선시 (BM25는 보조적)
+                    text_search_boost = 0.3
+                    embedding_search_boost = 3.0
                 else:
                     # 텍스트만 검색 시: 기존 가중치 유지
-                    text_search_boost = 1.0  # BM25 텍스트 검색 가중치
-                    embedding_search_boost = 1.5  # 임베딩 벡터 검색 가중치
+                    text_search_boost = 1.0
+                    embedding_search_boost = 1.5
 
                 # Create hybrid query with configurable boosting
                 text_query_with_boost = {
@@ -320,12 +347,16 @@ class OpenSearchService:
                     }
                 }
 
-                # Apply embedding boost by wrapping script_score in a bool query with boost
+                # Apply embedding boost to each vector query
                 boosted_vector_queries = []
-                for i, (vector_query, (embedding_type, _)) in enumerate(zip(vector_queries, embeddings.items())):
-                    # Calculate modality-specific boost based on element_type_weights
-                    modality_boost = self._calculate_modality_boost(embedding_type, element_type_weights,
-                                                                    embedding_search_boost)
+                for vq_info in vector_queries:
+                    vector_query = vq_info["query"]
+                    source_modality = vq_info["source_modality"]
+
+                    # Calculate modality-specific boost
+                    modality_boost = self._calculate_modality_boost(
+                        source_modality, element_type_weights, embedding_search_boost
+                    )
 
                     boosted_vector_query = {
                         "bool": {
@@ -350,12 +381,12 @@ class OpenSearchService:
 
         # Add additional filters
         if filters:
+            if "filter" not in bool_query["bool"]:
+                bool_query["bool"]["filter"] = []
             for key, value in filters.items():
                 if isinstance(value, list):
-                    # Use terms query for list values
                     bool_query["bool"]["filter"].append({"terms": {key: value}})
                 else:
-                    # Use term query for single values
                     bool_query["bool"]["filter"].append({"term": {key: value}})
 
         # Log the complete query structure for debugging
@@ -492,11 +523,51 @@ class OpenSearchService:
                 if component:
                     breakdown["components"].append(component)
 
+            # 같은 type의 컴포넌트를 합산 (예: search_boost 2개 → 1개, bm25 여러개 → 1개)
+            breakdown["components"] = self._merge_same_type_components(breakdown["components"])
+
         except Exception as e:
             logger.debug(f"Failed to parse explanation: {e}")
             breakdown["parse_error"] = str(e)
 
         return breakdown
+
+    def _merge_same_type_components(self, components: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """같은 type의 최상위 컴포넌트를 합산하여 하나로 병합"""
+        if not components:
+            return components
+
+        # type별 그룹핑
+        type_groups: Dict[str, List[Dict[str, Any]]] = {}
+        order = []  # 원래 순서 유지
+        for comp in components:
+            comp_type = comp.get("type", "unknown")
+            if comp_type not in type_groups:
+                type_groups[comp_type] = []
+                order.append(comp_type)
+            type_groups[comp_type].append(comp)
+
+        # 합산
+        merged = []
+        for comp_type in order:
+            group = type_groups[comp_type]
+            if len(group) == 1:
+                merged.append(group[0])
+            else:
+                # 같은 type 여러 개 → 합산
+                total_score = sum(c.get("score", 0) for c in group)
+                merged_comp = {
+                    "type": comp_type,
+                    "score": total_score,
+                    "description": group[0].get("description", ""),
+                    "details": group[0].get("details", {}),
+                }
+                # boost_applied가 있으면 유지
+                if group[0].get("boost_applied"):
+                    merged_comp["boost_applied"] = group[0]["boost_applied"]
+                merged.append(merged_comp)
+
+        return merged
 
     def _classify_explanation_node(self, node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Classify a single explanation node as BM25, vector, element_type boost, or wrapper."""
@@ -773,6 +844,101 @@ class OpenSearchService:
             return self._get_embedding_description_by_dimension(first_modality, vector_length)
 
         return "임베딩 벡터 (차원 정보 없음)"
+
+    async def search_cross_modal(
+            self,
+            embeddings: Dict[str, List[float]],
+            element_types: List[str],
+            size: int = 5,
+            element_type_weights: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
+        """Cross-modal vector-only search: query each embedding against OTHER modality fields.
+
+        This is a dedicated cross-modal search that runs without BM25,
+        ensuring results from other modalities are not drowned out by text scores.
+        No element_type filtering is applied here since cross-modal documents may have
+        different element_types (e.g., image docs use 'main', 'sub', 'origin').
+        """
+        await self._ensure_initialized()
+
+        try:
+            if not self.client:
+                raise RuntimeError("OpenSearch client not initialized")
+
+            vector_queries = []
+
+            for modality, embedding_vector in embeddings.items():
+                if not embedding_vector or len(embedding_vector) == 0:
+                    continue
+
+                source_modality = self._map_embedding_to_modality(modality)
+
+                # Only search the OPPOSITE modality fields (cross-modal only)
+                for target_field in self.CROSS_MODAL_EMBEDDING_FIELDS:
+                    if target_field == source_modality:
+                        continue  # Skip same-modal (handled by main search)
+
+                    # No element_type filter for cross-modal — different modalities have different types
+                    base_query = {"exists": {"field": f"embeddings.{target_field}"}}
+
+                    vector_query = {
+                        "script_score": {
+                            "query": base_query,
+                            "script": {
+                                "source": f"cosineSimilarity(params.query_vector, doc['embeddings.{target_field}']) + 1.0",
+                                "params": {"query_vector": embedding_vector}
+                            }
+                        }
+                    }
+                    vector_queries.append(vector_query)
+
+            if not vector_queries:
+                return {"results": [], "total_hits": 0, "max_score": 0.0, "took_ms": 0}
+
+            # Combine all cross-modal vector queries
+            search_query = {
+                "bool": {
+                    "should": vector_queries,
+                    "minimum_should_match": 1
+                }
+            }
+
+            search_body = {
+                "query": search_query,
+                "size": size,
+                "_source": True,
+                "explain": True,
+            }
+
+            response = await self.client.search(index=self.elements_index, body=search_body)
+
+            hits_count = len(response["hits"]["hits"])
+            max_score = response["hits"]["max_score"] if response["hits"]["hits"] else 0.0
+            logger.info(f"Cross-modal search → {hits_count} hits (max: {max_score:.4f})")
+
+            results = []
+            for hit in response["hits"]["hits"]:
+                result_item = hit["_source"].copy()
+                result_item["score"] = hit.get("_score", 0.0)
+                result_item["_cross_modal"] = True  # Mark as cross-modal result
+
+                # Parse explanation for score breakdown
+                explanation = hit.get("_explanation")
+                if explanation:
+                    result_item["score_breakdown"] = self._parse_explanation(explanation, "cross_modal")
+
+                results.append(result_item)
+
+            return {
+                "results": results,
+                "total_hits": response["hits"]["total"]["value"],
+                "max_score": max_score,
+                "took_ms": response["took"],
+            }
+
+        except Exception as e:
+            logger.error(f"Cross-modal search failed: {e}")
+            return {"results": [], "total_hits": 0, "max_score": 0.0, "took_ms": 0}
 
     async def get_chunk_meta(self, chunk_id: str) -> Optional[Dict[str, Any]]:
         """Get chunk metadata by chunk_id"""

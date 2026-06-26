@@ -134,14 +134,23 @@ class SearchService:
                 image_caption_tags = getattr(extracted_features.image, 'tags')
                 logger.info(f"Using image caption tags for search enhancement: {image_caption_tags}")
 
+            # Cross-modal: image-only 검색 시 캡션을 BM25 텍스트 쿼리로 승격
+            if not text_query and extracted_features and extracted_features.image:
+                caption_text = getattr(extracted_features.image, 'caption', None)
+                if caption_text:
+                    # 캡션을 expanded_queries에 주입하여 BM25 검색도 수행
+                    expanded_queries = [caption_text]
+                    logger.info(f"Cross-modal: promoted image caption to text query for BM25: '{caption_text[:80]}...'")
+
             search_results = await self.search_executor.execute_expanded_search(
                 expanded_queries, filtered_element_types, embeddings, max_results, expansion_result,
                 element_type_weights, image_caption_tags
             )
 
-            # Step 6: 결과 enrichment
+            # Step 6: 결과 enrichment (cross-modal match_type 판별을 위해 쿼리 모달리티 전달)
+            query_modalities = self._extract_input_modalities(modalities_data) if modalities_data else None
             enriched_results = await self.result_enricher.enrich_search_results(
-                search_results, include_chunk_meta, include_media_meta
+                search_results, include_chunk_meta, include_media_meta, query_modalities
             )
 
             # Step 7: 응답 생성 (첨부 이미지 캡션 포함)
@@ -495,6 +504,13 @@ class SearchService:
                 image_caption_tags = getattr(extracted_features.image, 'tags')
                 logger.info(f"[STREAM] Using image caption tags for search enhancement: {image_caption_tags}")
 
+            # Cross-modal: image-only 검색 시 캡션을 BM25 텍스트 쿼리로 승격
+            if not text_query and extracted_features and extracted_features.image:
+                caption_text = getattr(extracted_features.image, 'caption', None)
+                if caption_text:
+                    expanded_queries = [caption_text]
+                    logger.info(f"[STREAM] Cross-modal: promoted image caption to text query for BM25: '{caption_text[:80]}...'")
+
             search_results = await self.search_executor.execute_expanded_search(
                 expanded_queries, filtered_element_types, embeddings, max_results, expansion_result,
                 element_type_weights, image_caption_tags
@@ -536,12 +552,13 @@ class SearchService:
                 "data": search_stats,
             }
 
-            # Step 6: 결과 enrichment
+            # Step 6: 결과 enrichment (cross-modal match_type 판별을 위해 쿼리 모달리티 전달)
             yield {"step": "result_enrichment", "message": "검색 결과를 보강하고 있습니다...", "timestamp": time.time()}
 
             logger.info("Starting result enrichment...")
+            query_modalities = self._extract_input_modalities(modalities_data) if modalities_data else None
             enriched_results = await self.result_enricher.enrich_search_results(
-                search_results, include_chunk_meta, include_media_meta
+                search_results, include_chunk_meta, include_media_meta, query_modalities
             )
             logger.info(f"Result enrichment completed: {len(enriched_results)} results")
 

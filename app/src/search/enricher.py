@@ -15,9 +15,10 @@ class ResultEnricher:
         self.opensearch_service = opensearch_service or OpenSearchService()
 
     async def enrich_search_results(
-            self, search_results: Dict[str, Any], include_chunk_meta: bool, include_media_meta: bool
+            self, search_results: Dict[str, Any], include_chunk_meta: bool, include_media_meta: bool,
+            query_modalities: Optional[List[str]] = None,
     ) -> List[SearchResult]:
-        """검색 결과에 chunk 및 media 메타데이터 추가"""
+        """검색 결과에 chunk 및 media 메타데이터 추가 + cross-modal match_type 설정"""
         enriched_results = []
 
         logger.info(f"Starting enrich_search_results with {len(search_results)} keys")
@@ -38,7 +39,8 @@ class ResultEnricher:
             # 전체 결과에 대해 병렬 처리
 
             enrichment_tasks = [
-                self._enrich_single_result(item, include_chunk_meta, include_media_meta) for item in results_data
+                self._enrich_single_result(item, include_chunk_meta, include_media_meta, query_modalities)
+                for item in results_data
             ]
 
             enriched_results = await asyncio.gather(*enrichment_tasks, return_exceptions=True)
@@ -63,9 +65,10 @@ class ResultEnricher:
             return []
 
     async def _enrich_single_result(
-            self, item: Dict[str, Any], include_chunk_meta: bool, include_media_meta: bool
+            self, item: Dict[str, Any], include_chunk_meta: bool, include_media_meta: bool,
+            query_modalities: Optional[List[str]] = None,
     ) -> Optional[SearchResult]:
-        """단일 검색 결과 enrichment"""
+        """단일 검색 결과 enrichment + cross-modal match_type 판별"""
         try:
             # 데이터 구조에 따라 element_data와 score 추출
             if "_source" in item:
@@ -82,6 +85,9 @@ class ResultEnricher:
                 score_breakdown = item.get("score_breakdown")
 
             element = Element(**element_data)
+
+            # Cross-modal match_type 판별
+            match_type = self._determine_match_type(element.modality, query_modalities)
 
             # 메타데이터 병렬 조회
 
@@ -111,12 +117,24 @@ class ResultEnricher:
 
             return SearchResult(
                 element=element, chunk_meta=chunk_meta, media_meta=media_meta, score=score,
-                original_score=original_score, score_breakdown=score_breakdown
+                original_score=original_score, score_breakdown=score_breakdown,
+                match_type=match_type,
             )
 
         except Exception as e:
             logger.error(f"Failed to enrich single result: {e}")
             return None
+
+    def _determine_match_type(self, result_modality: str, query_modalities: Optional[List[str]]) -> Optional[str]:
+        """결과의 modality와 쿼리 modality를 비교하여 match_type 결정"""
+        if not query_modalities:
+            return None
+
+        # 쿼리 modality에 결과의 modality가 포함되면 same_modal
+        if result_modality in query_modalities:
+            return "same_modal"
+        else:
+            return "cross_modal"
 
     async def _get_chunk_metadata(self, chunk_id: str) -> Optional[ChunkMeta]:
         """Chunk 메타데이터 조회"""

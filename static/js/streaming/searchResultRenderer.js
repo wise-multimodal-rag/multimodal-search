@@ -317,8 +317,18 @@ class SearchResultRenderer {
         const resultId = `stream-result-${index}`;
         const detailedMetaSection = this.renderDetailedMetaSection(result, resultId, element);
         
+        // Cross-modal 배지
+        const matchType = result.match_type || null;
+        const crossModalBadge = matchType === 'cross_modal'
+            ? '<span class="score-tag cross-modal" data-tooltip="Cross-modal: 다른 모달리티에서 발견된 결과">🔀 Cross</span>'
+            : '';
+
         // 점수 표시
         const scoreBreakdown = result.score_breakdown || null;
+        // match_type 기준으로 search_mode 오버라이드 (더 직관적)
+        if (scoreBreakdown && matchType) {
+            scoreBreakdown._display_mode = matchType;
+        }
         const { scoreTags, breakdownPanel } = this.renderScoreDisplay(hybridScore, originalScore, scoreBreakdown, index);
 
         // STEP 3: 최종 HTML 조합
@@ -329,10 +339,10 @@ class SearchResultRenderer {
         console.log('  - Has mediaContent:', !!mediaContent);
 
         const finalHtml = `
-            <div class="search-result-card">
+            <div class="search-result-card${matchType === 'cross_modal' ? ' cross-modal-result' : ''}">
                 <div class="search-result-header">
                     <div class="search-result-type">${element.element_type || 'Unknown'} (${element.modality || 'text'})${contentTypeInfo}</div>
-                    <div class="search-result-score">${scoreTags}</div>
+                    <div class="search-result-score">${crossModalBadge}${scoreTags}</div>
                 </div>
                 ${breakdownPanel}
                 <div class="search-result-content">
@@ -435,30 +445,59 @@ class SearchResultRenderer {
             </div>`;
         }
 
-        const searchMode = scoreBreakdown.search_mode || 'unknown';
-        const searchModeLabel = searchMode === 'image' ? '🖼️ 이미지 검색 모드' : '📝 텍스트 검색 모드';
+        // _display_mode (match_type 기준)를 우선 사용, 없으면 search_mode 사용
+        const displayMode = scoreBreakdown._display_mode || scoreBreakdown.search_mode || 'unknown';
+        const searchModeLabels = {
+            'same_modal': '✅ 동일 모달리티 매칭',
+            'cross_modal': '🔀 Cross-modal 매칭',
+            'image': '🖼️ 이미지 검색 모드',
+            'text': '📝 텍스트 검색 모드',
+        };
+        const searchModeLabel = searchModeLabels[displayMode] || `📝 ${displayMode}`;
 
         let componentsHtml = '';
-        for (const comp of scoreBreakdown.components) {
-            const typeLabel = this._getComponentTypeLabel(comp.type);
-            const boostInfo = comp.details && comp.details.boost ? ` (boost: ${comp.details.boost})` :
-                              comp.boost_applied ? ` (boost: ${comp.boost_applied})` : '';
 
+        // Cross-modal 정규화 정보 표시
+        const normalization = scoreBreakdown.normalization;
+        if (normalization) {
             componentsHtml += `
                 <div class="breakdown-item">
-                    <span class="breakdown-label">${typeLabel}${boostInfo}</span>
-                    <span class="breakdown-value">${comp.score.toFixed(4)}</span>
-                </div>`;
+                    <span class="breakdown-label">🔢 원본 벡터 유사도</span>
+                    <span class="breakdown-value">${normalization.raw_vector_score.toFixed(4)}</span>
+                </div>
+                <div class="breakdown-item">
+                    <span class="breakdown-label">📐 정규화 배율</span>
+                    <span class="breakdown-value">× ${normalization.scale_factor}</span>
+                </div>
+                <div class="breakdown-item total">
+                    <span class="breakdown-label">📊 정규화 최종 점수</span>
+                    <span class="breakdown-value">${normalization.final_score}</span>
+                </div>
+                <div class="breakdown-separator"></div>
+                <div class="breakdown-note">${normalization.method}</div>`;
+        } else {
+            for (const comp of scoreBreakdown.components) {
+                const typeLabel = this._getComponentTypeLabel(comp.type);
+                const boostInfo = comp.details && comp.details.boost ? ` (boost: ${comp.details.boost})` :
+                                  comp.boost_applied ? ` (boost: ${comp.boost_applied})` : '';
 
-            // Render sub-components if composite
-            if (comp.sub_components) {
-                for (const sub of comp.sub_components) {
-                    const subLabel = this._getComponentTypeLabel(sub.type);
-                    componentsHtml += `
-                        <div class="breakdown-item sub-item">
-                            <span class="breakdown-label">  └ ${subLabel}</span>
-                            <span class="breakdown-value">${sub.score.toFixed(4)}</span>
-                        </div>`;
+                componentsHtml += `
+                    <div class="breakdown-item">
+                        <span class="breakdown-label">${typeLabel}${boostInfo}</span>
+                        <span class="breakdown-value">${comp.score.toFixed(4)}</span>
+                    </div>`;
+
+                // Render sub-components only for non-BM25 composites
+                // BM25 composite는 개별 토큰 점수를 펼치지 않음 (합산 점수만 표시)
+                if (comp.sub_components && comp.type !== 'bm25_composite') {
+                    for (const sub of comp.sub_components) {
+                        const subLabel = this._getComponentTypeLabel(sub.type);
+                        componentsHtml += `
+                            <div class="breakdown-item sub-item">
+                                <span class="breakdown-label">  └ ${subLabel}</span>
+                                <span class="breakdown-value">${sub.score.toFixed(4)}</span>
+                            </div>`;
+                    }
                 }
             }
         }

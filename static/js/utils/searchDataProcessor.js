@@ -15,15 +15,24 @@ class SearchDataProcessor {
     // 콘텐츠의 불필요한 들여쓰기를 제거하되 줄바꿈은 유지하는 함수
     static cleanContentIndentation(content) {
         if (!content) return '';
-        
+
+        // HTML 특수문자 이스케이프 (DOM 깨짐 방지: -->, <--, <script> 등)
+        const escaped = SearchDataProcessor.escapeHtml(content);
+
         // 앞뒤 공백 제거
-        const trimmed = content.trim();
-        
+        const trimmed = escaped.trim();
+
         // 각 줄의 앞쪽 공백을 제거하되 줄바꿈은 유지
         const lines = trimmed.split('\n');
         const cleanedLines = lines.map(line => line.trim());
-        
+
         return cleanedLines.join('\n');
+    }
+
+    static escapeHtml(text) {
+        if (!text) return '';
+        const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return text.replace(/[&<>"']/g, ch => map[ch]);
     }
     
     // Element 데이터를 화면 표시용으로 정리
