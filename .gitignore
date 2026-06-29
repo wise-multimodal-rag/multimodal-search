@@ -1,1 +1,27 @@
 .env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.claude/
+.omc/
+.idea/
+.vscode/
+
+# Node (mermaid-cli 등 도구용)
+node_modules/
+package.json
+package-lock.json
+
+# Logs
+app_logs/
+logs/
+*.log
+
+# Test/Data
+test_data/
