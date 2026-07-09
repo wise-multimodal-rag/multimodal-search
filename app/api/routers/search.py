@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.api.dependencies.injector import (
     get_input_validator,
@@ -42,13 +43,15 @@ async def search_multimodal(
     """진정한 멀티모달 검색 엔드포인트 - 텍스트, 이미지, 비디오, 오디오 조합 입력"""
     try:
         # Swagger UI에서 빈 파일 필드가 빈 문자열로 전송되는 문제 방어
-        if not isinstance(image, UploadFile) or not image.filename:
+        # Note: FastAPI 0.117+에서 Union[UploadFile, str] 사용 시
+        # starlette.datastructures.UploadFile로 전달되므로 두 클래스 모두 체크
+        if not isinstance(image, (UploadFile, StarletteUploadFile)) or not image.filename:
             image = None
-        if not isinstance(video, UploadFile) or not video.filename:
+        if not isinstance(video, (UploadFile, StarletteUploadFile)) or not video.filename:
             video = None
-        if not isinstance(audio, UploadFile) or not audio.filename:
+        if not isinstance(audio, (UploadFile, StarletteUploadFile)) or not audio.filename:
             audio = None
-        if not isinstance(text_file, UploadFile) or not text_file.filename:
+        if not isinstance(text_file, (UploadFile, StarletteUploadFile)) or not text_file.filename:
             text_file = None
 
         # 공통 함수를 사용하여 멀티모달 검색 실행
@@ -104,13 +107,15 @@ async def multimodal_search_and_generate_stream(
     generate_answer=True일 때 답변 생성도 함께 실행됩니다.
     """
     # Swagger UI에서 빈 파일 필드가 빈 문자열로 전송되는 문제 방어
-    if not isinstance(image, UploadFile) or not image.filename:
+    # Note: FastAPI 0.117+에서 Union[UploadFile, str] 사용 시
+    # starlette.datastructures.UploadFile로 전달되므로 두 클래스 모두 체크
+    if not isinstance(image, (UploadFile, StarletteUploadFile)) or not image.filename:
         image = None
-    if not isinstance(video, UploadFile) or not video.filename:
+    if not isinstance(video, (UploadFile, StarletteUploadFile)) or not video.filename:
         video = None
-    if not isinstance(audio, UploadFile) or not audio.filename:
+    if not isinstance(audio, (UploadFile, StarletteUploadFile)) or not audio.filename:
         audio = None
-    if not isinstance(text_file, UploadFile) or not text_file.filename:
+    if not isinstance(text_file, (UploadFile, StarletteUploadFile)) or not text_file.filename:
         text_file = None
 
     logger.info(f"Stream API: answer={generate_answer}, temp={temperature}, retries={max_retries}")

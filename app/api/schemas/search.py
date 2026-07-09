@@ -62,7 +62,7 @@ class Element(BaseModel):
     element_type: str  # summary|stt|caption|ocr|paragraph|table|chart|...
     content_type: str  # plain|uri|json|markdown|...
     content: str
-    embeddings: Optional[Embeddings] = None
+    embeddings: Optional[Embeddings] = Field(default=None, exclude=True)
     quality_scores: Optional[QualityScores] = None
     element_seq: Optional[int] = None
     language: Optional[str] = None
