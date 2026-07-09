@@ -261,12 +261,7 @@ class SearchExecutor:
                             f"Cross-modal score normalization: scale={scale_factor:.2f} "
                             f"(target_score={target_score:.2f}, cross_max={cross_max:.2f})")
 
-            # Cross-modal 결과 보장 슬롯: max_results의 일부를 cross-modal에 할당
-            # 이를 통해 BM25 점수가 높은 같은 모달리티 결과에 밀리지 않도록 보장
-            cross_modal_slots = min(len(cross_modal_results), max(2, max_results // 4))
-            main_slots = max_results - cross_modal_slots
-
-            # 메인 결과 정렬 + 중복 제거
+            # 메인 결과 정렬 + 중복 제거 (슬롯 계산 전에 먼저 수행)
             main_results.sort(key=lambda x: x.get("score", 0), reverse=True)
             unique_main = []
             seen_ids = set()
@@ -275,13 +270,41 @@ class SearchExecutor:
                 if result_id and result_id not in seen_ids:
                     seen_ids.add(result_id)
                     unique_main.append(result)
-                    if len(unique_main) >= main_slots:
-                        break
 
-            # Cross-modal 결과 정렬 + 중복 제거 (메인과 중복되지 않도록)
+            # Cross-modal 보장 슬롯: 모달리티 다양성 기반 동적 할당
+            # 메인 결과에서 부족한 모달리티를 파악하여 cross-modal 슬롯에 우선 배치
+            main_modalities = [r.get("modality") for r in unique_main]
+            main_modality_set = set(main_modalities)
+
+            # 시스템 지원 모달리티 (향후 video, audio 추가 시 여기에 추가)
+            all_supported_modalities = {"text", "image"}
+            missing_modalities = all_supported_modalities - main_modality_set
+
+            if missing_modalities:
+                # 부족한 모달리티가 있으면: 최소 2개, 상한 max_results의 30%
+                cross_modal_slots = min(
+                    len(cross_modal_results),
+                    max(len(missing_modalities), 2),
+                    max_results * 3 // 10
+                )
+            else:
+                # 모달리티 골고루 있으면 기존 로직 유지
+                cross_modal_slots = min(len(cross_modal_results), max(2, max_results // 4))
+
+            main_slots = max_results - cross_modal_slots
+
+            # 메인 결과를 main_slots로 자르기
+            unique_main = unique_main[:main_slots]
+
+            # Cross-modal 결과: 부족한 모달리티 우선 배치 후 점수순
             cross_modal_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+            cross_underrepresented = [r for r in cross_modal_results if r.get("modality") in missing_modalities]
+            cross_others = [r for r in cross_modal_results if r.get("modality") not in missing_modalities]
+            prioritized_cross = cross_underrepresented + cross_others
+
+            # 중복 제거 + 슬롯 할당
             unique_cross = []
-            for result in cross_modal_results:
+            for result in prioritized_cross:
                 result_id = result.get("id") or result.get("_id") or result.get("element_id")
                 if result_id and result_id not in seen_ids:
                     seen_ids.add(result_id)
@@ -294,9 +317,12 @@ class SearchExecutor:
             unique_results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
             if unique_cross:
+                cross_modalities = set(r.get("modality") for r in unique_cross)
                 logger.info(
                     f"Cross-modal slots: {len(unique_cross)}/{cross_modal_slots} "
-                    f"(main: {len(unique_main)}/{main_slots})")
+                    f"(main: {len(unique_main)}/{main_slots}, "
+                    f"missing_modalities: {missing_modalities or 'none'}, "
+                    f"cross_modalities_filled: {cross_modalities})")
 
             # 통합된 결과로 search_results 업데이트
             if search_results and isinstance(search_results, dict):
