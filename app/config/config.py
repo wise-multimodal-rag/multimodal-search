@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     langfuse_host: str = Field(default="https://cloud.langfuse.com", alias="LANGFUSE_HOST")
     langfuse_enabled: bool = Field(default=True, alias="LANGFUSE_ENABLED")
 
+    # Reranker Configuration (vLLM 직접 호출)
+    reranker_enabled: bool = Field(default=True, alias="RERANKER_ENABLED")
+    reranker_api_url: str = Field(default="", alias="RERANKER_API_URL")
+    reranker_timeout: float = Field(default=5.0, alias="RERANKER_TIMEOUT")
+    reranker_top_k: int = Field(default=20, alias="RERANKER_TOP_K")
+    reranker_weight: float = Field(default=0.7, alias="RERANKER_WEIGHT")
+    reranker_oversample: int = Field(default=3, alias="RERANKER_OVERSAMPLE")
+    reranker_modality_boost: bool = Field(default=True, alias="RERANKER_MODALITY_BOOST")
+
     # Application Configuration
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")

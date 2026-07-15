@@ -3,17 +3,31 @@ from typing import List, Dict, Optional, Any
 
 from loguru import logger
 
+from app.config.config import settings
 from app.config.weights import weighting_config
+from app.clients.reranker_client import RerankerClient
 from app.src.search.opensearch import OpenSearchService
 from app.src.search.analyzers import QueryAnalyzer
 
 
 class SearchExecutor:
-    """검색 실행 및 결과 통합을 전담하는 서비스"""
+    """검색 실행 및 결과 통합을 전담하는 서비스
 
-    def __init__(self, opensearch_service: OpenSearchService = None, query_analyzer: QueryAnalyzer = None):
+    RERANKER_ENABLED=true (기본):
+        기존 하이브리드 검색 oversample → Qwen3-Reranker 재정렬 → 모달리티 보강 슬롯
+    RERANKER_ENABLED=false:
+        기존 하이브리드 검색 (BM25+Vector boost 합산) 그대로 동작
+    """
+
+    def __init__(
+        self,
+        opensearch_service: OpenSearchService = None,
+        query_analyzer: QueryAnalyzer = None,
+        reranker_client: Optional[RerankerClient] = None,
+    ):
         self.opensearch_service = opensearch_service or OpenSearchService()
         self.query_analyzer = query_analyzer or QueryAnalyzer()
+        self.reranker_client = reranker_client
 
     async def execute_expanded_search(
             self,
@@ -25,8 +39,232 @@ class SearchExecutor:
             element_type_weights: Optional[Dict[str, float]] = None,
             image_caption_tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """확장 쿼리 검색 실행 (순차/병렬 처리 최적화) + cross-modal 검색 병합"""
-        # LLM 결과에서 의존성 확인
+        """확장 쿼리 검색 실행
+
+        RERANKER_ENABLED=true + RerankerClient available:
+            oversample 검색 후 Reranker 재정렬 + 모달리티 보강
+        그 외:
+            기존 하이브리드 검색
+        """
+        if settings.reranker_enabled and self.reranker_client and self.reranker_client.available:
+            return await self._execute_with_reranker(
+                expanded_queries, selected_element_types, embeddings,
+                max_results, expansion_result, element_type_weights, image_caption_tags
+            )
+        else:
+            return await self._execute_hybrid_search(
+                expanded_queries, selected_element_types, embeddings,
+                max_results, expansion_result, element_type_weights, image_caption_tags
+            )
+
+    # =========================================================================
+    # Reranker 적용 검색 (기본)
+    # =========================================================================
+
+    async def _execute_with_reranker(
+            self,
+            expanded_queries: List[str],
+            selected_element_types: List[str],
+            embeddings: Dict[str, List[float]],
+            max_results: int,
+            expansion_result: Optional[Dict[str, Any]] = None,
+            element_type_weights: Optional[Dict[str, float]] = None,
+            image_caption_tags: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Oversample 검색 후 Reranker 재정렬 + 모달리티 보강 슬롯"""
+        oversample_size = max_results * settings.reranker_oversample
+
+        # 1. 기존 하이브리드 검색으로 oversample
+        base_results = await self._execute_hybrid_search(
+            expanded_queries, selected_element_types, embeddings,
+            oversample_size, expansion_result, element_type_weights, image_caption_tags
+        )
+
+        results = base_results.get("results", [])
+        if not results:
+            return base_results
+
+        # 2. 전체 결과(모든 모달리티)를 Reranker에 전달
+        query_text = " ".join(expanded_queries)
+        reranked_results = await self._apply_reranking(
+            query=query_text,
+            results=results,
+            max_results=oversample_size,
+        )
+
+        # 3. 모달리티 보강 슬롯 적용 (RERANKER_MODALITY_BOOST=true일 때)
+        if settings.reranker_modality_boost:
+            final_results = self._apply_modality_boost(reranked_results, results, max_results)
+        else:
+            final_results = reranked_results[:max_results]
+
+        return {
+            "results": final_results,
+            "total_hits": base_results.get("total_hits", len(final_results)),
+            "max_score": max(r.get("score", 0) for r in final_results) if final_results else 0.0,
+            "took_ms": base_results.get("took_ms", 0),
+            "reranker_applied": any(r.get("reranker_score") is not None for r in final_results),
+        }
+
+    # =========================================================================
+    # Reranker 호출
+    # =========================================================================
+
+    async def _apply_reranking(
+            self,
+            query: str,
+            results: List[Dict[str, Any]],
+            max_results: int,
+    ) -> List[Dict[str, Any]]:
+        """Reranker를 적용하여 결과를 재정렬합니다.
+
+        실패 시 원본 순서를 유지합니다 (graceful degradation).
+        """
+        if not self.reranker_client or not results:
+            return results[:max_results]
+
+        # Reranker에 보낼 문서 구성
+        documents = []
+        for r in results:
+            content = r.get("content", "") or ""
+            if content.startswith("http") and r.get("description"):
+                content = r["description"]
+            doc_id = r.get("element_id", r.get("id", ""))
+            documents.append({"id": doc_id, "content": content[:1000]})
+
+        # Reranker 호출
+        reranker_results = await self.reranker_client.rerank(
+            query=query,
+            documents=documents,
+            top_k=min(max_results, len(documents)),
+        )
+
+        if reranker_results is None:
+            logger.warning("Reranker failed, using original order (graceful degradation)")
+            return results[:max_results]
+
+        # Reranker 점수로 재정렬
+        reranked = []
+        for rr in reranker_results:
+            idx = rr["index"]
+            if idx < len(results):
+                result = results[idx].copy()
+                result["reranker_score"] = rr["score"]
+                result["original_score"] = result.get("score", 0.0)
+                result["score"] = rr["score"]
+                if "score_breakdown" not in result:
+                    result["score_breakdown"] = {}
+                result["score_breakdown"]["reranker"] = {
+                    "score": rr["score"],
+                    "model": "qwen3-reranker",
+                }
+                reranked.append(result)
+
+        # Reranker가 반환하지 않은 결과는 뒤에 추가
+        reranked_indices = set(rr["index"] for rr in reranker_results)
+        for i, result in enumerate(results):
+            if i not in reranked_indices:
+                reranked.append(result)
+
+        return reranked[:max_results]
+
+    # =========================================================================
+    # 모달리티 보강 슬롯
+    # =========================================================================
+
+    def _apply_modality_boost(
+            self,
+            reranked_results: List[Dict[str, Any]],
+            oversample_results: List[Dict[str, Any]],
+            max_results: int,
+    ) -> List[Dict[str, Any]]:
+        """Reranker 재정렬 후 부족한 모달리티를 보강합니다.
+
+        Reranker가 텍스트 위주로 정렬하더라도, oversample 후보에 존재하는
+        다른 모달리티(image, video, audio) 결과를 최소한 보장합니다.
+        """
+        # 상위 max_results개에서 모달리티 분포 확인
+        top_results = reranked_results[:max_results]
+        top_modalities = set(r.get("modality") for r in top_results if r.get("modality"))
+
+        # 시스템 지원 모달리티
+        all_supported_modalities = {"text", "image", "video", "audio"}
+
+        # oversample 후보에 존재하는 모달리티 확인
+        available_modalities = set(r.get("modality") for r in oversample_results if r.get("modality"))
+
+        # 보강 대상: oversample에 있지만 top_results에 빠진 모달리티
+        missing_modalities = (available_modalities & all_supported_modalities) - top_modalities
+
+        if not missing_modalities:
+            # 모달리티가 이미 골고루 분포됨 → 그대로 반환
+            return top_results
+
+        # 보강 슬롯 수 계산: 부족 모달리티당 최소 1개, 상한 max_results의 30%
+        boost_slots = min(
+            len(missing_modalities) * 2,
+            max_results * 3 // 10,
+        )
+
+        # 보강할 문서 수집 (reranked_results에서 max_results 이후 + oversample에서)
+        seen_ids = set(
+            r.get("element_id") or r.get("id") or r.get("_id")
+            for r in top_results
+        )
+
+        boost_candidates = []
+        # reranked에서 max_results 밖에 있는 부족 모달리티 문서
+        for r in reranked_results[max_results:]:
+            if r.get("modality") in missing_modalities:
+                rid = r.get("element_id") or r.get("id") or r.get("_id")
+                if rid and rid not in seen_ids:
+                    boost_candidates.append(r)
+                    seen_ids.add(rid)
+
+        # oversample 원본에서도 추가 탐색
+        if len(boost_candidates) < boost_slots:
+            for r in oversample_results:
+                if r.get("modality") in missing_modalities:
+                    rid = r.get("element_id") or r.get("id") or r.get("_id")
+                    if rid and rid not in seen_ids:
+                        boost_candidates.append(r)
+                        seen_ids.add(rid)
+                        if len(boost_candidates) >= boost_slots:
+                            break
+
+        if not boost_candidates:
+            return top_results
+
+        # 메인 슬롯 축소 + 보강 슬롯 추가
+        actual_boost = min(len(boost_candidates), boost_slots)
+        main_slots = max_results - actual_boost
+        final_results = top_results[:main_slots] + boost_candidates[:actual_boost]
+
+        # 점수순 최종 정렬
+        final_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+        logger.info(
+            f"Modality boost: added {actual_boost} results for missing modalities {missing_modalities} "
+            f"(main={main_slots}, boost={actual_boost})"
+        )
+
+        return final_results[:max_results]
+
+    # =========================================================================
+    # 기존 하이브리드 검색 (RERANKER_ENABLED=false 시 사용)
+    # =========================================================================
+
+    async def _execute_hybrid_search(
+            self,
+            expanded_queries: List[str],
+            selected_element_types: List[str],
+            embeddings: Dict[str, List[float]],
+            max_results: int,
+            expansion_result: Optional[Dict[str, Any]] = None,
+            element_type_weights: Optional[Dict[str, float]] = None,
+            image_caption_tags: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """기존 하이브리드 검색 (BM25+Vector boost 합산 + cross-modal)"""
         has_dependency = expansion_result.get("has_dependency", False) if expansion_result else False
 
         if has_dependency:
@@ -42,9 +280,9 @@ class SearchExecutor:
                 image_caption_tags
             )
 
-        # Cross-modal: 별도의 벡터 전용 cross-modal 검색을 병렬로 실행하여 다른 모달리티 결과 확보
+        # Cross-modal: 별도의 벡터 전용 cross-modal 검색
         if embeddings:
-            cross_modal_size = max(3, max_results // 3)  # 전체 결과의 ~1/3을 cross-modal로 확보
+            cross_modal_size = max(3, max_results // 3)
             cross_modal_results = await self.opensearch_service.search_cross_modal(
                 embeddings=embeddings,
                 element_types=selected_element_types,
@@ -57,6 +295,10 @@ class SearchExecutor:
 
         return self._process_search_results(all_search_results, expanded_queries, max_results)
 
+    # =========================================================================
+    # 내부 검색 메서드
+    # =========================================================================
+
     async def _execute_parallel_search(
             self,
             expanded_queries: List[str],
@@ -66,7 +308,7 @@ class SearchExecutor:
             element_type_weights: Optional[Dict[str, float]] = None,
             image_caption_tags: Optional[List[str]] = None,
     ) -> List[Any]:
-        """기존 병렬 검색 실행"""
+        """병렬 검색 실행"""
         search_tasks = [
             self._execute_single_query_search(
                 expanded_query, i, len(expanded_queries), selected_element_types, embeddings, max_results,
@@ -74,8 +316,6 @@ class SearchExecutor:
             )
             for i, expanded_query in enumerate(expanded_queries)
         ]
-
-        # 모든 검색을 병렬로 실행
         return await asyncio.gather(*search_tasks, return_exceptions=True)
 
     async def _execute_sequential_search(
@@ -96,14 +336,12 @@ class SearchExecutor:
         logger.info(f"Sequential execution reason: {dependency_reason}")
 
         for i, query in enumerate(expanded_queries):
-            # 이전 결과를 컨텍스트로 활용
             if i > 0 and accumulated_context:
                 enriched_query = self.query_analyzer.enrich_query_with_context(query, accumulated_context)
                 logger.debug(f"Query {i + 1} enriched with context: '{query}' → '{enriched_query}'")
             else:
                 enriched_query = query
 
-            # 단일 쿼리 검색 실행
             result = await self._execute_single_query_search(
                 enriched_query, i, len(expanded_queries), selected_element_types, embeddings, max_results,
                 element_type_weights, image_caption_tags
@@ -111,13 +349,12 @@ class SearchExecutor:
 
             if not isinstance(result, Exception) and result is not None:
                 all_results.append(result)
-                # 다음 쿼리를 위한 컨텍스트 추출
                 new_context = self.query_analyzer.extract_context_from_results(result)
                 accumulated_context.update(new_context)
                 logger.debug(f"Context extracted from query {i + 1}: {list(new_context.keys())}")
             else:
                 logger.warning(f"Query {i + 1} failed, continuing with existing context")
-                all_results.append(result)  # 실패한 결과도 포함 (후에 필터링됨)
+                all_results.append(result)
 
         return all_results
 
@@ -133,11 +370,9 @@ class SearchExecutor:
             image_caption_tags: Optional[List[str]] = None,
     ) -> Any:
         """단일 쿼리 검색 실행"""
-        weight = 1.0 - (query_index * weighting_config.QUERY_WEIGHT_DECAY)  # 설정값에 따라 감소
+        weight = 1.0 - (query_index * weighting_config.QUERY_WEIGHT_DECAY)
         base_size = max_results // total_queries + (max_results % total_queries if query_index == 0 else 0)
 
-        # Cross-modal: 임베딩이 있을 때 검색 크기를 확대하여 다양한 모달리티 결과 확보
-        # 최종 결과는 _combine_search_results에서 점수순 정렬 후 max_results로 잘림
         if embeddings:
             search_size = min(base_size * 3, max_results)
         else:
@@ -154,29 +389,22 @@ class SearchExecutor:
             image_caption_tags=image_caption_tags,
         )
 
-        # 쿼리별 가중치 적용
         self._apply_query_weight(search_results, weight, expanded_query)
-
-        # element_type별 가중치는 OpenSearch에서 이미 적용됨 (후처리 불필요)
-
         return search_results
 
     def _apply_query_weight(self, search_results: Dict[str, Any], weight: float, expanded_query: str):
         """쿼리별 가중치 적용"""
         if search_results and isinstance(search_results, dict) and "results" in search_results:
-            weighted_count = 0
             for result in search_results["results"]:
                 if isinstance(result, dict) and "score" in result:
-                    result["score"] *= weight  # 가중치 적용
-                    result["query_used"] = expanded_query  # 어떤 쿼리로 검색됐는지 기록
-                    result["query_weight_applied"] = weight  # 적용된 쿼리 가중치 기록
-                    weighted_count += 1
+                    result["score"] *= weight
+                    result["query_used"] = expanded_query
+                    result["query_weight_applied"] = weight
 
     def _process_search_results(
             self, all_search_results: List[Any], expanded_queries: List[str], max_results: int
     ) -> Dict[str, Any]:
         """검색 결과 처리 및 검증"""
-        # 예외가 발생한 결과는 필터링하고 상세 로깅
         valid_results = []
         failed_queries = []
 
@@ -192,30 +420,23 @@ class SearchExecutor:
             else:
                 valid_results.append(result)
 
-        # 실패 통계 로깅
         if failed_queries:
             logger.warning(f"Search failures: {len(failed_queries)}/{len(expanded_queries)} queries failed")
 
-        # 유효한 결과가 없는 경우 처리
         if not valid_results:
             logger.error("All search queries failed")
             return {"results": [], "total_hits": 0, "max_score": 0.0, "took_ms": 0}
 
-        # 결과 통합
-        combined_results = self._combine_search_results(valid_results, max_results)
-
-        return combined_results
+        return self._combine_search_results(valid_results, max_results)
 
     def _combine_search_results(self, all_search_results: List[Any], max_results: int) -> Dict[str, Any]:
         """검색 결과 통합 (cross-modal 점수 정규화 포함)"""
         if not all_search_results:
             return {"results": [], "total_hits": 0, "max_score": 0.0, "took_ms": 0}
 
-        # 가장 좋은 결과를 기본으로 사용
         search_results = all_search_results[0] if all_search_results else None
 
         if len(all_search_results) > 1:
-            # 메인 검색 결과의 최대 점수를 기준으로 cross-modal 점수 정규화
             main_results = []
             cross_modal_results = []
 
@@ -227,26 +448,22 @@ class SearchExecutor:
                         else:
                             main_results.append(r)
 
-            # Cross-modal 점수 정규화: 메인 결과의 상위권에 삽입되도록 스케일링
-            # 가장 유사한 cross-modal 결과가 메인 결과의 상위 1/3에 위치하도록 설정
+            # Cross-modal 점수 정규화
             if cross_modal_results and main_results:
                 main_scores = sorted([r.get("score", 0) for r in main_results if r.get("score", 0) > 0],
                                      reverse=True)
                 if main_scores:
-                    # 상위 1/3 지점의 점수를 target으로 사용
                     target_rank = max(0, len(main_scores) // 3)
                     target_score = main_scores[target_rank]
                     cross_max = max(r.get("score", 0) for r in cross_modal_results)
 
                     if cross_max > 0:
-                        # Scale: cross-modal의 최고 점수가 main의 상위 1/3 수준이 되도록
                         scale_factor = target_score / cross_max
                         for r in cross_modal_results:
                             raw_score = r.get("score", 0.0)
                             r["original_score"] = raw_score
                             r["score"] = raw_score * scale_factor
 
-                            # score_breakdown에도 정규화 정보 반영
                             if r.get("score_breakdown"):
                                 r["score_breakdown"]["normalized_score"] = raw_score * scale_factor
                                 r["score_breakdown"]["normalization"] = {
@@ -261,7 +478,7 @@ class SearchExecutor:
                             f"Cross-modal score normalization: scale={scale_factor:.2f} "
                             f"(target_score={target_score:.2f}, cross_max={cross_max:.2f})")
 
-            # 메인 결과 정렬 + 중복 제거 (슬롯 계산 전에 먼저 수행)
+            # 메인 결과 정렬 + 중복 제거
             main_results.sort(key=lambda x: x.get("score", 0), reverse=True)
             unique_main = []
             seen_ids = set()
@@ -271,38 +488,30 @@ class SearchExecutor:
                     seen_ids.add(result_id)
                     unique_main.append(result)
 
-            # Cross-modal 보장 슬롯: 모달리티 다양성 기반 동적 할당
-            # 메인 결과에서 부족한 모달리티를 파악하여 cross-modal 슬롯에 우선 배치
+            # Cross-modal 슬롯 할당
             main_modalities = [r.get("modality") for r in unique_main]
             main_modality_set = set(main_modalities)
-
-            # 시스템 지원 모달리티 (향후 video, audio 추가 시 여기에 추가)
             all_supported_modalities = {"text", "image"}
             missing_modalities = all_supported_modalities - main_modality_set
 
             if missing_modalities:
-                # 부족한 모달리티가 있으면: 최소 2개, 상한 max_results의 30%
                 cross_modal_slots = min(
                     len(cross_modal_results),
                     max(len(missing_modalities), 2),
                     max_results * 3 // 10
                 )
             else:
-                # 모달리티 골고루 있으면 기존 로직 유지
                 cross_modal_slots = min(len(cross_modal_results), max(2, max_results // 4))
 
             main_slots = max_results - cross_modal_slots
-
-            # 메인 결과를 main_slots로 자르기
             unique_main = unique_main[:main_slots]
 
-            # Cross-modal 결과: 부족한 모달리티 우선 배치 후 점수순
+            # Cross-modal 결과 우선순위
             cross_modal_results.sort(key=lambda x: x.get("score", 0), reverse=True)
             cross_underrepresented = [r for r in cross_modal_results if r.get("modality") in missing_modalities]
             cross_others = [r for r in cross_modal_results if r.get("modality") not in missing_modalities]
             prioritized_cross = cross_underrepresented + cross_others
 
-            # 중복 제거 + 슬롯 할당
             unique_cross = []
             for result in prioritized_cross:
                 result_id = result.get("id") or result.get("_id") or result.get("element_id")
@@ -312,7 +521,6 @@ class SearchExecutor:
                     if len(unique_cross) >= cross_modal_slots:
                         break
 
-            # 합산 후 점수순 최종 정렬
             unique_results = unique_main + unique_cross
             unique_results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
@@ -324,14 +532,12 @@ class SearchExecutor:
                     f"missing_modalities: {missing_modalities or 'none'}, "
                     f"cross_modalities_filled: {cross_modalities})")
 
-            # 통합된 결과로 search_results 업데이트
             if search_results and isinstance(search_results, dict):
                 search_results["results"] = unique_results[:max_results]
                 search_results["total_hits"] = len(unique_results)
                 if unique_results:
                     search_results["max_score"] = max(r.get("score", 0) for r in unique_results)
             else:
-                # search_results가 None이거나 잘못된 형태인 경우 기본 구조 생성
                 search_results = {
                     "results": unique_results[:max_results],
                     "total_hits": len(unique_results),
@@ -339,7 +545,6 @@ class SearchExecutor:
                     "took_ms": 0,
                 }
 
-        # search_results가 여전히 None인 경우 기본 구조 반환
         if not search_results:
             search_results = {"results": [], "total_hits": 0, "max_score": 0.0, "took_ms": 0}
 

@@ -4,6 +4,7 @@ from app.api.dependencies import container
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.feature_extraction_client import FeatureExtractionClient
 from app.clients.llm_client import LLMClient
+from app.clients.reranker_client import RerankerClient
 from app.src.embeddings import EmbeddingService
 from app.src.generation import MultimodalStreamService, AnswerGenerationService
 from app.src.processing import InputProcessor, MultimodalFeatureExtractor
@@ -21,6 +22,7 @@ def _initialize_container():
     container.register(EmbeddingClient)
     container.register(FeatureExtractionClient)
     container.register(LLMClient)
+    container.register(RerankerClient)
 
     # Core services
     container.register(InputValidator)

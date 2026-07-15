@@ -46,6 +46,7 @@ class WeightingConfig(BaseSettings):
     # 벡터 검색 boost 강도 (0.5~3.0): 벡터 검색의 전반적인 가중치
     vector_boost_strength: float = Field(default=1.5, alias="WEIGHT_VECTOR_BOOST_STRENGTH")
 
+
     # === 계산된 가중치들 (핵심 설정을 기반으로 자동 계산) ===
     @property
     def TEXT_SUMMARY_BASE_WEIGHT(self) -> float:
