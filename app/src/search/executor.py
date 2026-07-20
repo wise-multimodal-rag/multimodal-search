@@ -127,8 +127,15 @@ class SearchExecutor:
         documents = []
         for r in results:
             content = r.get("content", "") or ""
-            if content.startswith("http") and r.get("description"):
-                content = r["description"]
+            # 이미지/미디어: URL 대신 설명 텍스트를 Reranker에 전달
+            if content.startswith("http"):
+                # 우선순위: description > 같은 청크 라벨 > 파일명
+                content = (
+                    r.get("description")
+                    or r.get("chunk_label")
+                    or r.get("media_title")
+                    or content
+                )
             doc_id = r.get("element_id", r.get("id", ""))
             documents.append({"id": doc_id, "content": content[:1000]})
 
@@ -197,7 +204,6 @@ class SearchExecutor:
         missing_modalities = (available_modalities & all_supported_modalities) - top_modalities
 
         if not missing_modalities:
-            # 모달리티가 이미 골고루 분포됨 → 그대로 반환
             return top_results
 
         # 보강 슬롯 수 계산: 부족 모달리티당 최소 1개, 상한 max_results의 30%
