@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multimodal RAG Chat</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
+                        surface: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 700: '#334155', 800: '#1e293b', 900: '#0f172a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="/static/css/chat.css?v=14.0">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body class="bg-surface-50 dark:bg-surface-900 h-screen overflow-hidden transition-colors duration-200">
+
+<div id="app" class="flex h-screen">
+
+    <!-- 왼쪽 사이드바: 대화 목록 -->
+    <aside id="sidebar" class="w-60 bg-white dark:bg-surface-800 border-r border-surface-200 dark:border-surface-700 flex flex-col transition-all duration-300">
+        <!-- 사이드바 헤더 -->
+        <div class="p-4 border-b border-surface-200 dark:border-surface-700">
+            <button id="newChatBtn" class="w-full flex items-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                새 대화
+            </button>
+        </div>
+        <!-- 대화 목록 -->
+        <div id="conversationList" class="flex-1 overflow-y-auto p-2 space-y-1">
+            <!-- 대화 아이템들이 여기에 렌더됨 -->
+        </div>
+        <!-- 사이드바 하단 -->
+        <div class="p-3 border-t border-surface-200 dark:border-surface-700">
+            <button id="themeToggle" class="flex items-center gap-2 px-3 py-2 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg w-full transition-colors">
+                <svg id="themeIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+                <span id="themeLabel">다크 모드</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- 중앙: 채팅 영역 -->
+    <main class="flex-1 flex flex-col min-w-0">
+        <!-- 채팅 헤더 -->
+        <header class="h-14 flex items-center justify-between px-6 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
+            <div class="flex items-center gap-3">
+                <button id="sidebarToggle" class="lg:hidden p-1.5 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg">
+                    <svg class="w-5 h-5 text-surface-700 dark:text-surface-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <h1 class="text-base font-semibold text-surface-800 dark:text-surface-100">Multimodal RAG Chat</h1>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="pipelineToggle" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors border border-surface-200 dark:border-surface-600">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    파이프라인
+                </button>
+            </div>
+        </header>
+
+        <!-- 메시지 영역 -->
+        <div id="messageList" class="flex-1 overflow-y-auto px-4 py-6 space-y-6">
+            <!-- 웰컴 메시지 -->
+            <div id="welcomeMessage" class="flex flex-col items-center justify-center h-full text-center">
+                <div class="text-4xl mb-4">🔍</div>
+                <h2 class="text-xl font-semibold text-surface-800 dark:text-surface-100 mb-2">Multimodal RAG Chat</h2>
+                <p class="text-sm text-surface-500 dark:text-surface-400 max-w-md">텍스트, 이미지, 비디오, 오디오를 활용한 멀티모달 검색과 AI 답변을 대화형으로 경험하세요.</p>
+                <div class="mt-6 flex flex-wrap justify-center gap-2">
+                    <button class="quick-query px-3 py-1.5 text-xs bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-300 rounded-full hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">"AI 관련 동영상 찾아줘"</button>
+                    <button class="quick-query px-3 py-1.5 text-xs bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-300 rounded-full hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">"머신러닝 기초 문서"</button>
+                    <button class="quick-query px-3 py-1.5 text-xs bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-300 rounded-full hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">"프로젝트 구조 설명"</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 입력 영역 -->
+        <div class="border-t border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 p-4">
+            <!-- 파일 미리보기 -->
+            <div id="filePreview" class="hidden mb-3 flex flex-wrap gap-2"></div>
+            <!-- 입력 컨테이너 -->
+            <div class="max-w-4xl mx-auto">
+                <div class="flex items-end gap-2 bg-surface-50 dark:bg-surface-700 rounded-xl border border-surface-200 dark:border-surface-600 focus-within:border-primary-400 dark:focus-within:border-primary-500 transition-colors p-2">
+                    <!-- 파일 첨부 버튼들 -->
+                    <div class="flex items-center gap-0.5 pl-1">
+                        <input type="file" id="chatImageInput" accept="image/*" class="hidden">
+                        <input type="file" id="chatVideoInput" accept="video/*" class="hidden">
+                        <input type="file" id="chatAudioInput" accept="audio/*" class="hidden">
+                        <button onclick="document.getElementById('chatImageInput').click()" class="p-1.5 text-surface-400 hover:text-primary-500 hover:bg-surface-200 dark:hover:bg-surface-600 rounded-lg transition-colors" title="이미지 첨부">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        </button>
+                        <button onclick="document.getElementById('chatVideoInput').click()" class="p-1.5 text-surface-400 hover:text-primary-500 hover:bg-surface-200 dark:hover:bg-surface-600 rounded-lg transition-colors" title="비디오 첨부">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                        </button>
+                        <button onclick="document.getElementById('chatAudioInput').click()" class="p-1.5 text-surface-400 hover:text-primary-500 hover:bg-surface-200 dark:hover:bg-surface-600 rounded-lg transition-colors" title="오디오 첨부">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+                        </button>
+                    </div>
+                    <!-- 텍스트 입력 -->
+                    <textarea id="chatInput" rows="1" placeholder="메시지를 입력하세요... (Enter: 전송, Shift+Enter: 줄바꿈)"
+                              class="flex-1 resize-none bg-transparent border-none outline-none text-sm text-surface-800 dark:text-surface-100 placeholder-surface-400 dark:placeholder-surface-500 max-h-32 py-2 px-2"></textarea>
+                    <!-- 전송/중지 버튼 -->
+                    <button id="sendBtn" class="p-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="전송 (Enter)">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19V5m0 0l-7 7m7-7l7 7"/></svg>
+                    </button>
+                    <button id="stopBtn" class="hidden p-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors" title="중지">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                    </button>
+                </div>
+                <p class="text-xs text-surface-400 dark:text-surface-500 mt-2 text-center">검색 결과를 기반으로 AI가 답변합니다. 정확성을 위해 근거를 확인하세요.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- 오른쪽: 파이프라인 패널 -->
+    <aside id="pipelinePanel" class="w-96 bg-white dark:bg-surface-800 border-l border-surface-200 dark:border-surface-700 flex flex-col overflow-hidden transition-all duration-300">
+        <!-- 패널 헤더 -->
+        <div class="h-14 flex items-center justify-between px-4 border-b border-surface-200 dark:border-surface-700">
+            <h2 class="text-sm font-semibold text-surface-800 dark:text-surface-100">검색 파이프라인</h2>
+            <button id="pipelineClose" class="p-1 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg">
+                <svg class="w-4 h-4 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <!-- 파이프라인 내용 -->
+        <div id="pipelineContent" class="flex-1 overflow-y-auto p-4 space-y-3">
+            <div class="flex items-center justify-center h-full text-surface-400 dark:text-surface-500 text-sm">
+                <p>질의를 전송하면 검색 과정이 여기에 표시됩니다</p>
+            </div>
+        </div>
+    </aside>
+
+</div>
+
+<!-- JavaScript 모듈 -->
+<script src="/static/js/chat/core/ConversationManager.js?v=14.0"></script>
+<script src="/static/js/chat/core/ChatStreamHandler.js?v=14.0"></script>
+<script src="/static/js/chat/components/FilePreview.js?v=14.0"></script>
+<script src="/static/js/chat/components/ChatBubble.js?v=14.0"></script>
+<script src="/static/js/chat/components/ChatMessageList.js?v=14.0"></script>
+<script src="/static/js/chat/components/ChatInput.js?v=14.0"></script>
+<script src="/static/js/chat/components/PipelinePanel.js?v=14.0"></script>
+<script src="/static/js/chat/components/EvidenceCard.js?v=14.0"></script>
+<script src="/static/js/chat/components/ScoreBreakdown.js?v=14.0"></script>
+<script src="/static/js/chat/components/ConversationSidebar.js?v=14.0"></script>
+<script src="/static/js/chat/core/ChatController.js?v=14.0"></script>
+<script src="/static/js/chat/app.js?v=14.0"></script>
+</body>
+</html>

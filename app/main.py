@@ -161,6 +161,13 @@ async def search_page(request: Request):
     return templates.TemplateResponse("search.html", {"request": request})
 
 
+@app.get("/chat")
+async def chat_page(request: Request):
+    if templates is None:
+        return {"error": "Templates not available"}
+    return templates.TemplateResponse("chat.html", {"request": request})
+
+
 if __name__ == "__main__":
     import uvicorn
     from app.config.config import settings

@@ -1,0 +1,250 @@
+/* ============================================================
+   Chat RAG Interface — Custom styles (supplements Tailwind CDN)
+   ============================================================ */
+
+/* === Scrollbar === */
+#messageList::-webkit-scrollbar,
+#pipelineContent::-webkit-scrollbar,
+#conversationList::-webkit-scrollbar {
+    width: 6px;
+}
+#messageList::-webkit-scrollbar-track,
+#pipelineContent::-webkit-scrollbar-track,
+#conversationList::-webkit-scrollbar-track {
+    background: transparent;
+}
+#messageList::-webkit-scrollbar-thumb,
+#pipelineContent::-webkit-scrollbar-thumb,
+#conversationList::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+.dark #messageList::-webkit-scrollbar-thumb,
+.dark #pipelineContent::-webkit-scrollbar-thumb,
+.dark #conversationList::-webkit-scrollbar-thumb {
+    background: #475569;
+}
+
+/* === Textarea auto-resize === */
+#chatInput {
+    line-height: 1.5;
+    scrollbar-width: thin;
+}
+
+/* === Chat bubble animations === */
+.chat-bubble {
+    animation: bubbleIn 0.25s ease-out;
+}
+@keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* === Typing indicator === */
+.typing-indicator {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px 0;
+}
+.typing-indicator span {
+    width: 6px;
+    height: 6px;
+    background: #94a3b8;
+    border-radius: 50%;
+    animation: typingBounce 1.4s infinite;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-4px); }
+}
+
+/* === Pipeline step === */
+.pipeline-step {
+    transition: all 0.2s ease;
+}
+.pipeline-step.active {
+    background: #eff6ff;
+}
+.dark .pipeline-step.active {
+    background: #1e3a5f;
+}
+.pipeline-step .step-icon {
+    transition: all 0.3s ease;
+}
+.pipeline-step.completed .step-icon {
+    color: #22c55e;
+}
+.pipeline-step.active .step-icon {
+    color: #3b82f6;
+    animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* === Pipeline detail collapse === */
+.pipeline-detail {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.3s ease, opacity 0.2s ease;
+}
+.pipeline-detail.expanded {
+    max-height: 400px;
+    opacity: 1;
+    padding-top: 6px;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 6px;
+}
+.dark .pipeline-detail.expanded {
+    border-top-color: #334155;
+}
+
+/* === Score bar === */
+.score-bar-container {
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.dark .score-bar-container {
+    background: #334155;
+}
+.score-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+.score-bar.bm25 { background: #f59e0b; }
+.score-bar.vector { background: #8b5cf6; }
+.score-bar.reranker { background: #10b981; }
+
+/* === Evidence card === */
+.evidence-card {
+    transition: all 0.2s ease;
+}
+.evidence-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.dark .evidence-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* === Markdown content in AI bubbles === */
+.ai-content h1, .ai-content h2, .ai-content h3 {
+    font-weight: 600;
+    margin: 0.75em 0 0.5em;
+}
+.ai-content h1 { font-size: 1.25em; }
+.ai-content h2 { font-size: 1.1em; }
+.ai-content h3 { font-size: 1em; }
+.ai-content p { margin: 0.5em 0; }
+.ai-content ul, .ai-content ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+}
+.ai-content li { margin: 0.25em 0; }
+.ai-content code {
+    background: #f1f5f9;
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+.dark .ai-content code {
+    background: #334155;
+}
+.ai-content pre {
+    background: #f1f5f9;
+    border-radius: 8px;
+    padding: 0.75em 1em;
+    overflow-x: auto;
+    margin: 0.75em 0;
+}
+.dark .ai-content pre {
+    background: #1e293b;
+}
+.ai-content pre code {
+    background: transparent;
+    padding: 0;
+}
+.ai-content blockquote {
+    border-left: 3px solid #3b82f6;
+    padding-left: 0.75em;
+    margin: 0.5em 0;
+    color: #64748b;
+}
+.dark .ai-content blockquote {
+    color: #94a3b8;
+}
+.ai-content a {
+    color: #2563eb;
+    text-decoration: underline;
+}
+.dark .ai-content a {
+    color: #60a5fa;
+}
+
+/* === Conversation sidebar item === */
+.conv-item {
+    transition: background 0.15s ease;
+}
+.conv-item.active {
+    background: #eff6ff;
+}
+.dark .conv-item.active {
+    background: #1e3a5f;
+}
+
+/* === File preview badges === */
+.file-badge {
+    animation: badgeIn 0.2s ease-out;
+}
+@keyframes badgeIn {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+/* === Responsive === */
+@media (max-width: 1024px) {
+    #sidebar {
+        position: fixed;
+        left: -240px;
+        top: 0;
+        bottom: 0;
+        z-index: 50;
+        box-shadow: 4px 0 12px rgba(0, 0, 0, 0.1);
+    }
+    #sidebar.open {
+        left: 0;
+    }
+    #pipelinePanel {
+        position: fixed;
+        right: -384px;
+        top: 0;
+        bottom: 0;
+        z-index: 50;
+        box-shadow: -4px 0 12px rgba(0, 0, 0, 0.1);
+    }
+    #pipelinePanel.open {
+        right: 0;
+    }
+}
+
+/* === Overlay for mobile panels === */
+.panel-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 40;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+.panel-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
