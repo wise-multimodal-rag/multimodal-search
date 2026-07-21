@@ -350,7 +350,8 @@ class AnswerGenerationService:
         return content
 
     async def _generate_draft(self, query: str, context: str, temperature: float,
-                              previous_improvements: Optional[List[str]] = None) -> Optional[str]:
+                              previous_improvements: Optional[List[str]] = None,
+                              conversation_context: Optional[List[Dict[str, str]]] = None) -> Optional[str]:
         """초안 답변 생성"""
         # 이미지 관련 안내문 - 첨부 이미지가 있을 때만 포함 (컨텍스트에서 확인)
         has_attached_image = "=== 첨부 이미지 정보 ===" in context
@@ -369,6 +370,19 @@ class AnswerGenerationService:
 위 검색 결과를 바탕으로 질문에 대한 포괄적이고 정확한 답변을 생성해주세요."""
 
         messages = self.prompt_manager.create_messages(system_prompt, user_prompt)
+
+        # 멀티턴 대화 맥락 삽입: [system, ...conversation_history, user]
+        if conversation_context:
+            history_messages = []
+            for turn in conversation_context[-10:]:  # 최대 10턴
+                role = turn.get("role", "user")
+                content = turn.get("content", "")
+                if content and role in ("user", "assistant"):
+                    history_messages.append({"role": role, "content": content})
+            if history_messages:
+                # messages = [system, user] → [system, ...history, user]
+                messages = [messages[0]] + history_messages + [messages[-1]]
+                logger.info(f"Conversation context injected: {len(history_messages)} turns")
         logger.debug(f"🧾 Draft generation messages: {messages}")
 
         try:
@@ -460,6 +474,7 @@ class AnswerGenerationService:
             max_retries: int = 2,
             temperature: float = 0.7,
             search_service=None,
+            conversation_context: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """검색 결과를 기반으로 질의에 대한 답변을 스트리밍으로 생성합니다."""
         start_time = time.time()
@@ -535,7 +550,7 @@ class AnswerGenerationService:
                     logger.warning("STREAM Previous attempt is None, skipping improvement suggestions")
 
             try:
-                draft_answer = await self._generate_draft(query, context, temperature, previous_improvements)
+                draft_answer = await self._generate_draft(query, context, temperature, previous_improvements, conversation_context)
                 if not draft_answer:
                     logger.error(f"STREAM Failed to generate draft answer in attempt {attempt + 1}")
                     continue
