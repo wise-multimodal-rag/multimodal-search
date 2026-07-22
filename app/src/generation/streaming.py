@@ -89,7 +89,11 @@ class MultimodalStreamService:
                     async for answer_step in self._generate_answer_stream(
                             text_query, search_results, temperature, max_retries, conversation_context
                     ):
-                        answer_step_count += 1
+                        # answer_token은 스텝 카운트에서 제외 (토큰 수백개가 올 수 있음)
+                        is_token = (isinstance(answer_step, str) and 'answer_token' in answer_step) or \
+                                   (isinstance(answer_step, dict) and answer_step.get('step') == 'answer_token')
+                        if not is_token:
+                            answer_step_count += 1
                         logger.debug(
                             f"Answer step {answer_step_count}: {answer_step[:100] if isinstance(answer_step, str) else 'data'}")
 
@@ -102,7 +106,7 @@ class MultimodalStreamService:
 
                         yield answer_step
 
-                        # 무한루프 방지
+                        # 무한루프 방지 (토큰 제외한 실제 단계만 카운트)
                         if answer_step_count >= max_answer_steps:
                             logger.error(
                                 f"Answer generation exceeded max steps ({max_answer_steps}), forcing termination")

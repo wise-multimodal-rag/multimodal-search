@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from loguru import logger
@@ -115,6 +115,58 @@ class LLMClient:
                         "status_code": status_code,
                         "response_text": response_text[:500] if isinstance(response_text, str) else response_text
                     },
+                    cause=e
+                )
+
+    async def complete_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.3,
+        max_tokens: Optional[int] = None,
+        use_generation_model: bool = False,
+    ) -> AsyncGenerator[str, None]:
+        """Get streaming completion from LLM (token by token)"""
+        model = self.generation_model if use_generation_model else self.model
+        payload = {"model": model, "messages": messages, "temperature": temperature, "stream": True}
+
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+
+        headers = {}
+        if self.api_key and self.api_key != "your-api-key":
+            if self.api_key.startswith("Bearer "):
+                headers["Authorization"] = self.api_key
+            else:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+
+        logger.debug(f"LLM stream request: model={model}, messages={len(messages)}, temp={temperature}")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                async with client.stream(
+                    "POST", f"{self.base_url}/v1/chat/completions", json=payload, headers=headers
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line or not line.startswith("data: "):
+                            continue
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            import json
+                            chunk = json.loads(data_str)
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                yield content
+                        except (json.JSONDecodeError, IndexError, KeyError):
+                            continue
+            except Exception as e:
+                logger.error(f"LLM stream request failed: {e}")
+                raise LLMClientException(
+                    message=str(e),
+                    details={"service": "LiteLLM", "mode": "stream"},
                     cause=e
                 )
 

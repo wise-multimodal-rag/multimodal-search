@@ -69,17 +69,19 @@ class ChatBubble {
         const el = document.getElementById(`content-${messageId}`);
         if (!el) return;
 
+        // 스트리밍 중에는 업데이트 안 함 (타이핑 인디케이터 유지)
+        // 완료 시에만 마크다운 렌더
+        if (isStreaming) return;
+
         if (this.markedReady && content) {
             el.innerHTML = marked.parse(content);
         } else {
             el.textContent = content || '';
         }
 
-        if (!isStreaming) {
-            // 스트리밍 완료 시 액션 버튼 표시
-            const actions = document.getElementById(`actions-${messageId}`);
-            if (actions) actions.classList.remove('hidden');
-        }
+        // 액션 버튼 표시
+        const actions = document.getElementById(`actions-${messageId}`);
+        if (actions) actions.classList.remove('hidden');
     }
 
     showTyping(messageId) {
