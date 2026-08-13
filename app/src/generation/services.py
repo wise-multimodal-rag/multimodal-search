@@ -350,8 +350,7 @@ class AnswerGenerationService:
         return content
 
     async def _generate_draft(self, query: str, context: str, temperature: float,
-                              previous_improvements: Optional[List[str]] = None,
-                              conversation_context: Optional[List[Dict[str, str]]] = None) -> Optional[str]:
+                              previous_improvements: Optional[List[str]] = None) -> Optional[str]:
         """초안 답변 생성"""
         # 이미지 관련 안내문 - 첨부 이미지가 있을 때만 포함 (컨텍스트에서 확인)
         has_attached_image = "=== 첨부 이미지 정보 ===" in context
@@ -370,19 +369,6 @@ class AnswerGenerationService:
 위 검색 결과를 바탕으로 질문에 대한 포괄적이고 정확한 답변을 생성해주세요."""
 
         messages = self.prompt_manager.create_messages(system_prompt, user_prompt)
-
-        # 멀티턴 대화 맥락 삽입: [system, ...conversation_history, user]
-        if conversation_context:
-            history_messages = []
-            for turn in conversation_context[-10:]:  # 최대 10턴
-                role = turn.get("role", "user")
-                content = turn.get("content", "")
-                if content and role in ("user", "assistant"):
-                    history_messages.append({"role": role, "content": content})
-            if history_messages:
-                # messages = [system, user] → [system, ...history, user]
-                messages = [messages[0]] + history_messages + [messages[-1]]
-                logger.info(f"Conversation context injected: {len(history_messages)} turns")
         logger.debug(f"🧾 Draft generation messages: {messages}")
 
         try:
@@ -396,48 +382,6 @@ class AnswerGenerationService:
         except Exception as e:
             logger.error(f"Error generating draft answer: {e}")
             return None
-
-    async def _generate_draft_stream(self, query: str, context: str, temperature: float,
-                                     previous_improvements: Optional[List[str]] = None,
-                                     conversation_context: Optional[List[Dict[str, str]]] = None) -> AsyncGenerator[str, None]:
-        """초안 답변 스트리밍 생성 (토큰 단위)"""
-        has_attached_image = "=== 첨부 이미지 정보 ===" in context
-
-        system_prompt = await self.prompt_manager.get_answer_generation_prompt(
-            has_attached_image=has_attached_image,
-            previous_improvements=previous_improvements
-        )
-
-        user_prompt = f"""질문: {query}
-
-검색 결과:
-{context}
-
-위 검색 결과를 바탕으로 질문에 대한 포괄적이고 정확한 답변을 생성해주세요."""
-
-        messages = self.prompt_manager.create_messages(system_prompt, user_prompt)
-
-        # 멀티턴 대화 맥락 삽입
-        if conversation_context:
-            history_messages = []
-            for turn in conversation_context[-10:]:
-                role = turn.get("role", "user")
-                content = turn.get("content", "")
-                if content and role in ("user", "assistant"):
-                    history_messages.append({"role": role, "content": content})
-            if history_messages:
-                messages = [messages[0]] + history_messages + [messages[-1]]
-
-        try:
-            async for token in self.llm_client.complete_stream(
-                messages=messages,
-                temperature=temperature,
-                max_tokens=2000,
-                use_generation_model=True
-            ):
-                yield token
-        except Exception as e:
-            logger.error(f"Error in streaming draft generation: {e}")
 
     async def _perform_reflection(self, query: str, draft_answer: str, context: str) -> Optional[Dict[str, Any]]:
         """생성된 답변에 대한 reflection 수행"""
@@ -516,7 +460,6 @@ class AnswerGenerationService:
             max_retries: int = 2,
             temperature: float = 0.7,
             search_service=None,
-            conversation_context: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """검색 결과를 기반으로 질의에 대한 답변을 스트리밍으로 생성합니다."""
         start_time = time.time()
@@ -592,19 +535,7 @@ class AnswerGenerationService:
                     logger.warning("STREAM Previous attempt is None, skipping improvement suggestions")
 
             try:
-                # 첫 번째 시도: 토큰 스트리밍으로 생성 (실시간 답변 표시)
-                if attempt == 0:
-                    draft_answer = ""
-                    async for token in self._generate_draft_stream(query, context, temperature, previous_improvements, conversation_context):
-                        draft_answer += token
-                        yield {
-                            'step': 'answer_token',
-                            'data': {'token': token},
-                            'timestamp': time.time()
-                        }
-                else:
-                    # 재시도: 기존 방식 (reflection 피드백 반영)
-                    draft_answer = await self._generate_draft(query, context, temperature, previous_improvements, conversation_context)
+                draft_answer = await self._generate_draft(query, context, temperature, previous_improvements)
 
                 if not draft_answer:
                     logger.error(f"STREAM Failed to generate draft answer in attempt {attempt + 1}")

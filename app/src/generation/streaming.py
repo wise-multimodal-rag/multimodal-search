@@ -32,7 +32,6 @@ class MultimodalStreamService:
             temperature: float = 0.7,
             max_retries: int = 2,
             file_processing_errors: List[str] = None,
-            conversation_context: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[str, None]:
         """멀티모달 요청을 처리하여 스트리밍 응답을 생성합니다.
 
@@ -47,7 +46,6 @@ class MultimodalStreamService:
             temperature: 답변 생성 온도
             max_retries: 답변 재생성 최대 횟수
             file_processing_errors: 파일 처리 오류 목록
-            conversation_context: 이전 대화 맥락 (멀티턴 지원)
 
         Yields:
             SSE 형식의 스트리밍 데이터
@@ -87,13 +85,9 @@ class MultimodalStreamService:
                     # 직접 스트리밍 (태스크 생성 없이)
                     answer_completed = False
                     async for answer_step in self._generate_answer_stream(
-                            text_query, search_results, temperature, max_retries, conversation_context
+                            text_query, search_results, temperature, max_retries
                     ):
-                        # answer_token은 스텝 카운트에서 제외 (토큰 수백개가 올 수 있음)
-                        is_token = (isinstance(answer_step, str) and 'answer_token' in answer_step) or \
-                                   (isinstance(answer_step, dict) and answer_step.get('step') == 'answer_token')
-                        if not is_token:
-                            answer_step_count += 1
+                        answer_step_count += 1
                         logger.debug(
                             f"Answer step {answer_step_count}: {answer_step[:100] if isinstance(answer_step, str) else 'data'}")
 
@@ -106,7 +100,7 @@ class MultimodalStreamService:
 
                         yield answer_step
 
-                        # 무한루프 방지 (토큰 제외한 실제 단계만 카운트)
+                        # 무한루프 방지
                         if answer_step_count >= max_answer_steps:
                             logger.error(
                                 f"Answer generation exceeded max steps ({max_answer_steps}), forcing termination")
@@ -152,7 +146,6 @@ class MultimodalStreamService:
             search_results: Dict[str, Any],
             temperature: float,
             max_retries: int,
-            conversation_context: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[str, None]:
         """답변 생성 과정을 스트리밍으로 처리"""
         try:
@@ -187,7 +180,6 @@ class MultimodalStreamService:
                     max_retries=max_retries,
                     temperature=temperature,
                     search_service=self.search_service,
-                    conversation_context=conversation_context,
             ):
                 # 각 단계 결과를 SSE 형식으로 전송
                 yield f"data: {json.dumps(step_data, ensure_ascii=False)}\n\n"

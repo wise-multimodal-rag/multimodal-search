@@ -75,12 +75,6 @@ class ChatController {
         formData.append('include_media_meta', 'true');
         formData.append('generate_answer', 'true');
 
-        // 대화 맥락 (이전 턴들)
-        const context = this.convManager.getConversationContext(5);
-        if (context.length > 2) { // 현재 턴 제외 이전 메시지가 있을 때만
-            formData.append('conversation_context', JSON.stringify(context.slice(0, -2)));
-        }
-
         // 파일 첨부
         if (files.image) formData.append('image', files.image);
         if (files.video) formData.append('video', files.video);

@@ -99,14 +99,12 @@ async def multimodal_search_and_generate_stream(
         generate_answer: bool = Form(default=False, description="AI 답변도 함께 생성"),
         temperature: float = Form(default=0.7, ge=0.0, le=2.0, description="답변 생성 온도"),
         max_retries: int = Form(default=2, ge=0, le=5, description="답변 재생성 최대 횟수"),
-        conversation_context: Optional[str] = Form(default=None, description="이전 대화 맥락 (JSON)"),
         multimodal_stream_service: MultimodalStreamService = Depends(get_multimodal_stream_service),
 ):
     """멀티모달 검색 및 선택적 AI 답변 생성 스트리밍 엔드포인트
 
     검색만 수행하거나 검색 + LLM 답변 생성을 함께 수행할 수 있습니다.
     generate_answer=True일 때 답변 생성도 함께 실행됩니다.
-    conversation_context가 제공되면 LLM 답변 생성 시 이전 대화 맥락을 참고합니다.
     """
     # Swagger UI에서 빈 파일 필드가 빈 문자열로 전송되는 문제 방어
     # Note: FastAPI 0.117+에서 Union[UploadFile, str] 사용 시
@@ -119,15 +117,6 @@ async def multimodal_search_and_generate_stream(
         audio = None
     if not isinstance(text_file, (UploadFile, StarletteUploadFile)) or not text_file.filename:
         text_file = None
-
-    # conversation_context JSON 파싱
-    parsed_conversation_context = None
-    if conversation_context:
-        try:
-            parsed_conversation_context = json.loads(conversation_context)
-            logger.info(f"Stream API: conversation_context with {len(parsed_conversation_context)} turns")
-        except (json.JSONDecodeError, TypeError):
-            logger.warning("Stream API: Invalid conversation_context JSON, ignoring")
 
     logger.info(f"Stream API: answer={generate_answer}, temp={temperature}, retries={max_retries}")
 
@@ -161,7 +150,6 @@ async def multimodal_search_and_generate_stream(
                     temperature=temperature,
                     max_retries=max_retries,
                     file_processing_errors=file_processing_errors,
-                    conversation_context=parsed_conversation_context,
             ):
                 # 클라이언트 연결 상태 체크
                 if await request.is_disconnected():

@@ -25,3 +25,7 @@ logs/
 
 # Test/Data
 test_data/
+tests/
+
+# Docs (로컬 작업 문서)
+docs/
