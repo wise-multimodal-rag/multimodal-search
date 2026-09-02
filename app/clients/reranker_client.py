@@ -1,5 +1,4 @@
-"""
-Qwen3-Reranker HTTP 클라이언트 (vLLM 직접 호출)
+"""Qwen3-Reranker HTTP 클라이언트 (vLLM 직접 호출).
 
 vLLM 서버의 /classify 엔드포인트를 직접 호출합니다.
 Qwen3-VL-Reranker-2B 모델의 프롬프트 형식에 맞춰 query-document 쌍을 구성합니다.
@@ -48,8 +47,7 @@ class RerankerClient:
         top_k: Optional[int] = None,
         instruct: Optional[str] = None,
     ) -> Optional[List[Dict[str, Any]]]:
-        """
-        Reranker API를 호출하여 문서를 재정렬합니다.
+        """Reranker API를 호출하여 문서를 재정렬합니다.
 
         Args:
             query: 검색 쿼리
@@ -150,8 +148,7 @@ class RerankerClient:
         result: Dict[str, Any],
         top_k: int,
     ) -> Optional[List[Dict[str, Any]]]:
-        """
-        vLLM /classify 응답을 파싱합니다.
+        """응답을 파싱합니다 (vLLM /classify).
 
         vLLM 응답 형식 (num_classes=1, sigmoid score):
         {
