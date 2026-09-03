@@ -77,9 +77,14 @@ async def health_check():
     opensearch_service = get_opensearch_service()
     opensearch_status = await opensearch_service.health_check()
 
+    # services 는 Dict[str, Dict[str, Any]] 이다. bool 을 그대로 넣으면
+    # 응답 모델 검증이 실패해 500 이 난다. /health/external-apis 와 같은
+    # {"status": ...} 형태로 맞춘다.
     health_data = HealthCheckData(
-        status="healthy",
-        services={"opensearch": opensearch_status},
+        status="healthy" if opensearch_status else "degraded",
+        services={
+            "opensearch": {"status": "healthy" if opensearch_status else "unhealthy"}
+        },
         version="0.2.0"
     )
 
