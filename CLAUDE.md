@@ -85,10 +85,10 @@ Key settings in `.env`:
 
 ### External API Dependencies
 The system requires external APIs for:
-- **Embedding API** (`internal.example.com`):
-  - Text/image embedding generation (Sentence Transformers, SigLIP-2)
-  - Image analysis (YOLO11 object detection, image captioning)
-- **Document Processor API** (`internal.example.com`):
+- **Embedding API** (`EMBEDDING_API_URL`):
+  - Text/image embedding generation
+  - Image captioning
+- **Document Processor API** (`FEATURE_EXTRACTION_API_URL`):
   - Text feature extraction (summarization, keyword extraction, classification, NER, sentiment analysis)
   - Document parsing and OCR
   - Document layout analysis and element extraction

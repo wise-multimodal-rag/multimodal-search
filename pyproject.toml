@@ -3,9 +3,6 @@ name = "multimodal-search"
 version = "0.2.0"
 description = "Multimodal search and RAG system using OpenSearch"
 requires-python = ">=3.11"
-authors = [
-    { name = "박서연", email = "sally9476@wisenut.co.kr" }
-]
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",

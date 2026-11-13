@@ -21,7 +21,7 @@ class WeightingConfig(BaseSettings):
     - 동적 계산: 쿼리 내용에 따라 가중치 자동 조정
     """
     model_config = SettingsConfigDict(env_file=str(ENV_FILE_PATH), env_file_encoding="utf-8", env_prefix="WEIGHT_",
-                                      extra="ignore")
+                                      extra="ignore", env_ignore_empty=True)
 
     # === 쿼리별 가중치 설정 ===
     query_weight_decay: float = Field(default=0.1, alias="WEIGHT_QUERY_DECAY")  # 각 쿼리마다 감소할 가중치 (1.0 → 0.9 → 0.8...)

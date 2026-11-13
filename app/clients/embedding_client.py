@@ -12,16 +12,18 @@ class EmbeddingClient:
         self.base_url = settings.embedding_api_url
         self.timeout = 30.0
         api_key = security_manager.get_api_key("MULTIMODAL_API_KEY") or settings.multimodal_api_key
-        self.headers = {"x-token": api_key, "Content-Type": "application/json"}
-        self.file_headers = {"x-token": api_key}
+        header = settings.multimodal_api_key_header
+        auth = {header: api_key} if header and api_key else {}
+        self.headers = {**auth, "Content-Type": "application/json"}
+        self.file_headers = auth
 
     async def get_text_embedding(self, text: str) -> Optional[List[float]]:
-        """Get text embedding via /embedding/multimodal endpoint"""
+        """Get text embedding (EMBEDDING_API_EMBED_PATH)"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 payload = {"modality": "text", "data": text}
                 response = await client.post(
-                    f"{self.base_url}/embedding/multimodal",
+                    f"{self.base_url}{settings.embedding_api_embed_path}",
                     json=payload,
                     headers=self.headers,
                 )
@@ -44,12 +46,12 @@ class EmbeddingClient:
                 return None
 
     async def get_image_embedding(self, image_base64: str) -> Optional[List[float]]:
-        """Get image embedding from base64 string via /embedding/multimodal endpoint"""
+        """Get image embedding from base64 string (EMBEDDING_API_EMBED_PATH)"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 payload = {"modality": "image", "data": image_base64}
                 response = await client.post(
-                    f"{self.base_url}/embedding/multimodal",
+                    f"{self.base_url}{settings.embedding_api_embed_path}",
                     json=payload,
                     headers=self.headers,
                 )
@@ -82,13 +84,13 @@ class EmbeddingClient:
         return None
 
     async def generate_image_caption(self, image_data: bytes) -> Optional[Dict[str, Any]]:
-        """Generate image caption via /analysis/data2text endpoint"""
+        """Generate image caption (EMBEDDING_API_CAPTION_PATH)"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 files = {"image_file": ("image.jpg", image_data, "image/jpeg")}
                 data = {"provider": "vlm"}
                 response = await client.post(
-                    f"{self.base_url}/analysis/data2text",
+                    f"{self.base_url}{settings.embedding_api_caption_path}",
                     files=files,
                     data=data,
                     headers=self.file_headers,

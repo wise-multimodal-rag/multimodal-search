@@ -10,12 +10,15 @@ from app.api.dependencies import get_opensearch_service
 from app.api.middleware import configure_cors, configure_handlers, configure_middleware
 from app.api.routers import search, generation, config
 from app.api.schemas import ApiResponse, HealthCheckData, ResponseBuilder
+from app.config.config import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting multimodal search application")
+    if missing := settings.missing_api_settings():
+        logger.warning("외부 API 설정이 비어 있다 — 주입 필요: " + ", ".join(missing))
 
     # Initialize OpenSearch connection
     opensearch_service = get_opensearch_service()

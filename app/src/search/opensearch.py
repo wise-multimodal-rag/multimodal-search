@@ -41,7 +41,7 @@ class OpenSearchService:
                 else None,
                 use_ssl=settings.opensearch_use_ssl,
                 verify_certs=settings.opensearch_verify_certs,
-                ssl_assert_hostname=False,
+                ssl_assert_hostname=settings.opensearch_verify_certs,
                 ssl_show_warn=False,
             )
 

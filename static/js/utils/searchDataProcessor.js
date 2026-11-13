@@ -169,14 +169,6 @@ class SearchDataProcessor {
                 return content.trim();
             }
             
-            // internal.example.com 도메인 패턴
-            const labsPattern = /https?:\/\/[^\/]*internal\.example\.com[^\/]*\/[^\s]+\.(jpg|jpeg|png|gif|bmp|webp|svg)/i;
-            const labsMatch = content.match(labsPattern);
-            
-            if (labsMatch) {
-                return content.trim();
-            }
-            
         } catch (e) {
             console.warn('Failed to detect image URL:', e);
         }
@@ -242,14 +234,6 @@ class SearchDataProcessor {
             const minioMatch = content.match(minioPattern);
             
             if (minioMatch) {
-                return content.trim();
-            }
-            
-            // internal.example.com 도메인 패턴
-            const labsPattern = /https?:\/\/[^\/]*internal\.example\.com[^\/]*\/[^\s]+\.(jpg|jpeg|png|gif|bmp|webp|svg|mp4|webm|ogg|avi|mov|wmv|flv|mkv)/i;
-            const labsMatch = content.match(labsPattern);
-            
-            if (labsMatch) {
                 return content.trim();
             }
             

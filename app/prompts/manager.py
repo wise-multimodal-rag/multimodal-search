@@ -52,7 +52,7 @@ class PromptManager:
             self._langfuse_client = Langfuse(
                 public_key=settings.langfuse_public_key,
                 secret_key=settings.langfuse_secret_key,
-                host=settings.langfuse_host
+                host=settings.langfuse_host or None,
             )
             logger.info(f"Langfuse client initialized with host: {settings.langfuse_host}")
         except Exception as e:

@@ -296,8 +296,10 @@ class SearchResultRenderer {
             } else {
                 // 기존 이미지 경로 추출 방식으로 폴백
                 const imagePath = SearchDataProcessor.extractImagePath(element.content);
-                if (imagePath) {
-                    const imageUrl = `http://internal.example.com/image/proxy/${imagePath}`;
+                // 서버 설정 IMAGE_PROXY_URL (/api/config/client 응답은 data 로 감싸져 들어온다)
+                const proxyBase = (window.appConfig?.get('data.media.imageProxyUrl') || '').replace(/\/+$/, '');
+                if (imagePath && proxyBase) {
+                    const imageUrl = `${proxyBase}/${imagePath}`;
                     mediaContent = this.renderImagePreview(imageUrl, element.content);
                 }
             }
@@ -602,46 +604,9 @@ class SearchResultRenderer {
             const errorDiv = loadingDiv.nextElementSibling;
             
             try {
-                // 직접 URL인 경우와 프록시 URL인 경우 구분 처리
-                if (imageUrl.startsWith('http://internal.example.com/') ||
-                    imageUrl.includes('internal.example.com') ||
-                    imageUrl.includes('minio.storage-system')) {
-                    // 직접 이미지 URL인 경우 - 바로 사용
-                    console.log('Loading direct image URL:', imageUrl);
-                    // URL에 한글 등이 있을 경우를 대비해 인코딩 처리
-                    const encodedUrl = imageUrl.split('/').map((part, index) => {
-                        // 프로토콜과 도메인 부분은 인코딩하지 않음
-                        return index < 3 ? part : encodeURIComponent(decodeURIComponent(part));
-                    }).join('/');
-                    console.log('Encoded image URL:', encodedUrl);
-                    img.src = encodedUrl;
-                    loadingDiv.style.display = 'none';
-                } else {
-                    // 프록시 API 호출이 필요한 경우
-                    const response = await fetch(imageUrl, {
-                        method: 'GET',
-                        headers: {
-                            'Accept': 'image/*'
-                        }
-                    });
-                    
-                    if (response.ok) {
-                        const blob = await response.blob();
-                        const objectUrl = URL.createObjectURL(blob);
-                        
-                        img.src = objectUrl;
-                        loadingDiv.style.display = 'none';
-                        
-                        // 메모리 해제를 위해 이미지 로드 완료 후 URL 해제
-                        img.onload = () => {
-                            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-                        };
-                    } else {
-                        console.warn(`Failed to load image: ${response.status} ${response.statusText}`);
-                        loadingDiv.style.display = 'none';
-                        errorDiv.style.display = 'block';
-                    }
-                }
+                // 도메인과 무관하게 <img src> 로 직접 로드한다. URL() 이 경로의 한글 등을 인코딩한다.
+                img.src = new URL(imageUrl, window.location.origin).href;
+                loadingDiv.style.display = 'none';
             } catch (error) {
                 console.error('Image loading error:', error, 'for URL:', imageUrl);
                 loadingDiv.style.display = 'none';

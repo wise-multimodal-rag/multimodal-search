@@ -163,7 +163,7 @@ class SearchExecutor:
                     result["score_breakdown"] = {}
                 result["score_breakdown"]["reranker"] = {
                     "score": rr["score"],
-                    "model": "qwen3-reranker",
+                    "model": settings.reranker_model or "reranker",
                 }
                 reranked.append(result)
 

@@ -87,24 +87,10 @@ class FeatureExtractionClientProtocol(Protocol):
         """키워드 추출"""
         ...
 
-    async def classify_text(self, text: str, top_k: int = 3) -> Optional[Dict[str, Any]]:
-        """텍스트 분류"""
-        ...
-
     async def extract_entities(
             self, text: str, entity_types: Optional[List[str]] = None, include_confidence: bool = True
     ) -> Optional[Dict[str, Any]]:
         """개체명 추출"""
-        ...
-
-    async def analyze_sentiment(self, text: str, detail_level: str = "simple") -> Optional[Dict[str, Any]]:
-        """감정 분석"""
-        ...
-
-    async def extract_document_text(
-            self, file_data: bytes, filename: str, content_type: str
-    ) -> Optional[Dict[str, Any]]:
-        """문서 텍스트 추출"""
         ...
 
 

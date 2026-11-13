@@ -46,6 +46,9 @@ async def get_client_config():
             "reconnectAttempts": 3,
             "heartbeatInterval": 30000
         },
+        "media": {
+            "imageProxyUrl": settings.image_proxy_url,  # 비면 경로 기반 미리보기 생략
+        },
         "features": {
             "answerGeneration": True,
             "fileUpload": True,

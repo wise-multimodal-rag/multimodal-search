@@ -53,7 +53,7 @@ class LLMClient:
                     f"LLM request: model={payload.get('model')}, messages={len(payload.get('messages', []))}, temp={payload.get('temperature')}"
                 )
 
-                response = await client.post(f"{self.base_url}/v1/chat/completions", json=payload, headers=headers)
+                response = await client.post(f"{self.base_url}{settings.litellm_chat_path}", json=payload, headers=headers)
                 response.raise_for_status()
 
                 result = response.json()

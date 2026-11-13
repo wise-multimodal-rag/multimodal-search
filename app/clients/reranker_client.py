@@ -75,16 +75,17 @@ class RerankerClient:
         inputs = self._build_inputs(query, documents, instruct)
 
         payload = {
-            "model": "qwen3-vl-reranker-2b",
             "input": inputs,
             "use_activation": True,
             "add_special_tokens": False,
         }
+        if settings.reranker_model:  # 비우면 서버의 기본 모델
+            payload["model"] = settings.reranker_model
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.base_url}/classify",
+                    f"{self.base_url}{settings.reranker_classify_path}",
                     json=payload,
                     headers=self.headers,
                 )
